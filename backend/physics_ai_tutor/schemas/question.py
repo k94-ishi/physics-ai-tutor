@@ -1,6 +1,14 @@
 from pydantic import BaseModel
 
 
+class QuestionCreate(BaseModel):
+    question: str
+    answer: str
+
+
+class QuestionBulkCreate(BaseModel):
+    questions: list[QuestionCreate]
+
 class QuestionResponse(BaseModel):
     id: int
     question: str

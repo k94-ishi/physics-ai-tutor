@@ -15,3 +15,18 @@ router = APIRouter()
 def get_questions(db: Session = Depends(get_db)):
     
     return question_service.fetch_questions(db)
+
+
+@router.get(
+    "/questions/{question_id}",
+    response_model=QuestionResponse,
+)
+def get_question(
+    question_id: int,
+    db: Session = Depends(get_db)
+):
+    return question_service.fetch_question(
+        db,
+        question_id,
+    )
+    

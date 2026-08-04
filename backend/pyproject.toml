@@ -1,0 +1,54 @@
+[project]
+name = "physics_ai_tutor"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "k94-ishi", email = "32672580+k94-ishi@users.noreply.github.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.141.1",
+    "psycopg[binary]>=3.3.4",
+    "pydantic-settings>=2.14.2",
+    "sqlalchemy>=2.0.51",
+    "uvicorn[standard]>=0.52.1",
+]
+
+[project.scripts]
+backend = "physics_ai_tutor:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["physics_ai_tutor"]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.3.0",
+    "pytest>=9.1.1",
+    "ruff>=0.16.1",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+fix = true
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle (基本的なスタイル)
+    "F",    # pyflakes (未使用importなど)
+    "I",    # isort (import順整理)
+    "B",    # flake8-bugbear (潜在バグ検出)
+    "UP",   # pyupgrade (新しいPython構文への更新)
+]
+ignore = [
+    "B008",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

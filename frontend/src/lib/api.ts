@@ -1,100 +1,76 @@
-import { Question } from "@/types/question";
+import {
+    CreateQuestionRequest,
+    Question,
+    UpdateQuestionRequest,
+} from "@/types/question";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
-const Questions_URL = `${API_URL}/api/v1/questions`;
+function getApiUrl(): string {
+    const url = process.env.NEXT_PUBLIC_API_URL;
 
+    if (!url) {
+        throw new Error("NEXT_PUBLIC_API_URL is not defined");
+    }
 
-export async function fetchQuestions() {
-    const response = await fetch(
-        Questions_URL,
-    );
+    return url;
+}
+
+function getQuestionsUrl(): string {
+    return `${getApiUrl()}/api/v1/questions`;
+}
+
+async function apiFetch<T>(
+    url: string,
+    options?: RequestInit
+): Promise<T> {
+    const response = await fetch(url, options);
 
     if (!response.ok) {
-        throw new Error("Failed to fetch questions")
+        throw new Error(
+            `API request failed: ${options?.method ?? "GET"} ${url} (${response.status})`
+        );
+    }
+
+    if (response.status === 204) {
+        return undefined as T;
     }
 
     return response.json();
 }
 
-export async function fetchQuestion(
-    id: number
-): Promise<Question> {
-    const response = await fetch(
-        `${Questions_URL}/${id}`
-    );
-
-    if (!response.ok) {
-        throw new Error("Failed to fetch questions")
-    }
-
-    return response.json();
+export async function fetchQuestions(): Promise<Question[]> {
+    return apiFetch<Question[]>(getQuestionsUrl());
 }
 
-export async function deleteQuestion(
-    id: number
-): Promise<void> {
-    const response = await fetch(
-        `${Questions_URL}/${id}`,
-        {
-            method: "DELETE",
-        }
-    );
-
-    if (!response.ok) {
-        throw new Error("Failed to delete question");
-    }
+export async function fetchQuestion(id: number): Promise<Question> {
+    return apiFetch<Question>(`${getQuestionsUrl()}/${id}`);
 }
 
-export interface CraeteQuestionRequest {
-    question: string;
-    answer: string;
+export async function deleteQuestion(id: number): Promise<void> {
+    return apiFetch<void>(`${getQuestionsUrl()}/${id}`, {
+        method: "DELETE",
+    });
 }
 
 export async function createQuestion(
-    data: CraeteQuestionRequest
+    data: CreateQuestionRequest
 ): Promise<Question> {
-    const response = await fetch(
-        `${Questions_URL}`,
-        {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(data),
-        }
-    );
-
-    if (!response.ok) {
-        throw new Error("Failed to create question");
-    }
-
-    return response.json();
-}
-
-
-export interface UpdateQuestionRequest {
-    id: number,
-    question: string,
-    answer: string,
+    return apiFetch<Question>(getQuestionsUrl(), {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+    });
 }
 
 export async function updateQuestion(
     data: UpdateQuestionRequest
-) {
-    const response = await fetch(
-        `${Questions_URL}/${data.id}`,
-        {
-            method: "PUT",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(data),
-        }
-    );
-
-    if (!response.ok) {
-        throw new Error("Failed to update question");
-    }
-
-    return response.json();
+): Promise<Question> {
+    return apiFetch<Question>(`${getQuestionsUrl()}/${data.id}`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+    });
 }

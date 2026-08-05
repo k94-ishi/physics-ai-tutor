@@ -3,3 +3,14 @@ export type Question = {
     question: string;
     answer: string;
 };
+
+export type CreateQuestionRequest = {
+    question: string;
+    answer: string;
+};
+
+export type UpdateQuestionRequest = {
+    id: number;
+    question: string;
+    answer: string;
+};

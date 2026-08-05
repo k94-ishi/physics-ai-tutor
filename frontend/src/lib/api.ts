@@ -29,3 +29,19 @@ export async function fetchQuestion(
 
     return response.json();
 }
+
+export async function deleteQuestion(
+    id: number
+): Promise<void> {
+    const response = await fetch(
+        `${Questions_URL}/${id}`,
+        {
+            method: "DELETE",
+        }
+    );
+
+    if (!response.ok) {
+        throw new Error("Failed to delete question");
+    }
+}
+

@@ -45,3 +45,28 @@ export async function deleteQuestion(
     }
 }
 
+export interface CraeteQuestionRequest {
+    question: string;
+    answer: string;
+}
+
+export async function createQuestion(
+    data: CraeteQuestionRequest
+): Promise<Question> {
+    const response = await fetch(
+        `${Questions_URL}`,
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(data),
+        }
+    );
+
+    if (!response.ok) {
+        throw new Error("Failed to create question");
+    }
+
+    return response.json();
+}

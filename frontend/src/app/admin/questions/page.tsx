@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { fetchQuestions, deleteQuestion } from "@/lib/api";
 import { Question } from "@/types/question";
 
@@ -64,6 +65,12 @@ export default function AdminQuestionsPage() {
                         <span>
                             {question.question}
                         </span>
+                        
+                        <Link
+                        href={`/admin/questions/${question.id}/edit`}
+                        >
+                            編集
+                        </Link>
 
                         <button
                             onClick={() => handleDelete(question.id)}

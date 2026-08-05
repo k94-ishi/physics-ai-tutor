@@ -70,3 +70,31 @@ export async function createQuestion(
 
     return response.json();
 }
+
+
+export interface UpdateQuestionRequest {
+    id: number,
+    question: string,
+    answer: string,
+}
+
+export async function updateQuestion(
+    data: UpdateQuestionRequest
+) {
+    const response = await fetch(
+        `${Questions_URL}/${data.id}`,
+        {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(data),
+        }
+    );
+
+    if (!response.ok) {
+        throw new Error("Failed to update question");
+    }
+
+    return response.json();
+}

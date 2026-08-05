@@ -100,3 +100,5 @@ def update_question(
             status_code=404,
             detail="Question not found",
         )
+    
+    return question

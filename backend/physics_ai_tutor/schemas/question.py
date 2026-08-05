@@ -6,6 +6,10 @@ class QuestionCreate(BaseModel):
     answer: str
 
 
+class QuestionUpdate(QuestionCreate):
+    pass
+
+
 class QuestionBulkCreate(BaseModel):
     questions: list[QuestionCreate]
 

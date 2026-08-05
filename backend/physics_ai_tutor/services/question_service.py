@@ -5,6 +5,7 @@ from physics_ai_tutor.repositories import question_repository
 from physics_ai_tutor.schemas.question import (
     QuestionBulkCreate,
     QuestionCreate,
+    QuestionUpdate,
 )
 
 
@@ -37,10 +38,7 @@ def create_questions(
     )
 
 
-def delete_question(
-    db: Session,
-    question_id: int
-):
+def delete_question(db: Session, question_id: int):
     deleted = question_repository.delete(
         db,
         question_id,
@@ -50,3 +48,20 @@ def delete_question(
         raise ValueError("Question not found")
 
     return
+
+
+def update_question(
+    db: Session,
+    question_id: int,
+    question_data: QuestionUpdate,
+):
+    question = question_repository.update(
+        db,
+        question_id,
+        question_data,
+    )
+
+    if question is None:
+        return None
+
+    return question

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.database.dependency import get_db
@@ -6,6 +6,7 @@ from physics_ai_tutor.schemas.question import (
     QuestionBulkCreate,
     QuestionCreate,
     QuestionResponse,
+    QuestionUpdate,
 )
 from physics_ai_tutor.services import question_service
 
@@ -77,3 +78,25 @@ def delete_question(
     )
 
     return Response(status_code=204)
+
+
+@router.put(
+    "/questions/{question_id}",
+    response_model=QuestionResponse,
+)
+def update_question(
+    question_id: int,
+    question: QuestionUpdate,
+    db: Session = Depends(get_db),
+):
+    question = question_service.update_question(
+        db,
+        question_id,
+        question,
+    )
+    
+    if question is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Question not found",
+        )

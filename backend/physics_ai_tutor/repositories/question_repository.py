@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.models.question import Question
-from physics_ai_tutor.schemas.question import QuestionCreate
+from physics_ai_tutor.schemas.question import QuestionCreate, QuestionUpdate
 
 
 def get_questions(db: Session) -> list[Question]:
@@ -67,3 +67,26 @@ def delete(db: Session, question_id: int) -> bool:
     db.commit()
 
     return True
+
+
+def update(
+    db: Session,
+    question_id: int,
+    question_data: QuestionUpdate,
+) -> Question | None:
+    question = (
+        db.query(Question)
+        .filter(Question.id == question_id)
+        .first()
+    )
+
+    if not question:
+        return None
+
+    question.question = question_data.question
+    question.answer = question_data.answer
+
+    db.commit()
+    db.refresh(question)
+
+    return question

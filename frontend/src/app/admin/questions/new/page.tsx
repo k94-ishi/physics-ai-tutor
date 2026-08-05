@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { SyntheticEvent, useState } from "react";
 import { createQuestion } from "@/lib/api";
 
 
@@ -10,7 +10,7 @@ export default function NewQuestionPage() {
     const [loading, setLoading] = useState(false);
 
     const handleSubmit = async (
-        e: React.FormEvent
+        e: SyntheticEvent<HTMLFormElement>
     ) => {
         e.preventDefault();
         setLoading(true);

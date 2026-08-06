@@ -18,6 +18,16 @@ function getQuestionsUrl(): string {
     return `${getApiUrl()}/api/v1/questions`;
 }
 
+export class ApiError extends Error {
+    status: number;
+
+    constructor(status: number, message: string) {
+        super(message);
+        this.name = "ApiError";
+        this.status = status;
+    }
+}
+
 async function apiFetch<T>(
     url: string,
     options?: RequestInit
@@ -25,7 +35,8 @@ async function apiFetch<T>(
     const response = await fetch(url, options);
 
     if (!response.ok) {
-        throw new Error(
+        throw new ApiError(
+            response.status,
             `API request failed: ${options?.method ?? "GET"} ${url} (${response.status})`
         );
     }

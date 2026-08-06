@@ -1,7 +1,9 @@
+import LoadingState from "@/components/ui/LoadingState";
+
 export default function Loading() {
     return (
         <main>
-            <p>読み込み中...</p>
+            <LoadingState />
         </main>
     );
 }

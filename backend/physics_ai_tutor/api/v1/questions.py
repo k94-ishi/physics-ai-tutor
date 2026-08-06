@@ -30,10 +30,18 @@ def get_question(
     question_id: int,
     db: Session = Depends(get_db)
 ):
-    return question_service.fetch_question(
+    question = question_service.fetch_question(
         db,
         question_id,
     )
+
+    if question is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Question not found",
+        )
+
+    return question
     
 
 @router.post(

@@ -30,7 +30,7 @@ export default function FormField({
                 required={required}
                 aria-invalid={Boolean(error)}
                 aria-describedby={error ? `${id}-error` : undefined}
-                className={`rounded-md border px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 ${
+                className={`rounded-md border bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 ${
                     error
                         ? "border-red-400 focus:border-red-500 focus:ring-red-500"
                         : "border-gray-300 focus:border-blue-500 focus:ring-blue-500"

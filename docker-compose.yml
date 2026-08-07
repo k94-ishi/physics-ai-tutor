@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: physics-ai-tutor-postgres
+    environment:
+      POSTGRES_USER: physics
+      POSTGRES_PASSWORD: physics
+      POSTGRES_DB: physics_ai_tutor
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+  
+  backend:
+    build: 
+      context: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://physics:physics@postgres:5432/physics_ai_tutor
+    container_name: physics-ai-tutor-backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: physics-ai-tutor-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

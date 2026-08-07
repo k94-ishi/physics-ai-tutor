@@ -25,6 +25,25 @@ FastAPI
 PostgreSQL
 ```
 
+## Setup
+
+- Start containers:
+
+```bash
+docker compose up --build
+```
+
+- Initialize DB
+
+```bash
+docker compose exec backend uv run python -m physics_ai_tutor.database.init_db
+docker compose exec backend uv run python -m physics_ai_tutor.database.seed
+```
+
+- Access:
+  - Frontend: http://localhost:3000
+  - API Docs: http://localhost:8000/docs
+
 ## Planned Features
 
 - Category management

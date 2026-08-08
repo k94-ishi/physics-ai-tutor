@@ -80,10 +80,16 @@ def delete_question(
     question_id: int,
     db: Session = Depends(get_db)
 ):
-    question_service.delete_question(
+    deleted = question_service.delete_question(
         db,
         question_id
     )
+
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail="Question not found",
+        )
 
     return Response(status_code=204)
 

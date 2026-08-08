@@ -11,6 +11,16 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
   
+  postgres-test:
+    image: postgres:17
+    container_name: physics-ai-tutor-postgres-test
+    environment:
+      POSTGRES_USER: physics
+      POSTGRES_PASSWORD: physics
+      POSTGRES_DB: physics_ai_tutor_test
+    ports:
+      - "5433:5432"
+  
   backend:
     build: 
       context: ./backend

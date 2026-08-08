@@ -38,16 +38,11 @@ def create_questions(
     )
 
 
-def delete_question(db: Session, question_id: int):
-    deleted = question_repository.delete(
+def delete_question(db: Session, question_id: int) -> bool:
+    return question_repository.delete(
         db,
         question_id,
     )
-
-    if not deleted:
-        raise ValueError("Question not found")
-
-    return
 
 
 def update_question(

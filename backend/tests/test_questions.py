@@ -2,11 +2,13 @@ from enum import StrEnum
 
 
 PATH = "/api/v1/questions"
+BULK_PATH = f"{PATH}/bulk"
 
 class Key(StrEnum):
     QUESTION = "question"
     ANSWER = "answer"
     ID = "id"
+    QUESTIONS = "questions"
 
 
 def _post(client, question: str, answer: str):
@@ -16,7 +18,19 @@ def _post(client, question: str, answer: str):
             Key.QUESTION: question,
             Key.ANSWER: answer,
         },
-    ) 
+    )
+
+
+def _post_bulk(client, items: list[tuple[str, str]]):
+    return client.post(
+        BULK_PATH,
+        json={
+            Key.QUESTIONS: [
+                {Key.QUESTION: question, Key.ANSWER: answer}
+                for question, answer in items
+            ],
+        },
+    )
 
 
 def test_create_question(client):
@@ -109,5 +123,50 @@ def test_delete_question(client):
     get_response = client.get(
         f"{PATH}/{question_id}"
     )
-    
+
     assert get_response.status_code == 404
+
+
+def test_create_questions_bulk(client):
+    response = _post_bulk(
+        client,
+        [
+            ("一括質問1", "一括回答1"),
+            ("一括質問2", "一括回答2"),
+        ],
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert len(data) == 2
+    assert data[0][Key.QUESTION] == "一括質問1"
+    assert data[0][Key.ANSWER] == "一括回答1"
+    assert data[1][Key.QUESTION] == "一括質問2"
+    assert data[1][Key.ANSWER] == "一括回答2"
+
+
+def test_create_questions_bulk_empty(client):
+    response = _post_bulk(client, [])
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_update_question_not_found(client):
+    response = client.put(
+        f"{PATH}/99999",
+        json={
+            Key.QUESTION: "更新後質問",
+            Key.ANSWER: "更新後回答",
+        },
+    )
+
+    assert response.status_code == 404
+
+
+def test_delete_question_not_found(client):
+    response = client.delete(f"{PATH}/99999")
+
+    assert response.status_code == 404

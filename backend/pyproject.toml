@@ -27,6 +27,7 @@ packages = ["physics_ai_tutor"]
 
 [dependency-groups]
 dev = [
+    "alembic>=1.19.0",
     "httpx2>=2.9.1",
     "mypy>=2.3.0",
     "pytest-cov>=7.1.0",

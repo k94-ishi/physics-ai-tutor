@@ -13,7 +13,8 @@ The project is still in its early stages, but it is being developed into a full-
 - RESTful API with FastAPI
 - PostgreSQL database
 - Next.js frontend
-- Only Japanese language
+- Docker Compose development environment
+- Japanese language support only (currently)
 
 ## Architecture
 

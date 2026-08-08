@@ -29,9 +29,28 @@ packages = ["physics_ai_tutor"]
 dev = [
     "httpx2>=2.9.1",
     "mypy>=2.3.0",
+    "pytest-cov>=7.1.0",
     "pytest>=9.1.1",
     "ruff>=0.16.1",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["physics_ai_tutor"]
+omit = [
+    "physics_ai_tutor/api/v1/categories.py",
+    "physics_ai_tutor/core/logging.py",
+    "physics_ai_tutor/models/category.py",
+    "physics_ai_tutor/repositories/category_repository.py",
+    "physics_ai_tutor/schemas/category.py",
+    "physics_ai_tutor/services/category_service.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
 
 [tool.ruff]
 line-length = 88

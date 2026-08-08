@@ -1,5 +1,4 @@
 from enum import StrEnum
-from typing import Literal
 
 
 PATH = "/api/v1/questions"
@@ -10,14 +9,18 @@ class Key(StrEnum):
     ID = "id"
 
 
-def test_create_question(client):
-    response = client.post(
+def _post(client, question: str, answer: str):
+    return client.post(
         PATH,
         json={
-            Key.QUESTION: "テスト質問",
-            Key.ANSWER: "テスト回答",
+            Key.QUESTION: question,
+            Key.ANSWER: answer,
         },
-    )
+    ) 
+
+
+def test_create_question(client):
+    response = _post(client, "テスト質問", "テスト回答")
     
     assert response.status_code == 200
     
@@ -29,13 +32,7 @@ def test_create_question(client):
 
 
 def test_get_questions(client):
-    client.post(
-        PATH,
-        json={
-            Key.QUESTION: "一覧テスト質問",
-            Key.ANSWER: "一覧テスト回答",
-        },
-    )
+    _post(client, "一覧テスト質問", "一覧テスト回答")
     
     response = client.get(PATH)
     
@@ -52,13 +49,7 @@ def test_get_questions(client):
 
 
 def test_get_question_detail(client):
-    create_response = client.post(
-        PATH,
-        json={
-            Key.QUESTION: "詳細テスト質問",
-            Key.ANSWER: "詳細テスト回答",
-        },
-    )
+    create_response = _post(client, "詳細テスト質問", "詳細テスト回答")
     
     assert create_response.status_code == 200
     
@@ -84,13 +75,7 @@ def test_get_question_not_found(client):
 
 
 def test_update_question(client):
-    create_response = client.post(
-        PATH,
-        json={
-            Key.QUESTION: "更新前質問",
-            Key.ANSWER: "更新前回答",
-        },
-    )
+    create_response = _post(client, "更新前質問", "更新前回答")
     
     question_id = create_response.json()["id"]
     
@@ -111,13 +96,7 @@ def test_update_question(client):
 
 
 def test_delete_question(client):
-    create_response = client.post(
-        PATH,
-        json={
-            Key.QUESTION: "削除対象質問",
-            Key.ANSWER: "削除対象回答"
-        },
-    )
+    create_response = _post(client, "削除対象質問", "削除対象回答")
     
     question_id = create_response.json()[Key.ID]
     

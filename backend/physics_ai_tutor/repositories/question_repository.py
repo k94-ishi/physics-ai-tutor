@@ -26,9 +26,8 @@ def create_question(db: Session,
     )
     
     db.add(db_question)
-    db.commit()
-    db.refresh(db_question)
-    
+    db.flush()
+
     return db_question
 
 
@@ -45,10 +44,7 @@ def create_questions(
     ]
 
     db.add_all(db_questions)
-    db.commit()
-
-    for question in db_questions:
-        db.refresh(question)
+    db.flush()
 
     return db_questions
 
@@ -64,7 +60,7 @@ def delete(db: Session, question_id: int) -> bool:
         return False
 
     db.delete(question)
-    db.commit()
+    db.flush()
 
     return True
 
@@ -86,7 +82,6 @@ def update(
     question.question = question_data.question
     question.answer = question_data.answer
 
-    db.commit()
-    db.refresh(question)
+    db.flush()
 
     return question

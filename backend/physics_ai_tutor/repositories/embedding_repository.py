@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from physics_ai_tutor.models import QuestionEmbedding
+from physics_ai_tutor.models import Question, QuestionEmbedding
 
 
 def create_embedding(
@@ -23,3 +23,34 @@ def create_embedding(
     db.flush()
     
     return db_embedding
+
+
+def search_similar_embeddings(
+    db: Session,
+    embedding: list[float],
+    embedding_type: str = "question",
+    limit: int = 10,
+) -> list[tuple[QuestionEmbedding, Question]]:
+    """
+    SELECT question_embeddings.*, questions.*
+    FROM question_embeddings
+    JOIN questions
+    ON question_embeddings.question_id = questions.id
+    WHERE question_embeddings.type = '...'
+    ORDER BY question_embeddings.embedding <=> '[...vector...]'
+    LIMIT 10;
+    """
+    return (
+        db.query(
+            QuestionEmbedding,
+            Question,
+        )
+        .join(
+            Question,
+            QuestionEmbedding.question_id == Question.id,
+        )
+        .filter(QuestionEmbedding.type == embedding_type)
+        .order_by(QuestionEmbedding.embedding.cosine_distance(embedding))
+        .limit(limit)
+        .all()
+    )

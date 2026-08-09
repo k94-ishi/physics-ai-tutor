@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:17
+    image: pgvector/pgvector:pg17
     container_name: physics-ai-tutor-postgres
     environment:
       POSTGRES_USER: physics
@@ -12,7 +12,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
   
   postgres-test:
-    image: postgres:17
+    image: pgvector/pgvector:pg17
     container_name: physics-ai-tutor-postgres-test
     environment:
       POSTGRES_USER: physics

@@ -2,7 +2,7 @@ import os
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.database.base import Base
@@ -15,6 +15,12 @@ TEST_DATABASE_URL = os.environ.get(
 )
 
 engine = create_engine(TEST_DATABASE_URL)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _enable_pgvector_extension():
+    with engine.begin() as connection:
+        connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
 
 
 @pytest.fixture

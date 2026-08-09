@@ -2,6 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.database.dependency import get_db
+from physics_ai_tutor.schemas.embedding import (
+    SimilarQuestionRequest,
+    SimilarQuestionResponse,
+)
 from physics_ai_tutor.schemas.question import (
     QuestionBulkCreate,
     QuestionCreate,
@@ -9,6 +13,9 @@ from physics_ai_tutor.schemas.question import (
     QuestionUpdate,
 )
 from physics_ai_tutor.services import question_service
+from physics_ai_tutor.services.embedding_service import (
+    search_similar_questions,
+)
 
 router = APIRouter()
 
@@ -116,3 +123,18 @@ def update_question(
         )
     
     return question
+
+
+@router.post(
+    "/questions/search",
+    response_model=list[SimilarQuestionResponse],
+)
+def search_questions(
+    request: SimilarQuestionRequest,
+    db: Session = Depends(get_db),
+):
+    return search_similar_questions(
+        db=db,
+        query=request.query,
+        limit=request.limit,
+    )

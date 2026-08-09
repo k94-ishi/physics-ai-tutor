@@ -2,10 +2,10 @@ from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.openai import client
-from physics_ai_tutor.models import Question, QuestionEmbedding
 from physics_ai_tutor.repositories.embedding_repository import (
     search_similar_embeddings,
 )
+from physics_ai_tutor.schemas.embedding import SimilarQuestionResponse
 
 
 def create_embeddings(texts: list[str]) -> list[list[float]]:
@@ -21,13 +21,23 @@ def search_similar_questions(
     db: Session,
     query: str,
     limit: int = 10,
-) -> list[tuple[QuestionEmbedding, Question, float]]:
+) -> list[SimilarQuestionResponse]:
     query_embedding = create_embeddings([query])[0]
     
-    return search_similar_embeddings(
+    results = search_similar_embeddings(
         db=db,
         embedding=query_embedding,
         embedding_type="question",
         limit=limit,
     )
+    
+    return [
+        SimilarQuestionResponse(
+            id=question.id,
+            question=question.question,
+            answer=question.answer,
+            distance=distance,
+        )
+        for _, question, distance in results
+    ]
     

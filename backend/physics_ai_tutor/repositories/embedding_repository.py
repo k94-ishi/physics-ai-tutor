@@ -30,7 +30,7 @@ def search_similar_embeddings(
     embedding: list[float],
     embedding_type: str = "question",
     limit: int = 10,
-) -> list[tuple[QuestionEmbedding, Question]]:
+) -> list[tuple[QuestionEmbedding, Question, float]]:
     """
     SELECT question_embeddings.*, questions.*
     FROM question_embeddings
@@ -40,17 +40,20 @@ def search_similar_embeddings(
     ORDER BY question_embeddings.embedding <=> '[...vector...]'
     LIMIT 10;
     """
+    distance = QuestionEmbedding.embedding.cosine_distance(embedding)
+    
     return (
         db.query(
             QuestionEmbedding,
             Question,
+            distance.label("distance")
         )
         .join(
             Question,
             QuestionEmbedding.question_id == Question.id,
         )
         .filter(QuestionEmbedding.type == embedding_type)
-        .order_by(QuestionEmbedding.embedding.cosine_distance(embedding))
+        .order_by(distance)
         .limit(limit)
         .all()
     )

@@ -21,7 +21,7 @@ def search_similar_questions(
     db: Session,
     query: str,
     limit: int = 10,
-) -> list[tuple[QuestionEmbedding, Question]]:
+) -> list[tuple[QuestionEmbedding, Question, float]]:
     query_embedding = create_embeddings([query])[0]
     
     return search_similar_embeddings(

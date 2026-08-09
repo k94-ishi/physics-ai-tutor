@@ -1,14 +1,17 @@
 from enum import StrEnum
 
+from physics_ai_tutor.services import embedding_service
 
 PATH = "/api/v1/questions"
 BULK_PATH = f"{PATH}/bulk"
+SEARCH_PATH = f"{PATH}/search"
 
 class Key(StrEnum):
     QUESTION = "question"
     ANSWER = "answer"
     ID = "id"
     QUESTIONS = "questions"
+    DISTANCE = "distance"
 
 
 def _post(client, question: str, answer: str):
@@ -170,3 +173,35 @@ def test_delete_question_not_found(client):
     response = client.delete(f"{PATH}/99999")
 
     assert response.status_code == 404
+
+
+def test_search_questions(client, monkeypatch):
+    monkeypatch.setattr(
+        embedding_service,
+        "create_embeddings",
+        lambda texts: [[0.1] * 1536 for _ in texts],
+    )
+
+    create_response = _post(client, "検索対象質問", "検索対象回答")
+
+    assert create_response.status_code == 200
+
+    question_id = create_response.json()[Key.ID]
+
+    response = client.post(
+        SEARCH_PATH,
+        json={"query": "検索対象質問に似た質問"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert isinstance(data, list)
+    assert len(data) >= 1
+
+    result = next(item for item in data if item[Key.ID] == question_id)
+
+    assert result[Key.QUESTION] == "検索対象質問"
+    assert result[Key.ANSWER] == "検索対象回答"
+    assert isinstance(result[Key.DISTANCE], float)

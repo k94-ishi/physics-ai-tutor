@@ -23,6 +23,15 @@ class QuestionEmbedding(Base):
         nullable=False,
     )
     
+    type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+    )
+    
+    chunk_index: Mapped[int | None] = mapped_column(
+        nullable=True,
+    )
+    
     embedding: Mapped[list[float]] = mapped_column(
         Vector(1536),
         nullable=False

@@ -24,30 +24,40 @@ def fetch_question(db: Session, question_id: int) -> Question:
 
 def create_question(db: Session, question: QuestionCreate):
     try:
+        # Save question -> Create embeddings
+        # -> Save question emedding -> Save answer embedding -> Commit
         db_question = question_repository.create_question(
             db,
             question=question.question,
             answer=question.answer
         )
-
-        question_embedding = embedding_service.create_embedding(
-            question.question
+        
+        texts = [question.question, question.answer]
+        question_vec, answer_vec = embedding_service.create_embeddings(texts)
+        
+        embedding_repository.create_embedding(
+            db,
+            question_id=db_question.id,
+            embedding=question_vec,
+            embedding_type="question",
+            model=settings.embedding_model,
         )
         
         embedding_repository.create_embedding(
             db,
             question_id=db_question.id,
-            ebedding=question_embedding,
-            embedding_type="question",
+            embedding=answer_vec,
+            embedding_type="answer",
             model=settings.embedding_model,
         )
          
         db.commit()
+        
+        return db_question
+        
     except Exception:
         db.rollback()
         raise
-
-    return db_question
 
 
 def create_questions(

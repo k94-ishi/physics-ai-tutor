@@ -4,6 +4,7 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
+from physics_ai_tutor import models  # noqa: F401
 from physics_ai_tutor.database.base import Base
 
 # this is the Alembic Config object, which provides

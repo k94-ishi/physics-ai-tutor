@@ -1,12 +1,14 @@
 from sqlalchemy.orm import Session
 
+from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.models.question import Question
-from physics_ai_tutor.repositories import question_repository
+from physics_ai_tutor.repositories import embedding_repository, question_repository
 from physics_ai_tutor.schemas.question import (
     QuestionBulkCreate,
     QuestionCreate,
     QuestionUpdate,
 )
+from physics_ai_tutor.services import embedding_service
 
 
 def fetch_questions(db: Session) -> list[Question]:
@@ -27,9 +29,19 @@ def create_question(db: Session, question: QuestionCreate):
             question=question.question,
             answer=question.answer
         )
-        # ToDo:
-        # - Insete Embedding generation + embedding_repository.create(db, ...)
-        # - db.flush() 
+
+        question_embedding = embedding_service.create_embedding(
+            question.question
+        )
+        
+        embedding_repository.create_embedding(
+            db,
+            question_id=db_question.id,
+            ebedding=question_embedding,
+            embedding_type="question",
+            model=settings.embedding_model,
+        )
+         
         db.commit()
     except Exception:
         db.rollback()

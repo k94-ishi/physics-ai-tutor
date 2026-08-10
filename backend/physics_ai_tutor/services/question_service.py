@@ -69,6 +69,37 @@ def create_questions(
             db,
             questions.questions,
         )
+        
+        texts = [q.question for q in db_questions]
+        texts.extend(q.answer for q in db_questions)
+        
+        vectors = embedding_service.create_embeddings(texts)
+        embedding_records = []
+        question_count = len(db_questions)
+        
+        for i, q in enumerate(db_questions):
+            embedding_records.append(
+                {
+                    "question_id": q.id,
+                    "type": "question",
+                    "embedding": vectors[i],
+                    "model": settings.embedding_model,
+                }
+            )
+            
+            embedding_records.append(
+                {
+                    "question_id": q.id,
+                    "type": "answer",
+                    "embedding": vectors[question_count  + i],
+                    "model": settings.embedding_model,
+                }
+            )
+        
+        embedding_repository.create_embeddings(
+            db,
+            embedding_records,
+        )
         db.commit()
     except Exception:
         db.rollback()

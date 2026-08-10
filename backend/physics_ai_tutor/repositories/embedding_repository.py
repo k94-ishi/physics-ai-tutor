@@ -25,6 +25,19 @@ def create_embedding(
     return db_embedding
 
 
+def create_embeddings(
+    db: Session,
+    embeddings: list[dict],
+) -> list[QuestionEmbedding]:
+    
+    db_embeddings = [QuestionEmbedding(**emb) for emb in embeddings]
+    
+    db.add_all(db_embeddings)
+    db.flush()
+    
+    return db_embeddings
+
+
 def search_similar_embeddings(
     db: Session,
     embedding: list[float],

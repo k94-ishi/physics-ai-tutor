@@ -35,6 +35,29 @@ def test_fetch_questions(db):
     assert result.items[0].question == "質問A"
 
 
+def test_fetch_questions_paginates(db):
+    _create(db, "質問A", "回答A")
+    _create(db, "質問B", "回答B")
+    _create(db, "質問C", "回答C")
+
+    result = question_service.fetch_questions(db, page=2, size=2)
+
+    assert result.total == 3
+    assert result.page == 2
+    assert result.size == 2
+    assert len(result.items) == 1
+
+
+def test_fetch_questions_filters_by_keyword(db):
+    matching = _create(db, "運動量保存則とは何ですか", "運動量は保存されます")
+    _create(db, "エネルギー保存則とは何ですか", "エネルギーは保存されます")
+
+    result = question_service.fetch_questions(db, page=1, size=20, keyword="運動量")
+
+    assert result.total == 1
+    assert [q.id for q in result.items] == [matching.id]
+
+
 def test_fetch_question_found(db):
     created = _create(db)
 

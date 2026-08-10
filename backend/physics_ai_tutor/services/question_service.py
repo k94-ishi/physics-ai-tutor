@@ -20,18 +20,29 @@ def fetch_questions(
     db: Session,
     page: int,
     size: int,
+    keyword: str | None = None,
 ) -> QuestionListResponse:
-    
+
     offset = (page - 1) * size
-    
+
     questions = question_repository.get_questions(
         db,
         offset=offset,
         limit=size,
+        keyword=keyword,
     )
-    
-    total = len(question_repository.get_questions_all(db))
-    
+
+    total = question_repository.count_questions(db, keyword=keyword)
+
+    logger.info(
+        "Questions fetched: page=%d size=%d keyword_present=%s results=%d total=%d",
+        page,
+        size,
+        keyword is not None,
+        len(questions),
+        total,
+    )
+
     return QuestionListResponse(
         items=questions,
         total=total,

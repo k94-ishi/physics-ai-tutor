@@ -28,13 +28,15 @@ router = APIRouter()
 def get_questions(
     page: int = Query(default=1, ge=1),
     size: int = Query(default=20, ge=1, le=100),
+    keyword: str | None = Query(default=None, min_length=1, max_length=200),
     db: Session = Depends(get_db)
 ):
-    
+
     return question_service.fetch_questions(
         db,
         page,
         size,
+        keyword,
     )
 
 

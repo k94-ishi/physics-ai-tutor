@@ -68,6 +68,32 @@ def test_get_questions(client):
     assert question[Key.ANSWER] == "一覧テスト回答"
 
 
+def test_get_questions_filters_by_keyword(client):
+    _post(client, "運動量保存則とは何ですか", "運動量は保存されます")
+    _post(client, "エネルギー保存則とは何ですか", "エネルギーは保存されます")
+
+    response = client.get(PATH, params={"keyword": "運動量"})
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total"] == 1
+    assert len(data["items"]) == 1
+    assert data["items"][0][Key.QUESTION] == "運動量保存則とは何ですか"
+
+
+def test_get_questions_invalid_size_rejected(client):
+    assert client.get(PATH, params={"size": 0}).status_code == 422
+    assert client.get(PATH, params={"size": 101}).status_code == 422
+
+
+def test_get_questions_invalid_page_rejected(client):
+    response = client.get(PATH, params={"page": 0})
+
+    assert response.status_code == 422
+
+
 def test_get_question_detail(client):
     create_response = _post(client, "詳細テスト質問", "詳細テスト回答")
 

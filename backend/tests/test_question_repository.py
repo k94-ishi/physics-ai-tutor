@@ -18,7 +18,7 @@ def test_get_questions_returns_all(db):
     _create(db, "質問A", "回答A")
     _create(db, "質問B", "回答B")
 
-    questions = question_repository.get_questions(db)
+    questions = question_repository.get_questions(db, offset=0, limit=10)
 
     assert len(questions) == 2
     assert {q.question for q in questions} == {"質問A", "質問B"}

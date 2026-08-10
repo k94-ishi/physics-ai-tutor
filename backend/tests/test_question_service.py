@@ -28,10 +28,11 @@ def _embeddings_for(db, question_id: int):
 def test_fetch_questions(db):
     _create(db, "質問A", "回答A")
 
-    questions = question_service.fetch_questions(db)
+    result = question_service.fetch_questions(db, page=1, size=20)
 
-    assert len(questions) == 1
-    assert questions[0].question == "質問A"
+    assert result.total == 1
+    assert len(result.items) == 1
+    assert result.items[0].question == "質問A"
 
 
 def test_fetch_question_found(db):
@@ -125,7 +126,7 @@ def test_create_question_rolls_back_on_embedding_failure(db, monkeypatch):
     with pytest.raises(EmbeddingGenerationError):
         _create(db)
 
-    assert question_service.fetch_questions(db) == []
+    assert question_service.fetch_questions(db, page=1, size=20).items == []
 
 
 def test_create_question_creates_question_and_answer_embeddings(db):
@@ -204,7 +205,7 @@ def test_create_questions_bulk_rolls_back_on_embedding_failure(db, monkeypatch):
             ),
         )
 
-    assert question_service.fetch_questions(db) == []
+    assert question_service.fetch_questions(db, page=1, size=20).items == []
 
 
 def test_create_questions_bulk_empty_does_not_call_create_embeddings(db, monkeypatch):

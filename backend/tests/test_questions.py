@@ -40,11 +40,11 @@ def _post_bulk(client, items: list[tuple[str, str]]):
 
 def test_create_question(client):
     response = _post(client, "テスト質問", "テスト回答")
-    
+
     assert response.status_code == 200
-    
+
     data = response.json()
-    
+
     assert data[Key.QUESTION] == "テスト質問"
     assert data[Key.ANSWER] == "テスト回答"
     assert isinstance(data[Key.ID], int)
@@ -52,34 +52,35 @@ def test_create_question(client):
 
 def test_get_questions(client):
     _post(client, "一覧テスト質問", "一覧テスト回答")
-    
+
     response = client.get(PATH)
-    
+
     assert response.status_code == 200
-    
+
     data = response.json()
-    
-    assert len(data) >= 1
-    
-    question = data[0]
-    
+
+    assert data["total"] >= 1
+    assert len(data["items"]) >= 1
+
+    question = data["items"][0]
+
     assert question[Key.QUESTION] == "一覧テスト質問"
     assert question[Key.ANSWER] == "一覧テスト回答"
 
 
 def test_get_question_detail(client):
     create_response = _post(client, "詳細テスト質問", "詳細テスト回答")
-    
+
     assert create_response.status_code == 200
-    
+
     question_id = create_response.json()[Key.ID]
-    
+
     response = client.get(f"{PATH}/{question_id}")
-    
+
     assert response.status_code == 200
-    
+
     data = response.json()
-    
+
     assert data[Key.ID] == question_id
     assert data[Key.QUESTION] == "詳細テスト質問"
     assert data[Key.ANSWER] == "詳細テスト回答"
@@ -89,15 +90,15 @@ def test_get_question_not_found(client):
     response = client.get(
         f"{PATH}/99999",
     )
-    
+
     assert response.status_code == 404
 
 
 def test_update_question(client):
     create_response = _post(client, "更新前質問", "更新前回答")
-    
+
     question_id = create_response.json()["id"]
-    
+
     response = client.put(
         f"{PATH}/{question_id}",
         json={
@@ -105,26 +106,26 @@ def test_update_question(client):
             Key.ANSWER: "更新後回答",
         },
     )
-    
+
     assert response.status_code == 200
-    
+
     data = response.json()
-    
+
     assert data[Key.QUESTION] == "更新後質問"
     assert data[Key.ANSWER] == "更新後回答"
 
 
 def test_delete_question(client):
     create_response = _post(client, "削除対象質問", "削除対象回答")
-    
+
     question_id = create_response.json()[Key.ID]
-    
+
     response = client.delete(
         f"{PATH}/{question_id}"
     )
-    
+
     assert response.status_code == 204
-    
+
     get_response = client.get(
         f"{PATH}/{question_id}"
     )
@@ -218,7 +219,7 @@ def test_create_question_embedding_failure_returns_503(client, monkeypatch):
 
     list_response = client.get(PATH)
 
-    assert list_response.json() == []
+    assert list_response.json()["items"] == []
 
 
 def test_search_questions_embedding_failure_returns_503(client, monkeypatch):
@@ -278,7 +279,7 @@ def test_create_questions_bulk_embedding_failure_returns_503(client, monkeypatch
 
     list_response = client.get(PATH)
 
-    assert list_response.json() == []
+    assert list_response.json()["items"] == []
 
 
 def test_delete_question_removes_embeddings(client, db):

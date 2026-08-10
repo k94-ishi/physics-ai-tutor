@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from physics_ai_tutor.core.exceptions import EmbeddingGenerationError
 from physics_ai_tutor.models import QuestionEmbedding
@@ -28,10 +29,34 @@ def _embeddings_for(db, question_id: int):
 def test_fetch_questions(db):
     _create(db, "質問A", "回答A")
 
-    questions = question_service.fetch_questions(db)
+    result = question_service.fetch_questions(db, page=1, size=20)
 
-    assert len(questions) == 1
-    assert questions[0].question == "質問A"
+    assert result.total == 1
+    assert len(result.items) == 1
+    assert result.items[0].question == "質問A"
+
+
+def test_fetch_questions_paginates(db):
+    _create(db, "質問A", "回答A")
+    _create(db, "質問B", "回答B")
+    _create(db, "質問C", "回答C")
+
+    result = question_service.fetch_questions(db, page=2, size=2)
+
+    assert result.total == 3
+    assert result.page == 2
+    assert result.size == 2
+    assert len(result.items) == 1
+
+
+def test_fetch_questions_filters_by_keyword(db):
+    matching = _create(db, "運動量保存則とは何ですか", "運動量は保存されます")
+    _create(db, "エネルギー保存則とは何ですか", "エネルギーは保存されます")
+
+    result = question_service.fetch_questions(db, page=1, size=20, keyword="運動量")
+
+    assert result.total == 1
+    assert [q.id for q in result.items] == [matching.id]
 
 
 def test_fetch_question_found(db):
@@ -72,10 +97,9 @@ def test_create_questions_bulk(db):
     assert created[0].question == "一括質問1"
 
 
-def test_create_questions_bulk_empty(db):
-    created = question_service.create_questions(db, QuestionBulkCreate(questions=[]))
-
-    assert created == []
+def test_create_questions_bulk_empty_rejected_by_schema():
+    with pytest.raises(ValidationError):
+        QuestionBulkCreate(questions=[])
 
 
 def test_delete_question_existing_returns_true(db):
@@ -125,7 +149,7 @@ def test_create_question_rolls_back_on_embedding_failure(db, monkeypatch):
     with pytest.raises(EmbeddingGenerationError):
         _create(db)
 
-    assert question_service.fetch_questions(db) == []
+    assert question_service.fetch_questions(db, page=1, size=20).items == []
 
 
 def test_create_question_creates_question_and_answer_embeddings(db):
@@ -204,22 +228,7 @@ def test_create_questions_bulk_rolls_back_on_embedding_failure(db, monkeypatch):
             ),
         )
 
-    assert question_service.fetch_questions(db) == []
-
-
-def test_create_questions_bulk_empty_does_not_call_create_embeddings(db, monkeypatch):
-    calls = []
-
-    monkeypatch.setattr(
-        embedding_service,
-        "create_embeddings",
-        lambda texts: calls.append(texts) or [],
-    )
-
-    created = question_service.create_questions(db, QuestionBulkCreate(questions=[]))
-
-    assert created == []
-    assert calls == []
+    assert question_service.fetch_questions(db, page=1, size=20).items == []
 
 
 def test_delete_question_cascades_to_embeddings(db):

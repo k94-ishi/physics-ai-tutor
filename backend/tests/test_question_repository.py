@@ -18,10 +18,66 @@ def test_get_questions_returns_all(db):
     _create(db, "質問A", "回答A")
     _create(db, "質問B", "回答B")
 
-    questions = question_repository.get_questions(db)
+    questions = question_repository.get_questions(db, offset=0, limit=10)
 
     assert len(questions) == 2
     assert {q.question for q in questions} == {"質問A", "質問B"}
+
+
+def test_get_questions_respects_offset_and_limit(db):
+    _create(db, "質問A", "回答A")
+    _create(db, "質問B", "回答B")
+    _create(db, "質問C", "回答C")
+
+    questions = question_repository.get_questions(db, offset=1, limit=1)
+
+    assert len(questions) == 1
+
+
+def test_count_questions_returns_total(db):
+    _create(db, "質問A", "回答A")
+    _create(db, "質問B", "回答B")
+
+    assert question_repository.count_questions(db) == 2
+
+
+def test_get_questions_filters_by_keyword_in_question(db):
+    matching = _create(db, "運動量保存則とは何ですか", "運動量は保存されます")
+    _create(db, "エネルギー保存則とは何ですか", "エネルギーは保存されます")
+
+    questions = question_repository.get_questions(
+        db, offset=0, limit=10, keyword="運動量"
+    )
+
+    assert [q.id for q in questions] == [matching.id]
+
+
+def test_get_questions_filters_by_keyword_in_answer(db):
+    matching = _create(db, "第一法則とは", "運動量は保存されます")
+    _create(db, "第二法則とは", "力は質量と加速度の積です")
+
+    questions = question_repository.get_questions(
+        db, offset=0, limit=10, keyword="運動量"
+    )
+
+    assert [q.id for q in questions] == [matching.id]
+
+
+def test_count_questions_filters_by_keyword(db):
+    _create(db, "運動量保存則とは何ですか", "運動量は保存されます")
+    _create(db, "エネルギー保存則とは何ですか", "エネルギーは保存されます")
+
+    assert question_repository.count_questions(db, keyword="運動量") == 1
+
+
+def test_get_questions_keyword_no_match_returns_empty(db):
+    _create(db, "運動量保存則とは何ですか", "運動量は保存されます")
+
+    questions = question_repository.get_questions(
+        db, offset=0, limit=10, keyword="存在しないキーワード"
+    )
+
+    assert questions == []
 
 
 def test_get_question_found(db):

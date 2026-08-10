@@ -1,9 +1,18 @@
-from pydantic import BaseModel
+from typing import Annotated
+
+from pydantic import BaseModel, Field, StringConstraints
+
+QuestionText = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1000)
+]
+AnswerText = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=5000)
+]
 
 
 class QuestionCreate(BaseModel):
-    question: str
-    answer: str
+    question: QuestionText
+    answer: AnswerText
 
 
 class QuestionUpdate(QuestionCreate):
@@ -11,7 +20,7 @@ class QuestionUpdate(QuestionCreate):
 
 
 class QuestionBulkCreate(BaseModel):
-    questions: list[QuestionCreate]
+    questions: list[QuestionCreate] = Field(min_length=1, max_length=50)
 
 
 class QuestionResponse(BaseModel):

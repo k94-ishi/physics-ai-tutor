@@ -50,21 +50,95 @@ def test_create_question(client):
     assert isinstance(data[Key.ID], int)
 
 
+def test_create_question_empty_question_rejected(client):
+    response = _post(client, "", "テスト回答")
+
+    assert response.status_code == 422
+
+
+def test_create_question_blank_question_rejected(client):
+    response = _post(client, "   ", "テスト回答")
+
+    assert response.status_code == 422
+
+
+def test_create_question_empty_answer_rejected(client):
+    response = _post(client, "テスト質問", "")
+
+    assert response.status_code == 422
+
+
+def test_create_question_too_long_question_rejected(client):
+    response = _post(client, "あ" * 1001, "テスト回答")
+
+    assert response.status_code == 422
+
+
+def test_create_questions_bulk_too_many_items_rejected(client):
+    response = _post_bulk(
+        client,
+        [(f"質問{i}", f"回答{i}") for i in range(51)],
+    )
+
+    assert response.status_code == 422
+
+
+def test_search_questions_empty_query_rejected(client):
+    response = client.post(SEARCH_PATH, json={"query": ""})
+
+    assert response.status_code == 422
+
+
+def test_search_questions_invalid_limit_rejected(client):
+    response_zero = client.post(SEARCH_PATH, json={"query": "質問", "limit": 0})
+    response_over = client.post(SEARCH_PATH, json={"query": "質問", "limit": 51})
+
+    assert response_zero.status_code == 422
+    assert response_over.status_code == 422
+
+
 def test_get_questions(client):
     _post(client, "一覧テスト質問", "一覧テスト回答")
-    
+
     response = client.get(PATH)
-    
+
     assert response.status_code == 200
-    
+
     data = response.json()
-    
-    assert len(data) >= 1
-    
-    question = data[0]
-    
+
+    assert data["total"] >= 1
+    assert len(data["items"]) >= 1
+
+    question = data["items"][0]
+
     assert question[Key.QUESTION] == "一覧テスト質問"
     assert question[Key.ANSWER] == "一覧テスト回答"
+
+
+def test_get_questions_filters_by_keyword(client):
+    _post(client, "運動量保存則とは何ですか", "運動量は保存されます")
+    _post(client, "エネルギー保存則とは何ですか", "エネルギーは保存されます")
+
+    response = client.get(PATH, params={"keyword": "運動量"})
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total"] == 1
+    assert len(data["items"]) == 1
+    assert data["items"][0][Key.QUESTION] == "運動量保存則とは何ですか"
+
+
+def test_get_questions_invalid_size_rejected(client):
+    assert client.get(PATH, params={"size": 0}).status_code == 422
+    assert client.get(PATH, params={"size": 101}).status_code == 422
+
+
+def test_get_questions_invalid_page_rejected(client):
+    response = client.get(PATH, params={"page": 0})
+
+    assert response.status_code == 422
 
 
 def test_get_question_detail(client):
@@ -155,8 +229,7 @@ def test_create_questions_bulk(client):
 def test_create_questions_bulk_empty(client):
     response = _post_bulk(client, [])
 
-    assert response.status_code == 200
-    assert response.json() == []
+    assert response.status_code == 422
 
 
 def test_update_question_not_found(client):
@@ -218,7 +291,7 @@ def test_create_question_embedding_failure_returns_503(client, monkeypatch):
 
     list_response = client.get(PATH)
 
-    assert list_response.json() == []
+    assert list_response.json()["items"] == []
 
 
 def test_search_questions_embedding_failure_returns_503(client, monkeypatch):
@@ -278,7 +351,7 @@ def test_create_questions_bulk_embedding_failure_returns_503(client, monkeypatch
 
     list_response = client.get(PATH)
 
-    assert list_response.json() == []
+    assert list_response.json()["items"] == []
 
 
 def test_delete_question_removes_embeddings(client, db):

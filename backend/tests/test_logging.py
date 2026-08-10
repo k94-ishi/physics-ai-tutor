@@ -45,7 +45,7 @@ def test_request_logging_middleware_passes_through_successful_response(client):
     response = client.get(PATH)
 
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    assert isinstance(response.json()["items"], list)
 
 
 def test_request_logging_middleware_logs_request_and_response(client, caplog):
@@ -99,7 +99,7 @@ def test_request_logging_middleware_logs_handled_exception_without_duplicate_err
 def test_request_logging_middleware_logs_unhandled_exception(
     client, monkeypatch, caplog
 ):
-    def _raise(db):
+    def _raise(*args, **kwargs):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(question_service, "fetch_questions", _raise)

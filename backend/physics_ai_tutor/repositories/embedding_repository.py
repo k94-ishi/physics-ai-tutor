@@ -72,7 +72,7 @@ def search_similar_embeddings(
     )
 
 
-def delete_by_queston_id(
+def delete_by_question_id(
     db: Session,
     question_id: int,
 ) -> None:

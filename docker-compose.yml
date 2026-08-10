@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:17
+    image: pgvector/pgvector:pg17
     container_name: physics-ai-tutor-postgres
     environment:
       POSTGRES_USER: physics
@@ -12,7 +12,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
   
   postgres-test:
-    image: postgres:17
+    image: pgvector/pgvector:pg17
     container_name: physics-ai-tutor-postgres-test
     environment:
       POSTGRES_USER: physics
@@ -25,10 +25,11 @@ services:
     build: 
       context: ./backend
     container_name: physics-ai-tutor-backend
-    environment:
-      DATABASE_URL: postgresql+psycopg://physics:physics@postgres:5432/physics_ai_tutor
+    env_file:
+      - ./backend/.env
     volumes:
       - ./backend:/app
+      - backend_venv:/app/.venv
     ports:
       - "8000:8000"
     depends_on:
@@ -49,3 +50,4 @@ services:
 volumes:
   postgres_data:
   frontend_node_modules:
+  backend_venv:

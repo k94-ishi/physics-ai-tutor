@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.database.dependency import get_db
@@ -9,6 +9,7 @@ from physics_ai_tutor.schemas.embedding import (
 from physics_ai_tutor.schemas.question import (
     QuestionBulkCreate,
     QuestionCreate,
+    QuestionListResponse,
     QuestionResponse,
     QuestionUpdate,
 )
@@ -22,11 +23,19 @@ router = APIRouter()
 
 @router.get(
     "/questions",
-    response_model=list[QuestionResponse],
+    response_model=QuestionListResponse,
 )
-def get_questions(db: Session = Depends(get_db)):
+def get_questions(
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db)
+):
     
-    return question_service.fetch_questions(db)
+    return question_service.fetch_questions(
+        db,
+        page,
+        size,
+    )
 
 
 @router.get(

@@ -4,7 +4,20 @@ from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.schemas.question import QuestionCreate, QuestionUpdate
 
 
-def get_questions(db: Session) -> list[Question]:
+def get_questions(
+    db: Session,
+    offset: int,
+    limit: int
+) -> list[Question]:
+    return (
+        db.query(Question)
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+
+def get_questions_all(db: Session) -> list[Question]:
     return db.query(Question).all()
 
 

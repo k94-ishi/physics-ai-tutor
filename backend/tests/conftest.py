@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from physics_ai_tutor.database.base import Base
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.main import app
+from physics_ai_tutor.services import embedding_service
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
@@ -31,6 +32,15 @@ def db():
         yield session
     
     Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture(autouse=True)
+def _mock_create_embeddings(monkeypatch):
+    monkeypatch.setattr(
+        embedding_service,
+        "create_embeddings",
+        lambda texts: [[0.1] * 1536 for _ in texts],
+    )
 
 
 @pytest.fixture

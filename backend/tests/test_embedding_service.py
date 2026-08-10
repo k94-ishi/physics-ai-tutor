@@ -1,6 +1,17 @@
+import pytest
+from openai import OpenAIError
+
+from physics_ai_tutor.core.exceptions import EmbeddingGenerationError
 from physics_ai_tutor.models import Question
 from physics_ai_tutor.schemas.embedding import SimilarQuestionResponse
 from physics_ai_tutor.services import embedding_service
+from physics_ai_tutor.services.embedding_service import (
+    create_embeddings as real_create_embeddings,
+)
+
+
+class _FakeOpenAIError(OpenAIError):
+    pass
 
 
 def test_search_similar_questions_calls_create_embeddings_with_query(db, monkeypatch):
@@ -61,3 +72,17 @@ def test_search_similar_questions_returns_response_schema(db, monkeypatch):
         SimilarQuestionResponse(id=1, question="質問1", answer="回答1", distance=0.1),
         SimilarQuestionResponse(id=2, question="質問2", answer="回答2", distance=0.5),
     ]
+
+
+def test_create_embeddings_wraps_openai_error(monkeypatch):
+    class _FakeEmbeddings:
+        def create(self, **kwargs):
+            raise _FakeOpenAIError("boom")
+
+    class _FakeClient:
+        embeddings = _FakeEmbeddings()
+
+    monkeypatch.setattr(embedding_service, "client", _FakeClient())
+
+    with pytest.raises(EmbeddingGenerationError):
+        real_create_embeddings(["テキスト"])

@@ -1,5 +1,6 @@
 from enum import StrEnum
 
+from physics_ai_tutor.core.exceptions import EmbeddingGenerationError
 from physics_ai_tutor.services import embedding_service
 
 PATH = "/api/v1/questions"
@@ -175,13 +176,7 @@ def test_delete_question_not_found(client):
     assert response.status_code == 404
 
 
-def test_search_questions(client, monkeypatch):
-    monkeypatch.setattr(
-        embedding_service,
-        "create_embeddings",
-        lambda texts: [[0.1] * 1536 for _ in texts],
-    )
-
+def test_search_questions(client):
     create_response = _post(client, "検索対象質問", "検索対象回答")
 
     assert create_response.status_code == 200
@@ -205,3 +200,35 @@ def test_search_questions(client, monkeypatch):
     assert result[Key.QUESTION] == "検索対象質問"
     assert result[Key.ANSWER] == "検索対象回答"
     assert isinstance(result[Key.DISTANCE], float)
+
+
+def test_create_question_embedding_failure_returns_503(client, monkeypatch):
+    def _raise(texts):
+        raise EmbeddingGenerationError("boom")
+
+    monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
+
+    response = _post(client, "質問", "回答")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Embedding generation failed. Please try again later."
+    }
+
+    list_response = client.get(PATH)
+
+    assert list_response.json() == []
+
+
+def test_search_questions_embedding_failure_returns_503(client, monkeypatch):
+    def _raise(texts):
+        raise EmbeddingGenerationError("boom")
+
+    monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
+
+    response = client.post(SEARCH_PATH, json={"query": "質問"})
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Embedding generation failed. Please try again later."
+    }

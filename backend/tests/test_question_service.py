@@ -1,9 +1,12 @@
+import pytest
+
+from physics_ai_tutor.core.exceptions import EmbeddingGenerationError
 from physics_ai_tutor.schemas.question import (
     QuestionBulkCreate,
     QuestionCreate,
     QuestionUpdate,
 )
-from physics_ai_tutor.services import question_service
+from physics_ai_tutor.services import embedding_service, question_service
 
 
 def _create(db, question: str = "テスト質問", answer: str = "テスト回答"):
@@ -102,3 +105,15 @@ def test_update_question_not_found_returns_none(db):
     )
 
     assert updated is None
+
+
+def test_create_question_rolls_back_on_embedding_failure(db, monkeypatch):
+    def _raise(texts):
+        raise EmbeddingGenerationError("boom")
+
+    monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
+
+    with pytest.raises(EmbeddingGenerationError):
+        _create(db)
+
+    assert question_service.fetch_questions(db) == []

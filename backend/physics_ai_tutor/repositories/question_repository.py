@@ -1,24 +1,44 @@
-from sqlalchemy.orm import Session
+from sqlalchemy import or_
+from sqlalchemy.orm import Query, Session
 
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.schemas.question import QuestionCreate, QuestionUpdate
 
 
+def _filter_by_keyword(query: Query, keyword: str | None) -> Query:
+    if not keyword:
+        return query
+
+    pattern = f"%{keyword}%"
+
+    return query.filter(
+        or_(
+            Question.question.ilike(pattern),
+            Question.answer.ilike(pattern),
+        )
+    )
+
+
 def get_questions(
     db: Session,
     offset: int,
-    limit: int
+    limit: int,
+    keyword: str | None = None,
 ) -> list[Question]:
+    query = _filter_by_keyword(db.query(Question), keyword)
+
     return (
-        db.query(Question)
+        query
         .offset(offset)
         .limit(limit)
         .all()
     )
 
 
-def get_questions_all(db: Session) -> list[Question]:
-    return db.query(Question).all()
+def count_questions(db: Session, keyword: str | None = None) -> int:
+    query = _filter_by_keyword(db.query(Question), keyword)
+
+    return query.count()
 
 
 def get_question(db: Session, question_id: int) -> Question:

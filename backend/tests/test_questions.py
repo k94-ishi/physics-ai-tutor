@@ -40,14 +40,61 @@ def _post_bulk(client, items: list[tuple[str, str]]):
 
 def test_create_question(client):
     response = _post(client, "テスト質問", "テスト回答")
-
+    
     assert response.status_code == 200
-
+    
     data = response.json()
-
+    
     assert data[Key.QUESTION] == "テスト質問"
     assert data[Key.ANSWER] == "テスト回答"
     assert isinstance(data[Key.ID], int)
+
+
+def test_create_question_empty_question_rejected(client):
+    response = _post(client, "", "テスト回答")
+
+    assert response.status_code == 422
+
+
+def test_create_question_blank_question_rejected(client):
+    response = _post(client, "   ", "テスト回答")
+
+    assert response.status_code == 422
+
+
+def test_create_question_empty_answer_rejected(client):
+    response = _post(client, "テスト質問", "")
+
+    assert response.status_code == 422
+
+
+def test_create_question_too_long_question_rejected(client):
+    response = _post(client, "あ" * 1001, "テスト回答")
+
+    assert response.status_code == 422
+
+
+def test_create_questions_bulk_too_many_items_rejected(client):
+    response = _post_bulk(
+        client,
+        [(f"質問{i}", f"回答{i}") for i in range(51)],
+    )
+
+    assert response.status_code == 422
+
+
+def test_search_questions_empty_query_rejected(client):
+    response = client.post(SEARCH_PATH, json={"query": ""})
+
+    assert response.status_code == 422
+
+
+def test_search_questions_invalid_limit_rejected(client):
+    response_zero = client.post(SEARCH_PATH, json={"query": "質問", "limit": 0})
+    response_over = client.post(SEARCH_PATH, json={"query": "質問", "limit": 51})
+
+    assert response_zero.status_code == 422
+    assert response_over.status_code == 422
 
 
 def test_get_questions(client):
@@ -96,17 +143,17 @@ def test_get_questions_invalid_page_rejected(client):
 
 def test_get_question_detail(client):
     create_response = _post(client, "詳細テスト質問", "詳細テスト回答")
-
+    
     assert create_response.status_code == 200
-
+    
     question_id = create_response.json()[Key.ID]
-
+    
     response = client.get(f"{PATH}/{question_id}")
-
+    
     assert response.status_code == 200
-
+    
     data = response.json()
-
+    
     assert data[Key.ID] == question_id
     assert data[Key.QUESTION] == "詳細テスト質問"
     assert data[Key.ANSWER] == "詳細テスト回答"
@@ -116,15 +163,15 @@ def test_get_question_not_found(client):
     response = client.get(
         f"{PATH}/99999",
     )
-
+    
     assert response.status_code == 404
 
 
 def test_update_question(client):
     create_response = _post(client, "更新前質問", "更新前回答")
-
+    
     question_id = create_response.json()["id"]
-
+    
     response = client.put(
         f"{PATH}/{question_id}",
         json={
@@ -132,26 +179,26 @@ def test_update_question(client):
             Key.ANSWER: "更新後回答",
         },
     )
-
+    
     assert response.status_code == 200
-
+    
     data = response.json()
-
+    
     assert data[Key.QUESTION] == "更新後質問"
     assert data[Key.ANSWER] == "更新後回答"
 
 
 def test_delete_question(client):
     create_response = _post(client, "削除対象質問", "削除対象回答")
-
+    
     question_id = create_response.json()[Key.ID]
-
+    
     response = client.delete(
         f"{PATH}/{question_id}"
     )
-
+    
     assert response.status_code == 204
-
+    
     get_response = client.get(
         f"{PATH}/{question_id}"
     )
@@ -182,8 +229,7 @@ def test_create_questions_bulk(client):
 def test_create_questions_bulk_empty(client):
     response = _post_bulk(client, [])
 
-    assert response.status_code == 200
-    assert response.json() == []
+    assert response.status_code == 422
 
 
 def test_update_question_not_found(client):

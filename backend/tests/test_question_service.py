@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from physics_ai_tutor.core.exceptions import EmbeddingGenerationError
 from physics_ai_tutor.models import QuestionEmbedding
@@ -96,10 +97,9 @@ def test_create_questions_bulk(db):
     assert created[0].question == "一括質問1"
 
 
-def test_create_questions_bulk_empty(db):
-    created = question_service.create_questions(db, QuestionBulkCreate(questions=[]))
-
-    assert created == []
+def test_create_questions_bulk_empty_rejected_by_schema():
+    with pytest.raises(ValidationError):
+        QuestionBulkCreate(questions=[])
 
 
 def test_delete_question_existing_returns_true(db):
@@ -229,21 +229,6 @@ def test_create_questions_bulk_rolls_back_on_embedding_failure(db, monkeypatch):
         )
 
     assert question_service.fetch_questions(db, page=1, size=20).items == []
-
-
-def test_create_questions_bulk_empty_does_not_call_create_embeddings(db, monkeypatch):
-    calls = []
-
-    monkeypatch.setattr(
-        embedding_service,
-        "create_embeddings",
-        lambda texts: calls.append(texts) or [],
-    )
-
-    created = question_service.create_questions(db, QuestionBulkCreate(questions=[]))
-
-    assert created == []
-    assert calls == []
 
 
 def test_delete_question_cascades_to_embeddings(db):

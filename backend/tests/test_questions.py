@@ -1,6 +1,7 @@
 from enum import StrEnum
 
 from physics_ai_tutor.core.exceptions import EmbeddingGenerationError
+from physics_ai_tutor.models import QuestionEmbedding
 from physics_ai_tutor.services import embedding_service
 
 PATH = "/api/v1/questions"
@@ -232,3 +233,66 @@ def test_search_questions_embedding_failure_returns_503(client, monkeypatch):
     assert response.json() == {
         "detail": "Embedding generation failed. Please try again later."
     }
+
+
+def test_update_question_embedding_failure_returns_503(client, monkeypatch):
+    create_response = _post(client, "更新前質問", "更新前回答")
+    question_id = create_response.json()[Key.ID]
+
+    def _raise(texts):
+        raise EmbeddingGenerationError("boom")
+
+    monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
+
+    response = client.put(
+        f"{PATH}/{question_id}",
+        json={
+            Key.QUESTION: "更新後質問",
+            Key.ANSWER: "更新後回答",
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Embedding generation failed. Please try again later."
+    }
+
+    get_response = client.get(f"{PATH}/{question_id}")
+
+    assert get_response.json()[Key.QUESTION] == "更新前質問"
+    assert get_response.json()[Key.ANSWER] == "更新前回答"
+
+
+def test_create_questions_bulk_embedding_failure_returns_503(client, monkeypatch):
+    def _raise(texts):
+        raise EmbeddingGenerationError("boom")
+
+    monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
+
+    response = _post_bulk(client, [("一括質問1", "一括回答1")])
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Embedding generation failed. Please try again later."
+    }
+
+    list_response = client.get(PATH)
+
+    assert list_response.json() == []
+
+
+def test_delete_question_removes_embeddings(client, db):
+    create_response = _post(client, "削除対象質問", "削除対象回答")
+    question_id = create_response.json()[Key.ID]
+
+    response = client.delete(f"{PATH}/{question_id}")
+
+    assert response.status_code == 204
+
+    remaining = (
+        db.query(QuestionEmbedding)
+        .filter(QuestionEmbedding.question_id == question_id)
+        .all()
+    )
+
+    assert remaining == []

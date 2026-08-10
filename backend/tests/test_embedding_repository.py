@@ -1,5 +1,6 @@
 import pytest
 
+from physics_ai_tutor.models import QuestionEmbedding
 from physics_ai_tutor.repositories import embedding_repository, question_repository
 
 DIM = 1536
@@ -149,3 +150,77 @@ def test_search_similar_embeddings_respects_limit(db):
 
     ordered_question_ids = [question.id for _, question, _ in results]
     assert ordered_question_ids == [identical.id, near.id]
+
+
+def test_delete_by_question_id_removes_only_target_question_embeddings(db):
+    target = _create_question(db, "対象質問", "対象回答")
+    other = _create_question(db, "他の質問", "他の回答")
+
+    embedding_repository.create_embedding(
+        db,
+        question_id=target.id,
+        embedding=_vector(0),
+        embedding_type="question",
+        model="text-embedding-3-small",
+    )
+    embedding_repository.create_embedding(
+        db,
+        question_id=target.id,
+        embedding=_vector(0),
+        embedding_type="answer",
+        model="text-embedding-3-small",
+    )
+    embedding_repository.create_embedding(
+        db,
+        question_id=other.id,
+        embedding=_vector(0),
+        embedding_type="question",
+        model="text-embedding-3-small",
+    )
+
+    embedding_repository.delete_by_question_id(db, target.id)
+
+    remaining = db.query(QuestionEmbedding).all()
+
+    assert len(remaining) == 1
+    assert remaining[0].question_id == other.id
+
+
+def test_create_embeddings_bulk_persists_multiple_rows(db):
+    question1 = _create_question(db, "質問1", "回答1")
+    question2 = _create_question(db, "質問2", "回答2")
+
+    records = [
+        {
+            "question_id": question1.id,
+            "type": "question",
+            "embedding": _vector(0),
+            "model": "text-embedding-3-small",
+        },
+        {
+            "question_id": question1.id,
+            "type": "answer",
+            "embedding": _vector(0),
+            "model": "text-embedding-3-small",
+        },
+        {
+            "question_id": question2.id,
+            "type": "question",
+            "embedding": _vector(1),
+            "model": "text-embedding-3-small",
+        },
+    ]
+
+    created = embedding_repository.create_embeddings(db, records)
+
+    assert len(created) == 3
+    assert all(e.id is not None for e in created)
+    assert [e.question_id for e in created] == [
+        question1.id,
+        question1.id,
+        question2.id,
+    ]
+    assert [e.type for e in created] == ["question", "answer", "question"]
+
+    persisted = db.query(QuestionEmbedding).all()
+    assert len(persisted) == 3

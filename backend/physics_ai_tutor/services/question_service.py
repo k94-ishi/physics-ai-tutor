@@ -1,3 +1,5 @@
+import logging
+
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core.config import settings
@@ -10,6 +12,8 @@ from physics_ai_tutor.schemas.question import (
     QuestionUpdate,
 )
 from physics_ai_tutor.services import embedding_service
+
+logger = logging.getLogger(__name__)
 
 
 def fetch_questions(
@@ -73,10 +77,13 @@ def create_question(db: Session, question: QuestionCreate):
         )
          
         db.commit()
-        
+
+        logger.info("Question created: id=%d", db_question.id)
+
         return db_question
-        
+
     except Exception:
+        logger.warning("Rolling back transaction: operation=create_question")
         db.rollback()
         raise
 
@@ -124,7 +131,10 @@ def create_questions(
             )
 
         db.commit()
+
+        logger.info("Questions created: count=%d", len(db_questions))
     except Exception:
+        logger.warning("Rolling back transaction: operation=create_questions")
         db.rollback()
         raise
 
@@ -138,7 +148,10 @@ def delete_question(db: Session, question_id: int) -> bool:
             question_id,
         )
         db.commit()
+
+        logger.info("Question delete requested: id=%d found=%s", question_id, result)
     except Exception:
+        logger.warning("Rolling back transaction: operation=delete_question")
         db.rollback()
         raise
 
@@ -184,8 +197,11 @@ def update_question(
         )
         
         db.commit()
-        
+
+        logger.info("Question updated: id=%d", question_id)
+
         return question
     except Exception:
+        logger.warning("Rolling back transaction: operation=update_question")
         db.rollback()
         raise

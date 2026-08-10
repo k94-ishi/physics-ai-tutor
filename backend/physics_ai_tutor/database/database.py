@@ -5,7 +5,7 @@ from physics_ai_tutor.core.config import settings
 
 engine = create_engine(
     settings.database_url,
-    echo=(settings.environment == "development"),
+    hide_parameters=True,
 )
 
 SessionLocal = sessionmaker(

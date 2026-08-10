@@ -44,7 +44,6 @@ testpaths = ["tests"]
 source = ["physics_ai_tutor"]
 omit = [
     "physics_ai_tutor/api/v1/categories.py",
-    "physics_ai_tutor/core/logging.py",
     "physics_ai_tutor/models/category.py",
     "physics_ai_tutor/repositories/category_repository.py",
     "physics_ai_tutor/schemas/category.py",

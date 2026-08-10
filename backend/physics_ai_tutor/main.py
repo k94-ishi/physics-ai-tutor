@@ -36,5 +36,5 @@ async def embedding_generation_error_handler(
 async def sqlalchemy_error_handler(request: Request, exc: SQLAlchemyError):
     return JSONResponse(
         status_code=500,
-        content={"detail": "Failed to save data."},
+        content={"detail": "Database operation failed."},
     )

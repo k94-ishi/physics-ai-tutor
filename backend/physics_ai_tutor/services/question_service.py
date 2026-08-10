@@ -102,12 +102,36 @@ def update_question(
             question_id,
             question_data,
         )
+        
+        if question is None:
+            return None
+        
+        texts = [
+            question_data.question,
+            question_data.answer,
+        ]
+        question_vec, answer_vec = embedding_service.createembeddings(texts)
+        embedding_repository.delete_by_question_id(db, question_id)
+        
+        embedding_repository.create_embedding(
+            db,
+            question_id=question_id,
+            embedding=question_vec,
+            embedding_type="question",
+            model=settings.embedding_model,
+        )
+
+        embedding_repository.create_embedding(
+            db,
+            question_id=question_id,
+            embedding=answer_vec,
+            embedding_type="answer",
+            model=settings.embedding_model,
+        )
+        
         db.commit()
+        
+        return question
     except Exception:
         db.rollback()
         raise
-
-    if question is None:
-        return None
-
-    return question

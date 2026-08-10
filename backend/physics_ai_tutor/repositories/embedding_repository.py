@@ -57,3 +57,17 @@ def search_similar_embeddings(
         .limit(limit)
         .all()
     )
+
+
+def delete_by_queston_id(
+    db: Session,
+    question_id: int,
+) -> None:
+    
+    (
+        db.query(QuestionEmbedding)
+        .filter(QuestionEmbedding.question_id == question_id)
+        .delete()
+    )
+    
+    db.flush()

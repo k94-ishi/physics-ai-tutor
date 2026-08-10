@@ -1,14 +1,19 @@
 import {
     CreateQuestionRequest,
     Question,
+    QuestionListResponse,
     UpdateQuestionRequest,
 } from "@/types/question";
 
 function getApiUrl(): string {
-    const url = process.env.NEXT_PUBLIC_API_URL;
+    const url = typeof window === "undefined"
+    ? process.env.INTERNAL_API_URL
+    : process.env.NEXT_PUBLIC_API_URL;
 
     if (!url) {
-        throw new Error("NEXT_PUBLIC_API_URL is not defined");
+        throw new Error(
+            "NEXT_PUBLIC_API_URL or INTERNAL_API_URL is not defined"
+        );
     }
 
     return url;
@@ -48,8 +53,8 @@ async function apiFetch<T>(
     return response.json();
 }
 
-export async function fetchQuestions(): Promise<Question[]> {
-    return apiFetch<Question[]>(getQuestionsUrl());
+export async function fetchQuestions(): Promise<QuestionListResponse> {
+    return apiFetch<QuestionListResponse>(getQuestionsUrl());
 }
 
 export async function fetchQuestion(id: number): Promise<Question> {

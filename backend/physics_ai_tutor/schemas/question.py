@@ -13,6 +13,7 @@ class QuestionUpdate(QuestionCreate):
 class QuestionBulkCreate(BaseModel):
     questions: list[QuestionCreate]
 
+
 class QuestionResponse(BaseModel):
     id: int
     question: str
@@ -21,3 +22,10 @@ class QuestionResponse(BaseModel):
     model_config = {
         "from_attributes": True
     }
+
+
+class QuestionListResponse(BaseModel):
+    items: list[QuestionResponse]
+    total: int
+    page: int
+    size: int

@@ -20,7 +20,7 @@ export default function QuestionList() {
 
         try {
             const data = await fetchQuestions();
-            setQuestions(data);
+            setQuestions(data.items);
         } catch (error) {
             console.error(error);
             setError(true);

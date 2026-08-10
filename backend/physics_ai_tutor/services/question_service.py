@@ -6,13 +6,34 @@ from physics_ai_tutor.repositories import embedding_repository, question_reposit
 from physics_ai_tutor.schemas.question import (
     QuestionBulkCreate,
     QuestionCreate,
+    QuestionListResponse,
     QuestionUpdate,
 )
 from physics_ai_tutor.services import embedding_service
 
 
-def fetch_questions(db: Session) -> list[Question]:
-    return question_repository.get_questions(db)
+def fetch_questions(
+    db: Session,
+    page: int,
+    size: int,
+) -> QuestionListResponse:
+    
+    offset = (page - 1) * size
+    
+    questions = question_repository.get_questions(
+        db,
+        offset=offset,
+        limit=size,
+    )
+    
+    total = len(question_repository.get_questions_all(db))
+    
+    return QuestionListResponse(
+        items=questions,
+        total=total,
+        page=page,
+        size=size,
+    )
 
 
 def fetch_question(db: Session, question_id: int) -> Question:

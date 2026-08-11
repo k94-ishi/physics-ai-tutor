@@ -1,7 +1,10 @@
 import {
     CreateQuestionRequest,
+    FetchQuestionsParams,
     Question,
     QuestionListResponse,
+    SearchQuestionsParams,
+    SimilarQuestion,
     UpdateQuestionRequest,
 } from "@/types/question";
 
@@ -53,8 +56,38 @@ async function apiFetch<T>(
     return response.json();
 }
 
-export async function fetchQuestions(): Promise<QuestionListResponse> {
-    return apiFetch<QuestionListResponse>(getQuestionsUrl());
+export async function fetchQuestions(
+    params: FetchQuestionsParams = {}
+): Promise<QuestionListResponse> {
+    const searchParams = new URLSearchParams();
+
+    if (params.page !== undefined) {
+        searchParams.set("page", String(params.page));
+    }
+    if (params.size !== undefined) {
+        searchParams.set("size", String(params.size));
+    }
+    if (params.keyword) {
+        searchParams.set("keyword", params.keyword);
+    }
+
+    const query = searchParams.toString();
+
+    return apiFetch<QuestionListResponse>(
+        query ? `${getQuestionsUrl()}?${query}` : getQuestionsUrl()
+    );
+}
+
+export async function searchQuestions(
+    params: SearchQuestionsParams
+): Promise<SimilarQuestion[]> {
+    return apiFetch<SimilarQuestion[]>(`${getQuestionsUrl()}/search`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(params),
+    });
 }
 
 export async function fetchQuestion(id: number): Promise<Question> {

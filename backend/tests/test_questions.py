@@ -38,45 +38,57 @@ def _post_bulk(client, items: list[tuple[str, str]]):
     )
 
 
-def test_create_question(client):
-    response = _post(client, "テスト質問", "テスト回答")
-    
+def test_create_question(admin_client):
+    response = _post(admin_client, "テスト質問", "テスト回答")
+
     assert response.status_code == 200
-    
+
     data = response.json()
-    
+
     assert data[Key.QUESTION] == "テスト質問"
     assert data[Key.ANSWER] == "テスト回答"
     assert isinstance(data[Key.ID], int)
 
 
-def test_create_question_empty_question_rejected(client):
-    response = _post(client, "", "テスト回答")
+def test_create_question_requires_admin(client):
+    response = _post(client, "テスト質問", "テスト回答")
+
+    assert response.status_code == 401
+
+
+def test_create_question_forbidden_for_non_admin(user_client):
+    response = _post(user_client, "テスト質問", "テスト回答")
+
+    assert response.status_code == 403
+
+
+def test_create_question_empty_question_rejected(admin_client):
+    response = _post(admin_client, "", "テスト回答")
 
     assert response.status_code == 422
 
 
-def test_create_question_blank_question_rejected(client):
-    response = _post(client, "   ", "テスト回答")
+def test_create_question_blank_question_rejected(admin_client):
+    response = _post(admin_client, "   ", "テスト回答")
 
     assert response.status_code == 422
 
 
-def test_create_question_empty_answer_rejected(client):
-    response = _post(client, "テスト質問", "")
+def test_create_question_empty_answer_rejected(admin_client):
+    response = _post(admin_client, "テスト質問", "")
 
     assert response.status_code == 422
 
 
-def test_create_question_too_long_question_rejected(client):
-    response = _post(client, "あ" * 1001, "テスト回答")
+def test_create_question_too_long_question_rejected(admin_client):
+    response = _post(admin_client, "あ" * 1001, "テスト回答")
 
     assert response.status_code == 422
 
 
-def test_create_questions_bulk_too_many_items_rejected(client):
+def test_create_questions_bulk_too_many_items_rejected(admin_client):
     response = _post_bulk(
-        client,
+        admin_client,
         [(f"質問{i}", f"回答{i}") for i in range(51)],
     )
 
@@ -97,10 +109,10 @@ def test_search_questions_invalid_limit_rejected(client):
     assert response_over.status_code == 422
 
 
-def test_get_questions(client):
-    _post(client, "一覧テスト質問", "一覧テスト回答")
+def test_get_questions(admin_client):
+    _post(admin_client, "一覧テスト質問", "一覧テスト回答")
 
-    response = client.get(PATH)
+    response = admin_client.get(PATH)
 
     assert response.status_code == 200
 
@@ -115,11 +127,11 @@ def test_get_questions(client):
     assert question[Key.ANSWER] == "一覧テスト回答"
 
 
-def test_get_questions_filters_by_keyword(client):
-    _post(client, "運動量保存則とは何ですか", "運動量は保存されます")
-    _post(client, "エネルギー保存則とは何ですか", "エネルギーは保存されます")
+def test_get_questions_filters_by_keyword(admin_client):
+    _post(admin_client, "運動量保存則とは何ですか", "運動量は保存されます")
+    _post(admin_client, "エネルギー保存則とは何ですか", "エネルギーは保存されます")
 
-    response = client.get(PATH, params={"keyword": "運動量"})
+    response = admin_client.get(PATH, params={"keyword": "運動量"})
 
     assert response.status_code == 200
 
@@ -141,19 +153,19 @@ def test_get_questions_invalid_page_rejected(client):
     assert response.status_code == 422
 
 
-def test_get_question_detail(client):
-    create_response = _post(client, "詳細テスト質問", "詳細テスト回答")
-    
+def test_get_question_detail(admin_client):
+    create_response = _post(admin_client, "詳細テスト質問", "詳細テスト回答")
+
     assert create_response.status_code == 200
-    
+
     question_id = create_response.json()[Key.ID]
-    
-    response = client.get(f"{PATH}/{question_id}")
-    
+
+    response = admin_client.get(f"{PATH}/{question_id}")
+
     assert response.status_code == 200
-    
+
     data = response.json()
-    
+
     assert data[Key.ID] == question_id
     assert data[Key.QUESTION] == "詳細テスト質問"
     assert data[Key.ANSWER] == "詳細テスト回答"
@@ -163,52 +175,70 @@ def test_get_question_not_found(client):
     response = client.get(
         f"{PATH}/99999",
     )
-    
+
     assert response.status_code == 404
 
 
-def test_update_question(client):
-    create_response = _post(client, "更新前質問", "更新前回答")
-    
+def test_update_question(admin_client):
+    create_response = _post(admin_client, "更新前質問", "更新前回答")
+
     question_id = create_response.json()["id"]
-    
-    response = client.put(
+
+    response = admin_client.put(
         f"{PATH}/{question_id}",
         json={
             Key.QUESTION: "更新後質問",
             Key.ANSWER: "更新後回答",
         },
     )
-    
+
     assert response.status_code == 200
-    
+
     data = response.json()
-    
+
     assert data[Key.QUESTION] == "更新後質問"
     assert data[Key.ANSWER] == "更新後回答"
 
 
-def test_delete_question(client):
-    create_response = _post(client, "削除対象質問", "削除対象回答")
-    
+def test_update_question_requires_admin(client):
+    response = client.put(
+        f"{PATH}/99999",
+        json={
+            Key.QUESTION: "更新後質問",
+            Key.ANSWER: "更新後回答",
+        },
+    )
+
+    assert response.status_code == 401
+
+
+def test_delete_question(admin_client):
+    create_response = _post(admin_client, "削除対象質問", "削除対象回答")
+
     question_id = create_response.json()[Key.ID]
-    
-    response = client.delete(
+
+    response = admin_client.delete(
         f"{PATH}/{question_id}"
     )
-    
+
     assert response.status_code == 204
-    
-    get_response = client.get(
+
+    get_response = admin_client.get(
         f"{PATH}/{question_id}"
     )
 
     assert get_response.status_code == 404
 
 
-def test_create_questions_bulk(client):
+def test_delete_question_requires_admin(client):
+    response = client.delete(f"{PATH}/99999")
+
+    assert response.status_code == 401
+
+
+def test_create_questions_bulk(admin_client):
     response = _post_bulk(
-        client,
+        admin_client,
         [
             ("一括質問1", "一括回答1"),
             ("一括質問2", "一括回答2"),
@@ -226,14 +256,14 @@ def test_create_questions_bulk(client):
     assert data[1][Key.ANSWER] == "一括回答2"
 
 
-def test_create_questions_bulk_empty(client):
-    response = _post_bulk(client, [])
+def test_create_questions_bulk_empty(admin_client):
+    response = _post_bulk(admin_client, [])
 
     assert response.status_code == 422
 
 
-def test_update_question_not_found(client):
-    response = client.put(
+def test_update_question_not_found(admin_client):
+    response = admin_client.put(
         f"{PATH}/99999",
         json={
             Key.QUESTION: "更新後質問",
@@ -244,20 +274,20 @@ def test_update_question_not_found(client):
     assert response.status_code == 404
 
 
-def test_delete_question_not_found(client):
-    response = client.delete(f"{PATH}/99999")
+def test_delete_question_not_found(admin_client):
+    response = admin_client.delete(f"{PATH}/99999")
 
     assert response.status_code == 404
 
 
-def test_search_questions(client):
-    create_response = _post(client, "検索対象質問", "検索対象回答")
+def test_search_questions(admin_client):
+    create_response = _post(admin_client, "検索対象質問", "検索対象回答")
 
     assert create_response.status_code == 200
 
     question_id = create_response.json()[Key.ID]
 
-    response = client.post(
+    response = admin_client.post(
         SEARCH_PATH,
         json={"query": "検索対象質問に似た質問"},
     )
@@ -276,20 +306,20 @@ def test_search_questions(client):
     assert isinstance(result[Key.DISTANCE], float)
 
 
-def test_create_question_embedding_failure_returns_503(client, monkeypatch):
+def test_create_question_embedding_failure_returns_503(admin_client, monkeypatch):
     def _raise(texts):
         raise EmbeddingGenerationError("boom")
 
     monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
 
-    response = _post(client, "質問", "回答")
+    response = _post(admin_client, "質問", "回答")
 
     assert response.status_code == 503
     assert response.json() == {
         "detail": "Embedding generation failed. Please try again later."
     }
 
-    list_response = client.get(PATH)
+    list_response = admin_client.get(PATH)
 
     assert list_response.json()["items"] == []
 
@@ -308,8 +338,8 @@ def test_search_questions_embedding_failure_returns_503(client, monkeypatch):
     }
 
 
-def test_update_question_embedding_failure_returns_503(client, monkeypatch):
-    create_response = _post(client, "更新前質問", "更新前回答")
+def test_update_question_embedding_failure_returns_503(admin_client, monkeypatch):
+    create_response = _post(admin_client, "更新前質問", "更新前回答")
     question_id = create_response.json()[Key.ID]
 
     def _raise(texts):
@@ -317,7 +347,7 @@ def test_update_question_embedding_failure_returns_503(client, monkeypatch):
 
     monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
 
-    response = client.put(
+    response = admin_client.put(
         f"{PATH}/{question_id}",
         json={
             Key.QUESTION: "更新後質問",
@@ -330,35 +360,35 @@ def test_update_question_embedding_failure_returns_503(client, monkeypatch):
         "detail": "Embedding generation failed. Please try again later."
     }
 
-    get_response = client.get(f"{PATH}/{question_id}")
+    get_response = admin_client.get(f"{PATH}/{question_id}")
 
     assert get_response.json()[Key.QUESTION] == "更新前質問"
     assert get_response.json()[Key.ANSWER] == "更新前回答"
 
 
-def test_create_questions_bulk_embedding_failure_returns_503(client, monkeypatch):
+def test_create_questions_bulk_embedding_failure_returns_503(admin_client, monkeypatch):
     def _raise(texts):
         raise EmbeddingGenerationError("boom")
 
     monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
 
-    response = _post_bulk(client, [("一括質問1", "一括回答1")])
+    response = _post_bulk(admin_client, [("一括質問1", "一括回答1")])
 
     assert response.status_code == 503
     assert response.json() == {
         "detail": "Embedding generation failed. Please try again later."
     }
 
-    list_response = client.get(PATH)
+    list_response = admin_client.get(PATH)
 
     assert list_response.json()["items"] == []
 
 
-def test_delete_question_removes_embeddings(client, db):
-    create_response = _post(client, "削除対象質問", "削除対象回答")
+def test_delete_question_removes_embeddings(admin_client, db):
+    create_response = _post(admin_client, "削除対象質問", "削除対象回答")
     question_id = create_response.json()[Key.ID]
 
-    response = client.delete(f"{PATH}/{question_id}")
+    response = admin_client.delete(f"{PATH}/{question_id}")
 
     assert response.status_code == 204
 

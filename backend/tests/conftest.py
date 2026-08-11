@@ -9,6 +9,12 @@ from physics_ai_tutor.database.base import Base
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.main import app
 from physics_ai_tutor.services import embedding_service
+from physics_ai_tutor.services.user_service import register_user
+
+ADMIN_EMAIL = "admin@example.com"
+ADMIN_PASSWORD = "adminpass123"
+USER_EMAIL = "user@example.com"
+USER_PASSWORD = "userpass123"
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
@@ -49,8 +55,40 @@ def client(db):
         yield db
     
     app.dependency_overrides[get_db] = override_get_db
-    
+
     with TestClient(app) as test_client:
         yield test_client
-    
+
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def admin_client(client, db):
+    # A separate TestClient (own cookie jar) is required here: reusing the
+    # `client` fixture directly would make admin_client/user_client share
+    # one cookie jar, and whichever fixture logs in last would silently
+    # overwrite the other's session in tests that request both.
+    register_user(db, ADMIN_EMAIL, ADMIN_PASSWORD, role="admin")
+
+    admin = TestClient(app)
+    response = admin.post(
+        "/api/v1/auth/login",
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
+    )
+    assert response.status_code == 200
+
+    return admin
+
+
+@pytest.fixture
+def user_client(client, db):
+    register_user(db, USER_EMAIL, USER_PASSWORD, role="user")
+
+    user = TestClient(app)
+    response = user.post(
+        "/api/v1/auth/login",
+        json={"email": USER_EMAIL, "password": USER_PASSWORD},
+    )
+    assert response.status_code == 200
+
+    return user

@@ -8,6 +8,7 @@ __pycache__/
 
 # Environment
 .env
+.env.production
 
 # Node
 node_modules/

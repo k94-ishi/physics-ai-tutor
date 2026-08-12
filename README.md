@@ -213,6 +213,16 @@ The production demo will be available at:
 https://ai-tutor.pencil-net.com
 ```
 
+## Redister first admin
+
+```bash
+uv run python -m physics_ai_tutor.cli.create_user \
+  --email admin@example.com \
+  --role admin
+
+# Enter password interactively
+```
+
 ---
 
 ## Roadmap

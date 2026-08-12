@@ -1,5 +1,6 @@
 import argparse
 import sys
+from getpass import getpass
 
 from pydantic import ValidationError
 
@@ -15,7 +16,7 @@ def parse_args() -> argparse.Namespace:
         description="Create a user (or admin) account.",
     )
     parser.add_argument("--email", required=True)
-    parser.add_argument("--password", required=True)
+    parser.add_argument("--password", required=False)
     parser.add_argument(
         "--role",
         choices=[role.value for role in UserRole],
@@ -46,4 +47,6 @@ def create_user(email: str, password: str, role: str) -> None:
 
 if __name__ == "__main__":
     args = parse_args()
+    if args.password is None:
+        args.password = getpass("Password: ")
     create_user(args.email, args.password, args.role)

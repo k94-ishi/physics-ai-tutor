@@ -2,7 +2,8 @@ import json
 from pathlib import Path
 
 from physics_ai_tutor.database.database import SessionLocal
-from physics_ai_tutor.models.question import Question
+from physics_ai_tutor.schemas.question import QuestionBulkCreate, QuestionCreate
+from physics_ai_tutor.services.question_service import create_questions
 
 
 def seed():
@@ -11,17 +12,19 @@ def seed():
     with open(seed_file, encoding="utf-8") as f:
         data = json.load(f)
     
-    questions = [
-        Question(
-            question=d["question"],
-            answer=d["answer"],
-        ) for d in data
-    ]
+    questions = QuestionBulkCreate(
+        questions=[
+            QuestionCreate(
+                question=d["question"],
+                answer=d["answer"],
+            ) for d in data
+        ]
+    )
     
     db = SessionLocal()
 
     try:
-        db.add_all(questions)
+        create_questions(db, questions)
         db.commit()
     finally:
         db.close()

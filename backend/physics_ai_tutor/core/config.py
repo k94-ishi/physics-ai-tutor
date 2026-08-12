@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     jwt_issuer: str = "physics-ai-tutor"
     # Cookie
     cookie_secure: bool = False
+    # CORS
+    backend_cors_origins: list[str] = ["http://loaclhost:8000"]
 
     model_config = SettingsConfigDict(
         env_file=".env",

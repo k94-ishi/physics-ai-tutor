@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
 from physics_ai_tutor.api.router import router
+from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.exceptions import EmbeddingGenerationError
 from physics_ai_tutor.core.logging import RequestLoggingMiddleware, configure_logging
 
@@ -18,10 +19,7 @@ app = FastAPI(title="Physics AI Tutor", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=settings.backend_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -2,9 +2,14 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 
-from physics_ai_tutor.api.dependencies import get_current_db_user, require_admin
+from physics_ai_tutor.api.dependencies import (
+    get_current_db_user,
+    get_current_user,
+    require_admin,
+)
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.models.user import User
+from physics_ai_tutor.schemas.auth import CurrentUser
 from physics_ai_tutor.schemas.token import JWTPayload
 from physics_ai_tutor.schemas.user import PasswordChangeRequest, UserResponse
 from physics_ai_tutor.services import user_service
@@ -14,11 +19,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me", response_model=CurrentUser)
 def get_me(
-    user: User = Depends(get_current_db_user),
+    payload: JWTPayload = Depends(get_current_user),
 ):
-    return user
+    return CurrentUser(id=int(payload.sub), role=payload.role)
 
 
 @router.put("/me/password", status_code=204)

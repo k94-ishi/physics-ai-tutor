@@ -66,7 +66,7 @@ def test_login_success_sets_cookie(client):
     response = client.post(LOGIN_PATH, json={"email": EMAIL, "password": PASSWORD})
 
     assert response.status_code == 200
-    assert response.json()["email"] == EMAIL
+    assert response.json()["role"] == "user"
 
     set_cookie = response.headers.get("set-cookie")
 

@@ -15,7 +15,6 @@ def test_get_me_returns_current_user(user_client):
 
     data = response.json()
 
-    assert data["email"] == USER_EMAIL
     assert data["role"] == "user"
 
 

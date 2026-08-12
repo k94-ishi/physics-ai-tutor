@@ -8,7 +8,7 @@ from physics_ai_tutor.api.dependencies import (
 from physics_ai_tutor.core.jwt import create_access_token
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.repositories import user_repository
-from physics_ai_tutor.schemas.auth import LoginRequest
+from physics_ai_tutor.schemas.auth import CurrentUser, LoginRequest
 from physics_ai_tutor.schemas.user import UserCreate, UserResponse
 from physics_ai_tutor.services.auth_service import authenticate_user
 from physics_ai_tutor.services.user_service import register_user
@@ -26,7 +26,7 @@ def register(data: UserCreate, db: Session = Depends(get_db)):
     return register_user(db, data.email, data.password)
 
 
-@router.post("/login", response_model=UserResponse)
+@router.post("/login", response_model=CurrentUser)
 def login(
     data: LoginRequest,
     response: Response,
@@ -46,7 +46,7 @@ def login(
     )
     set_access_token_cookie(response, access_token)
 
-    return user
+    return CurrentUser(id=user.id, role=user.role)
 
 
 @router.post("/logout", status_code=204)

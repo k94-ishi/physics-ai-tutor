@@ -235,4 +235,7 @@ https://ai-tutor.pencil-net.com
 - [ ] English version
 - [ ] Human-in-the-loop knowledge management
 - [ ] AI-generated educational content pipeline
-```
+
+## License
+
+This project is licensed under the MIT License.

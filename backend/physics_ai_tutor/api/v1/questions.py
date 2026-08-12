@@ -1,6 +1,9 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
+from physics_ai_tutor.api.dependencies import require_admin
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.schemas.embedding import (
     SimilarQuestionRequest,
@@ -13,16 +16,19 @@ from physics_ai_tutor.schemas.question import (
     QuestionResponse,
     QuestionUpdate,
 )
+from physics_ai_tutor.schemas.token import JWTPayload
 from physics_ai_tutor.services import question_service
 from physics_ai_tutor.services.embedding_service import (
     search_similar_questions,
 )
 
-router = APIRouter()
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/questions", tags=["questions"])
 
 
 @router.get(
-    "/questions",
+    "",
     response_model=QuestionListResponse,
 )
 def get_questions(
@@ -41,7 +47,7 @@ def get_questions(
 
 
 @router.get(
-    "/questions/{question_id}",
+    "/{question_id}",
     response_model=QuestionResponse,
 )
 def get_question(
@@ -63,40 +69,55 @@ def get_question(
     
 
 @router.post(
-    "/questions",
+    "",
     response_model=QuestionResponse,
 )
 def create_question(
     question: QuestionCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: JWTPayload = Depends(require_admin),
 ):
-    return question_service.create_question(
+    result = question_service.create_question(
         db,
         question,
     )
+    logger.info(
+        "Admin action: user_id=%s action=create_question question_id=%s",
+        current_user.sub,
+        result.id,
+    )
+    return result
 
 
 @router.post(
-    "/questions/bulk",
+    "/bulk",
     response_model=list[QuestionResponse],
 )
 def create_questions(
     questions: QuestionBulkCreate,
     db: Session = Depends(get_db),
+    current_user: JWTPayload = Depends(require_admin),
 ):
-    return question_service.create_questions(
+    result = question_service.create_questions(
         db,
         questions,
     )
+    logger.info(
+        "Admin action: user_id=%s action=create_questions_bulk count=%d",
+        current_user.sub,
+        len(result),
+    )
+    return result
 
 
 @router.delete(
-    "/questions/{question_id}",
+    "/{question_id}",
     status_code=204
 )
 def delete_question(
     question_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: JWTPayload = Depends(require_admin),
 ):
     deleted = question_service.delete_question(
         db,
@@ -109,35 +130,48 @@ def delete_question(
             detail="Question not found",
         )
 
+    logger.info(
+        "Admin action: user_id=%s action=delete_question question_id=%s",
+        current_user.sub,
+        question_id,
+    )
+
     return Response(status_code=204)
 
 
 @router.put(
-    "/questions/{question_id}",
+    "/{question_id}",
     response_model=QuestionResponse,
 )
 def update_question(
     question_id: int,
     question: QuestionUpdate,
     db: Session = Depends(get_db),
+    current_user: JWTPayload = Depends(require_admin),
 ):
     question = question_service.update_question(
         db,
         question_id,
         question,
     )
-    
+
     if question is None:
         raise HTTPException(
             status_code=404,
             detail="Question not found",
         )
-    
+
+    logger.info(
+        "Admin action: user_id=%s action=update_question question_id=%s",
+        current_user.sub,
+        question_id,
+    )
+
     return question
 
 
 @router.post(
-    "/questions/search",
+    "/search",
     response_model=list[SimilarQuestionResponse],
 )
 def search_questions(

@@ -7,6 +7,7 @@ import {
     SimilarQuestion,
     UpdateQuestionRequest,
 } from "@/types/question";
+import { LoginRequest, User } from "@/types/auth";
 
 function getApiUrl(): string {
     const url = typeof window === "undefined"
@@ -26,6 +27,14 @@ function getQuestionsUrl(): string {
     return `${getApiUrl()}/api/v1/questions`;
 }
 
+function getAuthUrl(): string {
+    return `${getApiUrl()}/api/v1/auth`;
+}
+
+function getUsersUrl(): string {
+    return `${getApiUrl()}/api/v1/users`;
+}
+
 export class ApiError extends Error {
     status: number;
 
@@ -40,7 +49,10 @@ async function apiFetch<T>(
     url: string,
     options?: RequestInit
 ): Promise<T> {
-    const response = await fetch(url, options);
+    const response = await fetch(url, {
+        credentials: "include",
+        ...options,
+    });
 
     if (!response.ok) {
         throw new ApiError(
@@ -122,4 +134,24 @@ export async function updateQuestion(
         },
         body: JSON.stringify(data),
     });
+}
+
+export async function login(data: LoginRequest): Promise<User> {
+    return apiFetch<User>(`${getAuthUrl()}/login`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+    });
+}
+
+export async function logout(): Promise<void> {
+    return apiFetch<void>(`${getAuthUrl()}/logout`, {
+        method: "POST",
+    });
+}
+
+export async function fetchCurrentUser(): Promise<User> {
+    return apiFetch<User>(`${getUsersUrl()}/me`);
 }

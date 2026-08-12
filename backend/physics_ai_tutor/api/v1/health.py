@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from physics_ai_tutor.database.dependency import get_db
 
-router = APIRouter()
+router = APIRouter(tags=["health"])
 
 
 @router.get("/health")

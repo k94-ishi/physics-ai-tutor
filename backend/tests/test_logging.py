@@ -64,7 +64,7 @@ def test_request_logging_middleware_logs_request_and_response(client, caplog):
 
 
 def test_request_logging_middleware_logs_handled_exception_without_duplicate_error(
-    client, monkeypatch, caplog
+    admin_client, monkeypatch, caplog
 ):
     def _raise(texts):
         raise EmbeddingGenerationError("boom")
@@ -72,7 +72,7 @@ def test_request_logging_middleware_logs_handled_exception_without_duplicate_err
     monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
 
     with caplog.at_level(logging.INFO):
-        response = client.post(
+        response = admin_client.post(
             PATH,
             json={"question": "質問", "answer": "回答"},
         )

@@ -5,6 +5,7 @@ import jwt as pyjwt
 
 from physics_ai_tutor.api.dependencies import ACCESS_TOKEN_COOKIE_NAME
 from physics_ai_tutor.core.config import settings
+from physics_ai_tutor.models.user import User
 
 REGISTER_PATH = "/api/v1/auth/register"
 LOGIN_PATH = "/api/v1/auth/login"
@@ -187,3 +188,47 @@ def test_no_refresh_when_far_from_expiry(client):
 
     assert response.status_code == 200
     assert response.headers.get("set-cookie") is None
+
+
+def test_sliding_refresh_syncs_role_from_db(client, db):
+    register_response = _register(client)
+    user_id = register_response.json()["id"]
+
+    # Promote to admin directly in the DB, simulating a role change made
+    # after the (stale) token below was minted.
+    user = db.query(User).filter(User.id == user_id).one()
+    user.role = "admin"
+    db.commit()
+
+    token = _make_token(sub=str(user_id), role="user", exp_delta_seconds=120)
+    client.cookies.set(ACCESS_TOKEN_COOKIE_NAME, token)
+
+    response = client.get(ME_PATH)
+
+    assert response.status_code == 200
+    assert response.json()["role"] == "admin"
+
+    new_token = response.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
+    decoded = pyjwt.decode(
+        new_token,
+        settings.jwt_secret_key,
+        algorithms=[settings.jwt_algorithm],
+        issuer=settings.jwt_issuer,
+    )
+    assert decoded["role"] == "admin"
+
+
+def test_sliding_refresh_rejects_deleted_user(client, db):
+    register_response = _register(client)
+    user_id = register_response.json()["id"]
+
+    token = _make_token(sub=str(user_id), role="user", exp_delta_seconds=120)
+    client.cookies.set(ACCESS_TOKEN_COOKIE_NAME, token)
+
+    user = db.query(User).filter(User.id == user_id).one()
+    db.delete(user)
+    db.commit()
+
+    response = client.get(ME_PATH)
+
+    assert response.status_code == 401

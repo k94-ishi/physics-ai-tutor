@@ -35,18 +35,26 @@ def set_access_token_cookie(response: Response, token: str) -> None:
 
 def get_current_user(
     response: Response,
+    db: Session = Depends(get_db),
     token: str | None = Depends(cookie_scheme),
 ) -> JWTPayload:
     """Validate the access token cookie and refresh it if expiration is near.
 
-    Side effect: when the token's remaining lifetime is at or below
-    `settings.jwt_refresh_threshold_minutes`, this reissues a new token
-    (same sub/role/jti) and calls `response.set_cookie(...)`, which adds a
-    `Set-Cookie` header to the outgoing response. Because there is no
-    server-side blacklist, a continuously-used session never naturally
-    expires via this refresh; a role change (e.g. admin demotion) only
-    takes effect once the session goes idle past the access token's
-    lifetime, or the user logs in again.
+    Side effects: when the token's remaining lifetime is at or below
+    `settings.jwt_refresh_threshold_minutes`, this
+    1) looks up the user in the DB to sync the role claim, rejecting the
+       request with 401 if the user no longer exists, and
+    2) reissues a new token (synced role, same sub/jti) and calls
+       `response.set_cookie(...)`, which adds a `Set-Cookie` header to the
+       outgoing response.
+
+    Outside of a refresh, this never touches the DB, so a role change or
+    account deletion only takes effect the next time the session's token
+    enters the refresh window (roughly every `jwt_access_token_expire_minutes
+    - jwt_refresh_threshold_minutes` for a continuously active session), or
+    at the next login for an idle/expired session. There is still no
+    server-side blacklist, so this is a bounded delay, not immediate
+    revocation.
     """
     if token is None:
         raise HTTPException(
@@ -67,6 +75,26 @@ def get_current_user(
     refresh_threshold_seconds = settings.jwt_refresh_threshold_minutes * 60
 
     if remaining_seconds <= refresh_threshold_seconds:
+        user = user_repository.get_user_by_id(db, int(payload.sub))
+
+        if user is None:
+            logger.warning(
+                "Session rejected: user_id=%s reason=user_deleted", payload.sub
+            )
+            raise HTTPException(
+                status_code=401,
+                detail="User no longer exists",
+            )
+
+        if user.role != payload.role:
+            logger.info(
+                "Role synced on refresh: user_id=%s old_role=%s new_role=%s",
+                payload.sub,
+                payload.role,
+                user.role,
+            )
+            payload = payload.model_copy(update={"role": user.role})
+
         new_token = create_access_token(
             subject=payload.sub,
             role=payload.role,

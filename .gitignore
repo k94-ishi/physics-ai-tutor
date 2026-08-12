@@ -7,7 +7,8 @@ __pycache__/
 .venv/
 
 # Environment
-.env*
+.env
+.env.production
 
 # Node
 node_modules/

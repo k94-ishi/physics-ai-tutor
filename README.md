@@ -1,57 +1,238 @@
 # Physics AI Tutor
 
-I worked as a high school physics teacher in Japan for three years. During that time, I realized that many students struggled not only with understanding physics but also with formulating the questions they wanted to ask.
+Physics AI Tutor is an AI-assisted learning platform for high school physics students.
 
-This project aims to help students by suggesting possible questions, providing clear explanations, and eventually offering AI-assisted learning support.
+I worked as a high school physics teacher in Japan for three years. During that time, I realized that many students struggled not only with understanding physics concepts but also with formulating the questions they wanted to ask.
 
-The project is still in its early stages, but it is being developed into a full-stack AI tutoring application.
+This project aims to support students by organizing physics knowledge, helping them find relevant explanations, and eventually providing AI-powered tutoring through Retrieval-Augmented Generation (RAG).
+
+The application is currently under active development as a full-stack AI tutoring system.
+
+---
 
 ## Features
 
-- Question management (CRUD)
-- Admin dashboard
+### Question Management
+
+- Create, read, update, and delete physics questions and answers
+- Admin dashboard for managing educational content
+- Pagination and keyword-based search
+
+### Authentication and Authorization
+
+- JWT-based authentication with HttpOnly cookies
+- Role-based access control
+- Admin-only content management operations
+- User management API
+
+### Semantic Search
+
+- Generate question embeddings using OpenAI embedding models
+- Store embeddings in PostgreSQL with pgvector
+- Search similar questions using cosine similarity
+
+### Backend
+
 - RESTful API with FastAPI
-- PostgreSQL database
-- Next.js frontend
-- Docker Compose development environment
-- Japanese language support only (currently)
+- SQLAlchemy ORM
+- Repository / Service / Router architecture
+- Database migration with Alembic
+- Automated tests with pytest
+
+### Frontend
+
+- Next.js (App Router)
+- React + TypeScript
+- Responsive UI for question browsing and administration
+
+---
 
 ## Architecture
 
 ```text
-Next.js
-    │
-FastAPI
-    │
-PostgreSQL
+                 Next.js
+                    |
+                    |
+                 FastAPI
+                    |
+          ---------------------
+          |                   |
+     PostgreSQL          OpenAI API
+          |
+       pgvector
 ```
 
-## Setup
+Current AI pipeline:
 
-- Start containers:
+```text
+User Question
+
+      |
+      v
+
+Embedding Generation
+(OpenAI text-embedding-3-small)
+
+      |
+      v
+
+Vector Similarity Search
+(PostgreSQL + pgvector)
+
+      |
+      v
+
+Relevant Questions
+```
+
+Future RAG pipeline:
+
+```text
+User Question
+
+      |
+      v
+
+Vector Search
+
+      |
+      v
+
+Context Retrieval
+
+      |
+      v
+
+LLM Generation
+
+      |
+      v
+
+AI Tutor Response
+```
+
+---
+
+## Tech Stack
+
+### Backend
+
+- Python
+- FastAPI
+- SQLAlchemy
+- PostgreSQL
+- pgvector
+- Alembic
+- pytest
+
+### Frontend
+
+- Next.js
+- React
+- TypeScript
+- Tailwind CSS
+
+### Infrastructure
+
+- Docker Compose
+- Vercel (Frontend)
+- Render (Backend)
+- Supabase PostgreSQL (Production Database)
+
+### AI
+
+- OpenAI Embedding API (`text-embedding-3-small`)
+- DeepSeek API (planned for LLM response generation)
+
+---
+
+## Local Development
+
+### Start containers
 
 ```bash
 docker compose up --build
 ```
 
-- Initialize DB
+### Initialize database
 
 ```bash
-docker compose exec backend uv run python -m physics_ai_tutor.database.init_db
+docker compose exec backend uv run alembic upgrade head
 docker compose exec backend uv run python -m physics_ai_tutor.database.seed
 ```
 
-- Access:
-  - Frontend: http://localhost:3000
-  - API Docs: http://localhost:8000/docs
+### Access
 
-## Planned Features
+- Frontend:
+  http://localhost:3000
 
-- Category management
-- Keyword search
-- JWT authentication
-- RAG (Retrieval-Augmented Generation)
-- Embedding-based similarity search
-- AI-generated answers with human review
-- English version
-- Manim animation integration for physics explanations
+- API Documentation:
+  http://localhost:8000/docs
+
+---
+
+## Testing
+
+Backend tests:
+
+```bash
+uv run pytest
+```
+
+Current status:
+
+- Backend: 100+ tests passing
+- Frontend: build, typecheck, and lint passing
+
+---
+
+## Deployment
+
+Production deployment is planned with:
+
+```text
+Frontend
+  |
+  v
+Vercel
+
+Backend
+  |
+  v
+Render
+
+Database
+  |
+  v
+Supabase PostgreSQL
+```
+
+The production demo will be available at:
+
+```
+https://ai-tutor.pencil-net.com
+```
+
+---
+
+## Roadmap
+
+- [x] Question management API
+- [x] Admin dashboard
+- [x] Pagination and keyword search
+- [x] JWT authentication
+- [x] Role-based authorization
+- [x] Embedding generation
+- [x] Similar question search using pgvector
+- [ ] Production deployment
+- [ ] RAG-based AI answer generation
+- [ ] DeepSeek LLM integration
+- [ ] AI-generated answer review workflow
+- [ ] Student-facing question submission flow
+
+### Future
+
+- [ ] English version
+- [ ] Human-in-the-loop knowledge management
+- [ ] AI-generated educational content pipeline
+```

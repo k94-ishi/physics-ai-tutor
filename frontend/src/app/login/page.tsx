@@ -25,7 +25,7 @@ export default function LoginPage() {
 
         try {
             await login(email, password);
-            router.push("/admin/questions");
+            router.push("/");
         } catch (err) {
             console.error(err);
             setError(true);

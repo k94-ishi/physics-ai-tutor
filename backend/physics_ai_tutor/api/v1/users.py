@@ -9,9 +9,14 @@ from physics_ai_tutor.api.dependencies import (
 )
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.models.user import User
+from physics_ai_tutor.repositories import user_repository
 from physics_ai_tutor.schemas.auth import CurrentUser
 from physics_ai_tutor.schemas.token import JWTPayload
-from physics_ai_tutor.schemas.user import PasswordChangeRequest, UserResponse
+from physics_ai_tutor.schemas.user import (
+    PasswordChangeRequest,
+    UserCreate,
+    UserResponse,
+)
 from physics_ai_tutor.services import user_service
 
 logger = logging.getLogger(__name__)
@@ -51,6 +56,29 @@ def list_users(
     _: JWTPayload = Depends(require_admin),
 ):
     return user_service.list_users(db)
+
+
+@router.post("", response_model=UserResponse)
+def create_user(
+    data: UserCreate,
+    db=Depends(get_db),
+    current_user: JWTPayload = Depends(require_admin),
+):
+    if user_repository.get_user_by_email(db, data.email) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Email already registered",
+        )
+
+    user = user_service.create_user(db, data.email, data.password, role=data.role)
+    logger.info(
+        "Admin action: user_id=%s action=create_user target_email=%s target_role=%s",
+        current_user.sub,
+        user.email,
+        user.role,
+    )
+
+    return user
 
 
 @router.get("/{user_id}", response_model=UserResponse)

@@ -36,12 +36,21 @@ export default function Header() {
                     </Link>
 
                     {user?.role === "admin" && (
-                        <Link
-                            href="/admin/questions"
-                            className="text-gray-600 hover:text-gray-900"
-                        >
-                            管理画面
-                        </Link>
+                        <>
+                            <Link
+                                href="/admin/questions"
+                                className="text-gray-600 hover:text-gray-900"
+                            >
+                                管理画面
+                            </Link>
+
+                            <Link
+                                href="/admin/users"
+                                className="text-gray-600 hover:text-gray-900"
+                            >
+                                ユーザー管理
+                            </Link>
+                        </>
                     )}
 
                     {user ? (
@@ -57,7 +66,7 @@ export default function Header() {
                             href="/login"
                             className="text-gray-600 hover:text-gray-900"
                         >
-                            ログイン
+                            管理者ログイン
                         </Link>
                     )}
                 </nav>

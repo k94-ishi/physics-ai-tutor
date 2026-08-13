@@ -9,7 +9,7 @@ from physics_ai_tutor.repositories import user_repository
 logger = logging.getLogger(__name__)
 
 
-def register_user(
+def create_user(
     db: Session,
     email: str,
     password: str,
@@ -29,7 +29,7 @@ def register_user(
     db.commit()
     db.refresh(user)
 
-    logger.info("User registered successfully: user_id=%s role=%s", user.id, user.role)
+    logger.info("User created: user_id=%s role=%s", user.id, user.role)
 
     return user
 

@@ -7,23 +7,10 @@ from physics_ai_tutor.api.dependencies import (
 )
 from physics_ai_tutor.core.jwt import create_access_token
 from physics_ai_tutor.database.dependency import get_db
-from physics_ai_tutor.repositories import user_repository
 from physics_ai_tutor.schemas.auth import CurrentUser, LoginRequest
-from physics_ai_tutor.schemas.user import UserCreate, UserResponse
 from physics_ai_tutor.services.auth_service import authenticate_user
-from physics_ai_tutor.services.user_service import register_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-@router.post("/register", response_model=UserResponse)
-def register(data: UserCreate, db: Session = Depends(get_db)):
-    if user_repository.get_user_by_email(db, data.email) is not None:
-        raise HTTPException(
-            status_code=409,
-            detail="Email already registered",
-        )
-
-    return register_user(db, data.email, data.password)
 
 
 @router.post("/login", response_model=CurrentUser)

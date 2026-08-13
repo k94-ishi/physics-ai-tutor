@@ -10,6 +10,12 @@ The application is currently under active development as a full-stack AI tutorin
 
 ---
 
+## Demo
+
+https://physics-ai-tutor-blue.vercel.app/
+
+----
+
 ## Features
 
 ### Question Management
@@ -234,7 +240,7 @@ uv run python -m physics_ai_tutor.cli.create_user \
 - [x] Role-based authorization
 - [x] Embedding generation
 - [x] Similar question search using pgvector
-- [ ] Production deployment
+- [x] Production deployment
 - [ ] RAG-based AI answer generation
 - [ ] DeepSeek LLM integration
 - [ ] AI-generated answer review workflow

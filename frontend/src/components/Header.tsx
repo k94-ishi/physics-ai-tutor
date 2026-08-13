@@ -57,7 +57,7 @@ export default function Header() {
                             href="/login"
                             className="text-gray-600 hover:text-gray-900"
                         >
-                            ログイン
+                            管理者ログイン
                         </Link>
                     )}
                 </nav>

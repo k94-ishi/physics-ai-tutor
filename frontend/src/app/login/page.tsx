@@ -36,7 +36,7 @@ export default function LoginPage() {
 
     return (
         <main className="mx-auto flex max-w-sm flex-col gap-6">
-            <h1 className="text-2xl font-bold text-gray-900">ログイン</h1>
+            <h1 className="text-2xl font-bold text-gray-900">管理者ログイン</h1>
 
             <Card>
                 <form
@@ -72,7 +72,7 @@ export default function LoginPage() {
                     )}
 
                     <Button type="submit" disabled={loading} className="self-start">
-                        {loading ? "ログイン中..." : "ログイン"}
+                        {loading ? "ログイン中..." : "管理者ログイン"}
                     </Button>
                 </form>
             </Card>

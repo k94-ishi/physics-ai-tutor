@@ -105,6 +105,26 @@ def get_current_user(
     return payload
 
 
+def get_current_user_optional(
+    token: str | None = Depends(cookie_scheme),
+) -> JWTPayload | None:
+    """Best-effort auth check for read-only visibility filtering only.
+
+    Unlike `get_current_user`, this never raises 401 and never performs the
+    sliding-refresh side effect (no DB lookup, no `Set-Cookie`) - it exists
+    purely so public endpoints can distinguish an admin caller from anyone
+    else without requiring authentication. Never use this to gate a
+    mutating endpoint; use `require_admin` for that.
+    """
+    if token is None:
+        return None
+
+    try:
+        return decode_access_token(token)
+    except (jwt.PyJWTError, ValidationError):
+        return None
+
+
 def get_current_db_user(
     payload: JWTPayload = Depends(get_current_user),
     db: Session = Depends(get_db),

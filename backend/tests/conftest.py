@@ -9,7 +9,7 @@ from physics_ai_tutor.database.base import Base
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.main import app
 from physics_ai_tutor.services import embedding_service
-from physics_ai_tutor.services.user_service import register_user
+from physics_ai_tutor.services.user_service import create_user
 
 ADMIN_EMAIL = "admin@example.com"
 ADMIN_PASSWORD = "adminpass123"
@@ -68,7 +68,7 @@ def admin_client(client, db):
     # `client` fixture directly would make admin_client/user_client share
     # one cookie jar, and whichever fixture logs in last would silently
     # overwrite the other's session in tests that request both.
-    register_user(db, ADMIN_EMAIL, ADMIN_PASSWORD, role="admin")
+    create_user(db, ADMIN_EMAIL, ADMIN_PASSWORD, role="admin")
 
     admin = TestClient(app)
     response = admin.post(
@@ -82,7 +82,7 @@ def admin_client(client, db):
 
 @pytest.fixture
 def user_client(client, db):
-    register_user(db, USER_EMAIL, USER_PASSWORD, role="user")
+    create_user(db, USER_EMAIL, USER_PASSWORD, role="user")
 
     user = TestClient(app)
     response = user.post(

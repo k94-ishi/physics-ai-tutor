@@ -1,3 +1,5 @@
+from datetime import datetime
+
 ME_PATH = "/api/v1/users/me"
 PASSWORD_PATH = "/api/v1/users/me/password"
 USERS_PATH = "/api/v1/users"
@@ -35,6 +37,90 @@ def test_list_users_forbidden_for_non_admin(user_client):
     response = user_client.get(USERS_PATH)
 
     assert response.status_code == 403
+
+
+def test_create_user_admin_only(admin_client):
+    response = admin_client.post(
+        USERS_PATH,
+        json={"email": "new-user@example.com", "password": "newuserpass123"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["email"] == "new-user@example.com"
+    assert data["role"] == "user"
+
+
+def test_create_user_with_admin_role(admin_client):
+    response = admin_client.post(
+        USERS_PATH,
+        json={
+            "email": "new-admin@example.com",
+            "password": "newadminpass123",
+            "role": "admin",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["role"] == "admin"
+
+
+def test_create_user_response_includes_created_at(admin_client):
+    response = admin_client.post(
+        USERS_PATH,
+        json={"email": "created-at-check@example.com", "password": "somepassword123"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert "created_at" in data
+    # Must be a parseable ISO 8601 timestamp, not just any truthy value.
+    datetime.fromisoformat(data["created_at"])
+
+
+def test_create_user_duplicate_email_rejected(admin_client):
+    admin_client.post(
+        USERS_PATH,
+        json={"email": "dup@example.com", "password": "somepassword123"},
+    )
+
+    response = admin_client.post(
+        USERS_PATH,
+        json={"email": "dup@example.com", "password": "somepassword123"},
+    )
+
+    assert response.status_code == 409
+
+
+def test_create_user_forbidden_for_non_admin(user_client):
+    response = user_client.post(
+        USERS_PATH,
+        json={"email": "blocked@example.com", "password": "somepassword123"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_create_user_requires_authentication(client):
+    response = client.post(
+        USERS_PATH,
+        json={"email": "blocked@example.com", "password": "somepassword123"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_create_user_invalid_password_rejected(admin_client):
+    response = admin_client.post(
+        USERS_PATH,
+        json={"email": "short-pw@example.com", "password": "short"},
+    )
+
+    assert response.status_code == 422
 
 
 def test_get_user_by_id_admin_only(admin_client, user_client):

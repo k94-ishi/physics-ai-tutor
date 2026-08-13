@@ -7,7 +7,7 @@ import {
     SimilarQuestion,
     UpdateQuestionRequest,
 } from "@/types/question";
-import { LoginRequest, User } from "@/types/auth";
+import { AdminUser, CreateUserRequest, LoginRequest, User } from "@/types/auth";
 
 function getApiUrl(): string {
     const url = typeof window === "undefined"
@@ -154,4 +154,24 @@ export async function logout(): Promise<void> {
 
 export async function fetchCurrentUser(): Promise<User> {
     return apiFetch<User>(`${getUsersUrl()}/me`);
+}
+
+export async function getUsers(): Promise<AdminUser[]> {
+    return apiFetch<AdminUser[]>(getUsersUrl());
+}
+
+export async function createUser(data: CreateUserRequest): Promise<AdminUser> {
+    return apiFetch<AdminUser>(getUsersUrl(), {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+    });
+}
+
+export async function deleteUser(id: number): Promise<void> {
+    return apiFetch<void>(`${getUsersUrl()}/${id}`, {
+        method: "DELETE",
+    });
 }

@@ -58,7 +58,7 @@ def list_users(
     return user_service.list_users(db)
 
 
-@router.post("", response_model=UserResponse)
+@router.post("", response_model=UserResponse, status_code=201)
 def create_user(
     data: UserCreate,
     db=Depends(get_db),

@@ -41,7 +41,7 @@ def _post_bulk(client, items: list[tuple[str, str]]):
 def test_create_question(admin_client):
     response = _post(admin_client, "テスト質問", "テスト回答")
 
-    assert response.status_code == 200
+    assert response.status_code == 201
 
     data = response.json()
 
@@ -156,7 +156,7 @@ def test_get_questions_invalid_page_rejected(client):
 def test_get_question_detail(admin_client):
     create_response = _post(admin_client, "詳細テスト質問", "詳細テスト回答")
 
-    assert create_response.status_code == 200
+    assert create_response.status_code == 201
 
     question_id = create_response.json()[Key.ID]
 
@@ -245,7 +245,7 @@ def test_create_questions_bulk(admin_client):
         ],
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
 
     data = response.json()
 
@@ -283,7 +283,7 @@ def test_delete_question_not_found(admin_client):
 def test_search_questions(admin_client):
     create_response = _post(admin_client, "検索対象質問", "検索対象回答")
 
-    assert create_response.status_code == 200
+    assert create_response.status_code == 201
 
     question_id = create_response.json()[Key.ID]
 

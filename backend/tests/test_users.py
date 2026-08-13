@@ -45,7 +45,7 @@ def test_create_user_admin_only(admin_client):
         json={"email": "new-user@example.com", "password": "newuserpass123"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
 
     data = response.json()
 
@@ -63,7 +63,7 @@ def test_create_user_with_admin_role(admin_client):
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     assert response.json()["role"] == "admin"
 
 
@@ -73,7 +73,7 @@ def test_create_user_response_includes_created_at(admin_client):
         json={"email": "created-at-check@example.com", "password": "somepassword123"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
 
     data = response.json()
 

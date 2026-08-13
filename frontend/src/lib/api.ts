@@ -2,12 +2,18 @@ import {
     CreateQuestionRequest,
     FetchQuestionsParams,
     Question,
+    QuestionImportResponse,
     QuestionListResponse,
+    QuestionReview,
+    QuestionSource,
+    QuestionStatus,
+    ReviewQuestionRequest,
     SearchQuestionsParams,
     SimilarQuestion,
     UpdateQuestionRequest,
 } from "@/types/question";
 import { AdminUser, CreateUserRequest, LoginRequest, User } from "@/types/auth";
+import { AskAiResponse } from "@/types/ai";
 
 function getApiUrl(): string {
     const url = typeof window === "undefined"
@@ -33,6 +39,10 @@ function getAuthUrl(): string {
 
 function getUsersUrl(): string {
     return `${getApiUrl()}/api/v1/users`;
+}
+
+function getAiUrl(): string {
+    return `${getApiUrl()}/api/v1/ai`;
 }
 
 export class ApiError extends Error {
@@ -81,6 +91,9 @@ export async function fetchQuestions(
     }
     if (params.keyword) {
         searchParams.set("keyword", params.keyword);
+    }
+    if (params.status) {
+        searchParams.set("status", params.status);
     }
 
     const query = searchParams.toString();
@@ -173,5 +186,57 @@ export async function createUser(data: CreateUserRequest): Promise<AdminUser> {
 export async function deleteUser(id: number): Promise<void> {
     return apiFetch<void>(`${getUsersUrl()}/${id}`, {
         method: "DELETE",
+    });
+}
+
+export async function fetchRelatedQuestions(
+    id: number,
+    limit = 5
+): Promise<Question[]> {
+    return apiFetch<Question[]>(
+        `${getQuestionsUrl()}/${id}/related?limit=${limit}`
+    );
+}
+
+export async function reviewQuestion(
+    id: number,
+    data: ReviewQuestionRequest
+): Promise<Question> {
+    return apiFetch<Question>(`${getQuestionsUrl()}/${id}/review`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+    });
+}
+
+export async function fetchQuestionReviews(id: number): Promise<QuestionReview[]> {
+    return apiFetch<QuestionReview[]>(`${getQuestionsUrl()}/${id}/reviews`);
+}
+
+export async function importQuestions(
+    file: File,
+    source: QuestionSource,
+    status: QuestionStatus
+): Promise<QuestionImportResponse> {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("source", source);
+    formData.append("status", status);
+
+    return apiFetch<QuestionImportResponse>(`${getQuestionsUrl()}/import`, {
+        method: "POST",
+        body: formData,
+    });
+}
+
+export async function askAi(question: string): Promise<AskAiResponse> {
+    return apiFetch<AskAiResponse>(`${getAiUrl()}/ask`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ question }),
     });
 }

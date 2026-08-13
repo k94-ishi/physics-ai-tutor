@@ -84,6 +84,23 @@ def search_similar_embeddings(
     )
 
 
+def get_embedding(
+    db: Session,
+    question_id: int,
+    embedding_type: str,
+) -> list[float] | None:
+    row = (
+        db.query(QuestionEmbedding.embedding)
+        .filter(
+            QuestionEmbedding.question_id == question_id,
+            QuestionEmbedding.type == embedding_type,
+        )
+        .first()
+    )
+
+    return row[0] if row is not None else None
+
+
 def delete_by_question_id(
     db: Session,
     question_id: int,

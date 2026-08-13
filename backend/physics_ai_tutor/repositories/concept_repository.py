@@ -51,7 +51,9 @@ def average_concept_similarity(
     candidate_concept = aliased(Concept)
     source_concept = aliased(Concept)
 
-    similarity = 1 - candidate_concept.embedding.cosine_distance(source_concept.embedding)
+    similarity = 1 - candidate_concept.embedding.cosine_distance(
+        source_concept.embedding
+    )
 
     rows = (
         db.query(

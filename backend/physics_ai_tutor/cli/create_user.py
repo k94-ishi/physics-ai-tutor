@@ -8,7 +8,7 @@ from physics_ai_tutor.database.database import SessionLocal
 from physics_ai_tutor.repositories import user_repository
 from physics_ai_tutor.schemas.token import UserRole
 from physics_ai_tutor.schemas.user import UserCreate
-from physics_ai_tutor.services.user_service import register_user
+from physics_ai_tutor.services.user_service import create_user
 
 
 def parse_args() -> argparse.Namespace:
@@ -25,7 +25,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def create_user(email: str, password: str, role: str) -> None:
+def main(email: str, password: str, role: str) -> None:
     try:
         data = UserCreate(email=email, password=password)
     except ValidationError as exc:
@@ -39,7 +39,7 @@ def create_user(email: str, password: str, role: str) -> None:
             print(f"Email already registered: {data.email}", file=sys.stderr)
             sys.exit(1)
 
-        user = register_user(db, data.email, data.password, role=role)
+        user = create_user(db, data.email, data.password, role=role)
         print(f"Created user: id={user.id} email={user.email} role={user.role}")
     finally:
         db.close()
@@ -49,4 +49,4 @@ if __name__ == "__main__":
     args = parse_args()
     if args.password is None:
         args.password = getpass("Password: ")
-    create_user(args.email, args.password, args.role)
+    main(args.email, args.password, args.role)

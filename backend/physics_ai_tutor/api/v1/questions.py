@@ -71,6 +71,7 @@ def get_question(
 @router.post(
     "",
     response_model=QuestionResponse,
+    status_code=201,
 )
 def create_question(
     question: QuestionCreate,
@@ -92,6 +93,7 @@ def create_question(
 @router.post(
     "/bulk",
     response_model=list[QuestionResponse],
+    status_code=201,
 )
 def create_questions(
     questions: QuestionBulkCreate,

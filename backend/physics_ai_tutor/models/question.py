@@ -12,6 +12,17 @@ class Question(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     question: Mapped[str] = mapped_column(String(255), nullable=False)
     answer: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20),
+        server_default="APPROVED",
+        nullable=False,
+        index=True,
+    )
+    source: Mapped[str] = mapped_column(
+        String(20),
+        server_default="MANUAL",
+        nullable=False,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

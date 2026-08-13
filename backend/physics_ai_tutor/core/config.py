@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     # API
     openai_api_key: str
     embedding_model: str = "text-embedding-3-small"
+    deepseek_api_key: str
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_chat_model: str = "deepseek-chat"
     # JWT
     jwt_secret_key: str
     jwt_algorithm: str

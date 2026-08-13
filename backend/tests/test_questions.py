@@ -1,3 +1,4 @@
+import json
 from enum import StrEnum
 
 from physics_ai_tutor.core.exceptions import EmbeddingGenerationError
@@ -5,7 +6,7 @@ from physics_ai_tutor.models import QuestionEmbedding
 from physics_ai_tutor.services import embedding_service
 
 PATH = "/api/v1/questions"
-BULK_PATH = f"{PATH}/bulk"
+IMPORT_PATH = f"{PATH}/import"
 SEARCH_PATH = f"{PATH}/search"
 
 class Key(StrEnum):
@@ -14,6 +15,8 @@ class Key(StrEnum):
     ID = "id"
     QUESTIONS = "questions"
     DISTANCE = "distance"
+    STATUS = "status"
+    SOURCE = "source"
 
 
 def _post(client, question: str, answer: str):
@@ -26,16 +29,21 @@ def _post(client, question: str, answer: str):
     )
 
 
-def _post_bulk(client, items: list[tuple[str, str]]):
-    return client.post(
-        BULK_PATH,
-        json={
-            Key.QUESTIONS: [
-                {Key.QUESTION: question, Key.ANSWER: answer}
-                for question, answer in items
-            ],
-        },
+def _post_import(client, items: list[tuple[str, str]], source=None, status=None):
+    content = "\n".join(
+        json.dumps({Key.QUESTION: question, Key.ANSWER: answer}, ensure_ascii=False)
+        for question, answer in items
     )
+
+    data = {}
+    if source is not None:
+        data["source"] = source
+    if status is not None:
+        data["status"] = status
+
+    files = {"file": ("questions.jsonl", content, "application/jsonl")}
+
+    return client.post(IMPORT_PATH, data=data, files=files)
 
 
 def test_create_question(admin_client):
@@ -47,6 +55,8 @@ def test_create_question(admin_client):
 
     assert data[Key.QUESTION] == "テスト質問"
     assert data[Key.ANSWER] == "テスト回答"
+    assert data[Key.STATUS] == "APPROVED"
+    assert data[Key.SOURCE] == "MANUAL"
     assert isinstance(data[Key.ID], int)
 
 
@@ -86,13 +96,12 @@ def test_create_question_too_long_question_rejected(admin_client):
     assert response.status_code == 422
 
 
-def test_create_questions_bulk_too_many_items_rejected(admin_client):
-    response = _post_bulk(
-        admin_client,
-        [(f"質問{i}", f"回答{i}") for i in range(51)],
-    )
+def test_create_question_duplicate_rejected(admin_client):
+    _post(admin_client, "重複質問", "重複回答1")
 
-    assert response.status_code == 422
+    response = _post(admin_client, "重複質問", "重複回答2")
+
+    assert response.status_code == 409
 
 
 def test_search_questions_empty_query_rejected(client):
@@ -153,6 +162,22 @@ def test_get_questions_invalid_page_rejected(client):
     assert response.status_code == 422
 
 
+def test_get_questions_hides_rejected_from_non_admin(admin_client, client):
+    create_response = _post(admin_client, "却下予定質問", "却下予定回答")
+    question_id = create_response.json()[Key.ID]
+
+    admin_client.post(f"{PATH}/{question_id}/review", json={"action": "REJECT"})
+
+    admin_list = admin_client.get(PATH, params={"size": 100})
+    public_list = client.get(PATH, params={"size": 100})
+
+    admin_ids = [item[Key.ID] for item in admin_list.json()["items"]]
+    public_ids = [item[Key.ID] for item in public_list.json()["items"]]
+
+    assert question_id in admin_ids
+    assert question_id not in public_ids
+
+
 def test_get_question_detail(admin_client):
     create_response = _post(admin_client, "詳細テスト質問", "詳細テスト回答")
 
@@ -175,6 +200,17 @@ def test_get_question_not_found(client):
     response = client.get(
         f"{PATH}/99999",
     )
+
+    assert response.status_code == 404
+
+
+def test_get_question_rejected_not_found_for_non_admin(admin_client, client):
+    create_response = _post(admin_client, "却下予定質問2", "却下予定回答2")
+    question_id = create_response.json()[Key.ID]
+
+    admin_client.post(f"{PATH}/{question_id}/review", json={"action": "REJECT"})
+
+    response = client.get(f"{PATH}/{question_id}")
 
     assert response.status_code == 404
 
@@ -236,8 +272,8 @@ def test_delete_question_requires_admin(client):
     assert response.status_code == 401
 
 
-def test_create_questions_bulk(admin_client):
-    response = _post_bulk(
+def test_import_questions(admin_client):
+    response = _post_import(
         admin_client,
         [
             ("一括質問1", "一括回答1"),
@@ -249,17 +285,188 @@ def test_create_questions_bulk(admin_client):
 
     data = response.json()
 
-    assert len(data) == 2
-    assert data[0][Key.QUESTION] == "一括質問1"
-    assert data[0][Key.ANSWER] == "一括回答1"
-    assert data[1][Key.QUESTION] == "一括質問2"
-    assert data[1][Key.ANSWER] == "一括回答2"
+    assert data["created_count"] == 2
+    assert data["questions"][0][Key.QUESTION] == "一括質問1"
+    assert data["questions"][0][Key.STATUS] == "UNREVIEWED"
+    assert data["questions"][0][Key.SOURCE] == "AI_GENERATED"
 
 
-def test_create_questions_bulk_empty(admin_client):
-    response = _post_bulk(admin_client, [])
+def test_import_questions_custom_source_and_status(admin_client):
+    response = _post_import(
+        admin_client,
+        [("手動質問", "手動回答")],
+        source="MANUAL",
+        status="APPROVED",
+    )
+
+    assert response.status_code == 201
+
+    data = response.json()["questions"][0]
+
+    assert data[Key.SOURCE] == "MANUAL"
+    assert data[Key.STATUS] == "APPROVED"
+
+
+def test_import_questions_requires_admin(client):
+    response = _post_import(client, [("質問", "回答")])
+
+    assert response.status_code == 401
+
+
+def test_import_questions_forbidden_for_non_admin(user_client):
+    response = _post_import(user_client, [("質問", "回答")])
+
+    assert response.status_code == 403
+
+
+def test_import_questions_empty_file_rejected(admin_client):
+    response = _post_import(admin_client, [])
 
     assert response.status_code == 422
+
+
+def test_import_questions_invalid_json_line_rejected(admin_client):
+    files = {"file": ("questions.jsonl", "not valid json", "application/jsonl")}
+
+    response = admin_client.post(IMPORT_PATH, files=files)
+
+    assert response.status_code == 422
+
+
+def test_import_questions_duplicate_within_file_rejected(admin_client):
+    response = _post_import(
+        admin_client,
+        [
+            ("重複質問", "回答1"),
+            ("重複質問", "回答2"),
+        ],
+    )
+
+    assert response.status_code == 409
+
+    list_response = admin_client.get(PATH, params={"size": 100})
+    assert list_response.json()["total"] == 0
+
+
+def test_import_questions_duplicate_against_existing_rejected(admin_client):
+    _post(admin_client, "既存質問", "既存回答")
+
+    response = _post_import(admin_client, [("既存質問", "新規回答")])
+
+    assert response.status_code == 409
+
+
+def test_create_questions_bulk_route_removed(admin_client):
+    response = admin_client.post(
+        f"{PATH}/bulk",
+        json={"questions": [{"question": "質問", "answer": "回答"}]},
+    )
+
+    # "/questions/bulk" now matches the "/questions/{question_id}" path
+    # template (which only supports GET/PUT/DELETE), so POST there is a
+    # correct 405, not a 404 - the old /bulk endpoint itself no longer exists.
+    assert response.status_code == 405
+
+
+def test_review_question_approve(admin_client):
+    create_response = _post_import(admin_client, [("レビュー対象", "レビュー回答")])
+    question_id = create_response.json()["questions"][0][Key.ID]
+
+    response = admin_client.post(
+        f"{PATH}/{question_id}/review", json={"action": "APPROVE"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()[Key.STATUS] == "APPROVED"
+
+
+def test_review_question_reject(admin_client):
+    create_response = _post(admin_client, "却下対象", "却下対象回答")
+    question_id = create_response.json()[Key.ID]
+
+    response = admin_client.post(
+        f"{PATH}/{question_id}/review", json={"action": "REJECT"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()[Key.STATUS] == "REJECTED"
+
+
+def test_review_question_edit_approve(admin_client):
+    create_response = _post_import(admin_client, [("編集前質問", "編集前回答")])
+    question_id = create_response.json()["questions"][0][Key.ID]
+
+    response = admin_client.post(
+        f"{PATH}/{question_id}/review",
+        json={
+            "action": "EDIT_APPROVE",
+            "question": "編集後質問",
+            "answer": "編集後回答",
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data[Key.STATUS] == "APPROVED"
+    assert data[Key.QUESTION] == "編集後質問"
+    assert data[Key.ANSWER] == "編集後回答"
+
+
+def test_review_question_edit_approve_requires_content(admin_client):
+    create_response = _post(admin_client, "質問", "回答")
+    question_id = create_response.json()[Key.ID]
+
+    response = admin_client.post(
+        f"{PATH}/{question_id}/review", json={"action": "EDIT_APPROVE"}
+    )
+
+    assert response.status_code == 422
+
+
+def test_review_question_requires_admin(client):
+    response = client.post(f"{PATH}/99999/review", json={"action": "APPROVE"})
+
+    assert response.status_code == 401
+
+
+def test_review_question_not_found(admin_client):
+    response = admin_client.post(
+        f"{PATH}/99999/review", json={"action": "APPROVE"}
+    )
+
+    assert response.status_code == 404
+
+
+def test_get_question_reviews(admin_client):
+    create_response = _post(admin_client, "履歴対象", "履歴対象回答")
+    question_id = create_response.json()[Key.ID]
+
+    admin_client.post(f"{PATH}/{question_id}/review", json={"action": "REJECT"})
+
+    response = admin_client.get(f"{PATH}/{question_id}/reviews")
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["action"] == "REJECT"
+
+
+def test_get_question_reviews_requires_admin(client):
+    response = client.get(f"{PATH}/99999/reviews")
+
+    assert response.status_code == 401
+
+
+def test_get_related_questions(admin_client, client):
+    create_response = _post(admin_client, "関連元質問", "関連元回答")
+    question_id = create_response.json()[Key.ID]
+
+    response = client.get(f"{PATH}/{question_id}/related")
+
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
 
 
 def test_update_question_not_found(admin_client):
@@ -366,13 +573,13 @@ def test_update_question_embedding_failure_returns_503(admin_client, monkeypatch
     assert get_response.json()[Key.ANSWER] == "更新前回答"
 
 
-def test_create_questions_bulk_embedding_failure_returns_503(admin_client, monkeypatch):
+def test_import_questions_embedding_failure_returns_503(admin_client, monkeypatch):
     def _raise(texts):
         raise EmbeddingGenerationError("boom")
 
     monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
 
-    response = _post_bulk(admin_client, [("一括質問1", "一括回答1")])
+    response = _post_import(admin_client, [("一括質問1", "一括回答1")])
 
     assert response.status_code == 503
     assert response.json() == {

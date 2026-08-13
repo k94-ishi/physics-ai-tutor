@@ -48,7 +48,7 @@ def get_questions_sharing_concepts(
     concept_ids_subquery = (
         db.query(QuestionConcept.concept_id)
         .filter(QuestionConcept.question_id == question_id)
-        .subquery()
+        .scalar_subquery()
     )
 
     query = (

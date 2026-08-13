@@ -153,3 +153,87 @@ def test_update_nonexistent_question_returns_none(db):
     )
 
     assert updated is None
+
+
+def test_get_by_exact_text_found(db):
+    created = _create(db, "完全一致質問", "回答")
+
+    found = question_repository.get_by_exact_text(db, "完全一致質問")
+
+    assert found is not None
+    assert found.id == created.id
+
+
+def test_get_by_exact_text_not_found(db):
+    found = question_repository.get_by_exact_text(db, "存在しない質問")
+
+    assert found is None
+
+
+def test_create_question_with_status_and_source(db):
+    created = question_repository.create_question(
+        db, question="質問", answer="回答", status="UNREVIEWED", source="AI_GENERATED",
+    )
+
+    assert created.status == "UNREVIEWED"
+    assert created.source == "AI_GENERATED"
+
+
+def test_get_questions_excludes_status(db):
+    _create(db, "質問A", "回答A")
+    rejected = question_repository.create_question(
+        db, question="質問B", answer="回答B", status="REJECTED",
+    )
+
+    questions = question_repository.get_questions(
+        db, offset=0, limit=10, exclude_status="REJECTED",
+    )
+
+    assert rejected.id not in [q.id for q in questions]
+
+
+def test_get_questions_filters_by_status(db):
+    question_repository.create_question(
+        db, question="質問A", answer="回答A", status="UNREVIEWED",
+    )
+    approved = question_repository.create_question(
+        db, question="質問B", answer="回答B", status="APPROVED",
+    )
+
+    questions = question_repository.get_questions(
+        db, offset=0, limit=10, status="APPROVED",
+    )
+
+    assert [q.id for q in questions] == [approved.id]
+
+
+def test_update_content_and_status_updates_content(db):
+    created = _create(db, "更新前", "更新前回答")
+
+    updated = question_repository.update_content_and_status(
+        db, created.id, status="APPROVED", question="更新後", answer="更新後回答",
+    )
+
+    assert updated.question == "更新後"
+    assert updated.answer == "更新後回答"
+    assert updated.status == "APPROVED"
+
+
+def test_update_content_and_status_without_content_change(db):
+    created = _create(db, "元の質問", "元の回答")
+
+    updated = question_repository.update_content_and_status(
+        db, created.id, status="REJECTED",
+    )
+
+    assert updated.question == "元の質問"
+    assert updated.answer == "元の回答"
+    assert updated.status == "REJECTED"
+
+
+def test_update_content_and_status_not_found_returns_none(db):
+    updated = question_repository.update_content_and_status(
+        db, 99999, status="APPROVED",
+    )
+
+    assert updated is None

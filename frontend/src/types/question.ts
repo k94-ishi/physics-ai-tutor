@@ -7,6 +7,8 @@ export type Question = {
     answer: string;
     status: QuestionStatus;
     source: QuestionSource;
+    language: string;
+    concepts: string[];
 };
 
 export type QuestionListResponse = {
@@ -71,4 +73,26 @@ export type ReviewQuestionRequest = {
 export type QuestionImportResponse = {
     created_count: number;
     questions: Question[];
+};
+
+export type BulkDeleteResponse = {
+    deleted_count: number;
+    not_found_ids: number[];
+};
+
+export type BulkReviewAction = "APPROVE" | "REJECT";
+
+export type BulkReviewResponse = {
+    questions: Question[];
+    not_found_ids: number[];
+};
+
+export type ConceptExtractionResult = {
+    question_id: number;
+    success: boolean;
+    concepts: string[];
+};
+
+export type ConceptExtractionBatchResponse = {
+    results: ConceptExtractionResult[];
 };

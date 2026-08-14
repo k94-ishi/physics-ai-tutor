@@ -1,4 +1,8 @@
 import {
+    BulkDeleteResponse,
+    BulkReviewAction,
+    BulkReviewResponse,
+    ConceptExtractionBatchResponse,
     CreateQuestionRequest,
     FetchQuestionsParams,
     Question,
@@ -239,4 +243,45 @@ export async function askAi(question: string): Promise<AskAiResponse> {
         },
         body: JSON.stringify({ question }),
     });
+}
+
+export async function bulkDeleteQuestions(
+    questionIds: number[]
+): Promise<BulkDeleteResponse> {
+    return apiFetch<BulkDeleteResponse>(`${getQuestionsUrl()}/bulk-delete`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ question_ids: questionIds }),
+    });
+}
+
+export async function bulkReviewQuestions(
+    questionIds: number[],
+    action: BulkReviewAction,
+    comment?: string
+): Promise<BulkReviewResponse> {
+    return apiFetch<BulkReviewResponse>(`${getQuestionsUrl()}/bulk-review`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ question_ids: questionIds, action, comment }),
+    });
+}
+
+export async function extractConcepts(
+    questionIds: number[]
+): Promise<ConceptExtractionBatchResponse> {
+    return apiFetch<ConceptExtractionBatchResponse>(
+        `${getQuestionsUrl()}/concepts/extract`,
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ question_ids: questionIds }),
+        }
+    );
 }

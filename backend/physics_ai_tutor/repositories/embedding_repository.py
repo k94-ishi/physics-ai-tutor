@@ -43,6 +43,8 @@ def search_similar_embeddings(
     embedding: list[float],
     embedding_type: str = "question",
     limit: int = 10,
+    exclude_question_ids: list[int] | None = None,
+    exclude_status: str | None = None,
 ) -> list[tuple[QuestionEmbedding, Question, float]]:
     """
     SELECT question_embeddings.*, questions.*
@@ -54,8 +56,8 @@ def search_similar_embeddings(
     LIMIT 10;
     """
     distance = QuestionEmbedding.embedding.cosine_distance(embedding)
-    
-    return (
+
+    query = (
         db.query(
             QuestionEmbedding,
             Question,
@@ -66,10 +68,37 @@ def search_similar_embeddings(
             QuestionEmbedding.question_id == Question.id,
         )
         .filter(QuestionEmbedding.type == embedding_type)
+    )
+
+    if exclude_question_ids:
+        query = query.filter(Question.id.notin_(exclude_question_ids))
+
+    if exclude_status is not None:
+        query = query.filter(Question.status != exclude_status)
+
+    return (
+        query
         .order_by(distance)
         .limit(limit)
         .all()
     )
+
+
+def get_embedding(
+    db: Session,
+    question_id: int,
+    embedding_type: str,
+) -> list[float] | None:
+    row = (
+        db.query(QuestionEmbedding.embedding)
+        .filter(
+            QuestionEmbedding.question_id == question_id,
+            QuestionEmbedding.type == embedding_type,
+        )
+        .first()
+    )
+
+    return row[0] if row is not None else None
 
 
 def delete_by_question_id(

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from physics_ai_tutor.database.base import Base
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.main import app
-from physics_ai_tutor.services import embedding_service
+from physics_ai_tutor.services import concept_service, embedding_service
 from physics_ai_tutor.services.user_service import create_user
 
 ADMIN_EMAIL = "admin@example.com"
@@ -46,6 +46,15 @@ def _mock_create_embeddings(monkeypatch):
         embedding_service,
         "create_embeddings",
         lambda texts: [[0.1] * 1536 for _ in texts],
+    )
+
+
+@pytest.fixture(autouse=True)
+def _mock_extract_concept_names(monkeypatch):
+    monkeypatch.setattr(
+        concept_service,
+        "extract_concept_names",
+        lambda question, answer: ["概念A", "概念B"],
     )
 
 

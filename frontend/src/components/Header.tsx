@@ -41,7 +41,7 @@ export default function Header() {
                                 href="/admin/questions"
                                 className="text-gray-600 hover:text-gray-900"
                             >
-                                管理画面
+                                質問管理
                             </Link>
 
                             <Link

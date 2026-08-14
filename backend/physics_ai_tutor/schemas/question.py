@@ -1,3 +1,4 @@
+from enum import StrEnum
 from typing import Annotated
 
 from pydantic import BaseModel, Field, StringConstraints
@@ -10,6 +11,17 @@ AnswerText = Annotated[
 ]
 
 
+class QuestionStatus(StrEnum):
+    UNREVIEWED = "UNREVIEWED"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
+class QuestionSource(StrEnum):
+    MANUAL = "MANUAL"
+    AI_GENERATED = "AI_GENERATED"
+
+
 class QuestionCreate(BaseModel):
     question: QuestionText
     answer: AnswerText
@@ -19,14 +31,14 @@ class QuestionUpdate(QuestionCreate):
     pass
 
 
-class QuestionBulkCreate(BaseModel):
-    questions: list[QuestionCreate] = Field(min_length=1, max_length=50)
-
-
 class QuestionResponse(BaseModel):
     id: int
     question: str
     answer: str
+    status: QuestionStatus
+    source: QuestionSource
+    language: str
+    concepts: list[str] = Field(default_factory=list)
 
     model_config = {
         "from_attributes": True
@@ -38,3 +50,8 @@ class QuestionListResponse(BaseModel):
     total: int
     page: int
     size: int
+
+
+class QuestionImportResponse(BaseModel):
+    created_count: int
+    questions: list[QuestionResponse]

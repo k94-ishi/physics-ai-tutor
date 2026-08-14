@@ -7,7 +7,7 @@ import {
     useState,
 } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { fetchQuestion, updateQuestion } from "@/lib/api";
+import { fetchQuestion, updateQuestion, reviewQuestion } from "@/lib/api";
 import Card from "@/components/ui/Card";
 import FormField from "@/components/ui/FormField";
 import Button from "@/components/ui/Button";
@@ -29,6 +29,7 @@ export default function EditQuestionPage() {
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [approving, setApproving] = useState(false);
     const [errors, setErrors] = useState<FormErrors>({});
 
     const loadQuestion = useCallback(async () => {
@@ -94,6 +95,30 @@ export default function EditQuestionPage() {
         }
     };
 
+    const handleSaveAndApprove = async () => {
+        const nextErrors = validate();
+        setErrors(nextErrors);
+
+        if (Object.keys(nextErrors).length > 0) {
+            return;
+        }
+
+        setApproving(true);
+        try {
+            await reviewQuestion(id, {
+                action: "EDIT_APPROVE",
+                question,
+                answer,
+            });
+            showToast("保存して承認しました。");
+            router.push("/admin/questions");
+        } catch (error) {
+            console.error(error);
+            showToast("処理に失敗しました。", "error");
+            setApproving(false);
+        }
+    };
+
     if (loading) {
         return <LoadingState />;
     }
@@ -142,13 +167,23 @@ export default function EditQuestionPage() {
                         rows={6}
                     />
 
-                    <Button
-                        type="submit"
-                        disabled={submitting}
-                        className="self-start"
-                    >
-                        {submitting ? "保存中..." : "保存"}
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button
+                            type="submit"
+                            disabled={submitting || approving}
+                        >
+                            {submitting ? "保存中..." : "保存"}
+                        </Button>
+
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            disabled={submitting || approving}
+                            onClick={handleSaveAndApprove}
+                        >
+                            {approving ? "処理中..." : "保存して承認"}
+                        </Button>
+                    </div>
                 </form>
             </Card>
         </main>

@@ -1,7 +1,7 @@
 from enum import StrEnum
 from typing import Annotated
 
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 
 QuestionText = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1000)
@@ -37,6 +37,8 @@ class QuestionResponse(BaseModel):
     answer: str
     status: QuestionStatus
     source: QuestionSource
+    language: str
+    concepts: list[str] = Field(default_factory=list)
 
     model_config = {
         "from_attributes": True

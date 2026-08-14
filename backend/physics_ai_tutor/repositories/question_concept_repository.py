@@ -29,6 +29,26 @@ def get_concepts_for_question(db: Session, question_id: int) -> list[Concept]:
     )
 
 
+def get_concepts_for_questions(
+    db: Session, question_ids: list[int]
+) -> dict[int, list[str]]:
+    if not question_ids:
+        return {}
+
+    rows = (
+        db.query(QuestionConcept.question_id, Concept.name)
+        .join(Concept, Concept.id == QuestionConcept.concept_id)
+        .filter(QuestionConcept.question_id.in_(question_ids))
+        .all()
+    )
+
+    result: dict[int, list[str]] = {question_id: [] for question_id in question_ids}
+    for question_id, name in rows:
+        result[question_id].append(name)
+
+    return result
+
+
 def get_concept_ids_for_question(db: Session, question_id: int) -> list[int]:
     rows = (
         db.query(QuestionConcept.concept_id)

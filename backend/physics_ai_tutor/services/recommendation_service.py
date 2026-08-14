@@ -9,6 +9,7 @@ from physics_ai_tutor.repositories import (
     question_repository,
 )
 from physics_ai_tutor.schemas.question import QuestionResponse
+from physics_ai_tutor.services.question_service import attach_concept_names
 
 logger = logging.getLogger(__name__)
 
@@ -88,9 +89,12 @@ def get_related_questions(
 
     scored.sort(key=lambda item: item[0], reverse=True)
 
+    top_questions = [question for _, question in scored[:limit]]
+    attach_concept_names(db, top_questions)
+
     logger.info(
         "Related questions computed: question_id=%d candidates=%d returned=%d",
         question_id, len(candidate_ids), min(limit, len(scored)),
     )
 
-    return [QuestionResponse.model_validate(question) for _, question in scored[:limit]]
+    return [QuestionResponse.model_validate(question) for question in top_questions]

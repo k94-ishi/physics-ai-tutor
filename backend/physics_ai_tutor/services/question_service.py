@@ -10,9 +10,11 @@ from physics_ai_tutor.core.exceptions import (
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.repositories import (
     embedding_repository,
+    question_concept_repository,
     question_repository,
     question_review_repository,
 )
+from physics_ai_tutor.schemas.concept import ConceptExtractionResult
 from physics_ai_tutor.schemas.question import (
     QuestionCreate,
     QuestionListResponse,
@@ -24,6 +26,25 @@ from physics_ai_tutor.schemas.question_review import QuestionReviewAction
 from physics_ai_tutor.services import concept_service, embedding_service
 
 logger = logging.getLogger(__name__)
+
+
+def attach_concept_names(db: Session, questions: list[Question]) -> None:
+    """Populate each question's transient `.concepts` attribute (list[str]).
+
+    Not a mapped column - `QuestionResponse.model_config = {"from_attributes":
+    True}` reads it via getattr, so this only needs to run before a Question
+    is serialized as a response, regardless of whether it was just committed
+    or only flushed within the current transaction.
+    """
+    if not questions:
+        return
+
+    concepts_by_id = question_concept_repository.get_concepts_for_questions(
+        db, [q.id for q in questions]
+    )
+
+    for question in questions:
+        question.concepts = concepts_by_id.get(question.id, [])
 
 
 def fetch_questions(
@@ -50,6 +71,8 @@ def fetch_questions(
         db, keyword=keyword, status=status, exclude_status=exclude_status
     )
 
+    attach_concept_names(db, questions)
+
     logger.info(
         "Questions fetched: page=%d size=%d keyword_present=%s results=%d total=%d",
         page,
@@ -72,11 +95,16 @@ def fetch_question(
     question_id: int,
     exclude_status: str | None = None,
 ) -> Question:
-    return question_repository.get_question(
+    question = question_repository.get_question(
         db,
         question_id,
         exclude_status=exclude_status,
     )
+
+    if question is not None:
+        attach_concept_names(db, [question])
+
+    return question
 
 
 def _attach_concepts_best_effort(
@@ -107,7 +135,7 @@ def create_question(
     try:
         # Save question -> Create embeddings
         # -> Save question emedding -> Save answer embedding
-        # -> Extract concepts (best effort) -> Commit
+        # -> Extract concepts (only if becoming APPROVED, best effort) -> Commit
         db_question = question_repository.create_question(
             db,
             question=question.question,
@@ -135,9 +163,12 @@ def create_question(
             model=settings.embedding_model,
         )
 
-        _attach_concepts_best_effort(
-            db, db_question.id, question.question, question.answer
-        )
+        if status == QuestionStatus.APPROVED:
+            _attach_concepts_best_effort(
+                db, db_question.id, question.question, question.answer
+            )
+
+        attach_concept_names(db, [db_question])
 
         db.commit()
 
@@ -222,8 +253,11 @@ def import_questions_from_jsonl(
                 embedding_records,
             )
 
-            for q in db_questions:
-                _attach_concepts_best_effort(db, q.id, q.question, q.answer)
+            if status == QuestionStatus.APPROVED:
+                for q in db_questions:
+                    _attach_concepts_best_effort(db, q.id, q.question, q.answer)
+
+            attach_concept_names(db, db_questions)
 
         db.commit()
 
@@ -292,6 +326,8 @@ def update_question(
             embedding_type="answer",
             model=settings.embedding_model,
         )
+
+        attach_concept_names(db, [question])
 
         db.commit()
 
@@ -364,6 +400,13 @@ def review_question(
                 model=settings.embedding_model,
             )
 
+        # Concept extraction is triggered by the status becoming APPROVED
+        # (via APPROVE or EDIT_APPROVE), not by question creation.
+        if new_status == QuestionStatus.APPROVED:
+            _attach_concepts_best_effort(
+                db, question_id, updated.question, updated.answer
+            )
+
         question_review_repository.create(
             db,
             question_id=question_id,
@@ -375,6 +418,8 @@ def review_question(
             after_answer=updated.answer,
             comment=comment,
         )
+
+        attach_concept_names(db, [updated])
 
         db.commit()
 
@@ -392,3 +437,148 @@ def review_question(
 
 def fetch_question_reviews(db: Session, question_id: int):
     return question_review_repository.list_for_question(db, question_id)
+
+
+def reextract_concepts_for_questions(
+    db: Session, question_ids: list[int]
+) -> list[ConceptExtractionResult]:
+    """Re-run concept extraction for the given questions, regardless of
+    their current status or whether they already have concepts attached.
+
+    Each question is processed and committed independently so that one
+    failure (e.g. DeepSeek being down) doesn't roll back successes for
+    the rest of the batch - this is the manual recovery path for
+    concept-extraction failures.
+    """
+    results = []
+
+    for question_id in question_ids:
+        question = question_repository.get_question(db, question_id)
+
+        if question is None:
+            results.append(
+                ConceptExtractionResult(question_id=question_id, success=False)
+            )
+            continue
+
+        try:
+            question_concept_repository.delete_by_question_id(db, question_id)
+            concept_names = concept_service.extract_concept_names(
+                question.question, question.answer
+            )
+            concept_service.attach_concepts_to_question(
+                db, question_id, concept_names
+            )
+            db.commit()
+
+            results.append(
+                ConceptExtractionResult(
+                    question_id=question_id, success=True, concepts=concept_names
+                )
+            )
+            logger.info("Concepts re-extracted: question_id=%d", question_id)
+        except Exception:
+            logger.warning(
+                "Concept re-extraction failed: question_id=%d",
+                question_id,
+                exc_info=True,
+            )
+            db.rollback()
+            results.append(
+                ConceptExtractionResult(question_id=question_id, success=False)
+            )
+
+    return results
+
+
+def bulk_delete_questions(
+    db: Session, question_ids: list[int]
+) -> tuple[int, list[int]]:
+    deleted_count = 0
+    not_found_ids: list[int] = []
+
+    for question_id in question_ids:
+        if delete_question(db, question_id):
+            deleted_count += 1
+        else:
+            not_found_ids.append(question_id)
+
+    return deleted_count, not_found_ids
+
+
+def bulk_review_questions(
+    db: Session,
+    question_ids: list[int],
+    action: QuestionReviewAction,
+    reviewer_id: int,
+    comment: str | None = None,
+) -> tuple[list[Question], list[int]]:
+    updated_questions: list[Question] = []
+    not_found_ids: list[int] = []
+
+    for question_id in question_ids:
+        result = review_question(
+            db, question_id, action=action, reviewer_id=reviewer_id, comment=comment
+        )
+
+        if result is None:
+            not_found_ids.append(question_id)
+        else:
+            updated_questions.append(result)
+
+    return updated_questions, not_found_ids
+
+
+def save_ai_question(db: Session, question: str, answer: str) -> Question | None:
+    """Best-effort save of a direct AI answer as a new question.
+
+    Never raises: any failure (duplicate text, embedding generation, DB
+    error) is logged and swallowed so the caller can always still return
+    the DeepSeek answer to the user regardless of whether it was saved.
+    No concept extraction here - saved questions start as UNREVIEWED, and
+    concept extraction is only triggered once a question is APPROVED.
+    """
+    try:
+        if question_repository.get_by_exact_text(db, question) is not None:
+            logger.info("AI answer not saved: duplicate question text")
+            return None
+
+        db_question = question_repository.create_question(
+            db,
+            question=question,
+            answer=answer,
+            status=QuestionStatus.UNREVIEWED,
+            source=QuestionSource.AI_GENERATED,
+        )
+
+        texts = [question, answer]
+        question_vec, answer_vec = embedding_service.create_embeddings(texts)
+
+        embedding_repository.create_embedding(
+            db,
+            question_id=db_question.id,
+            embedding=question_vec,
+            embedding_type="question",
+            model=settings.embedding_model,
+        )
+
+        embedding_repository.create_embedding(
+            db,
+            question_id=db_question.id,
+            embedding=answer_vec,
+            embedding_type="answer",
+            model=settings.embedding_model,
+        )
+
+        db.commit()
+
+        logger.info("AI answer saved as question: id=%d", db_question.id)
+
+        return db_question
+    except Exception:
+        logger.warning(
+            "Failed to save AI answer as question; continuing without saving",
+            exc_info=True,
+        )
+        db.rollback()
+        return None

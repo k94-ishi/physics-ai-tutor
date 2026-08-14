@@ -29,7 +29,7 @@ def set_access_token_cookie(response: Response, token: str) -> None:
         path="/",
         httponly=True,
         secure=settings.cookie_secure,
-        samesite="lax",
+        samesite=settings.same_site,
     )
 
 

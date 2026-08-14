@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     jwt_issuer: str = "physics-ai-tutor"
     # Cookie
     cookie_secure: bool = False
+    same_site: str | None = None
     # CORS
     backend_cors_origins: list[str] = ["http://loaclhost:8000"]
 

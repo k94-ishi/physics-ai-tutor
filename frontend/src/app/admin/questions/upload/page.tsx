@@ -1,6 +1,6 @@
 "use client";
 
-import { SyntheticEvent, useState } from "react";
+import { DragEvent, SyntheticEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError, importQuestions } from "@/lib/api";
 import { QuestionSource, QuestionStatus } from "@/types/question";
@@ -13,6 +13,13 @@ type FormErrors = {
     file?: string;
 };
 
+function formatFileSize(bytes: number): string {
+    if (bytes < 1024) {
+        return `${bytes} B`;
+    }
+    return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
 export default function UploadQuestionsPage() {
     const router = useRouter();
 
@@ -21,6 +28,7 @@ export default function UploadQuestionsPage() {
     const [status, setStatus] = useState<QuestionStatus>("UNREVIEWED");
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState<FormErrors>({});
+    const [dragActive, setDragActive] = useState(false);
 
     const validate = (): FormErrors => {
         const nextErrors: FormErrors = {};
@@ -30,6 +38,31 @@ export default function UploadQuestionsPage() {
         }
 
         return nextErrors;
+    };
+
+    const selectFile = (nextFile: File | null) => {
+        setFile(nextFile);
+        setErrors({});
+    };
+
+    const handleDragOver = (e: DragEvent<HTMLLabelElement>) => {
+        e.preventDefault();
+        setDragActive(true);
+    };
+
+    const handleDragLeave = (e: DragEvent<HTMLLabelElement>) => {
+        e.preventDefault();
+        setDragActive(false);
+    };
+
+    const handleDrop = (e: DragEvent<HTMLLabelElement>) => {
+        e.preventDefault();
+        setDragActive(false);
+
+        const dropped = e.dataTransfer.files?.[0];
+        if (dropped) {
+            selectFile(dropped);
+        }
     };
 
     const handleSubmit = async (e: SyntheticEvent<HTMLFormElement>) => {
@@ -49,10 +82,7 @@ export default function UploadQuestionsPage() {
             router.push("/admin/questions");
         } catch (error) {
             console.error(error);
-            if (
-                error instanceof ApiError &&
-                error.status === 422
-            ) {
+            if (error instanceof ApiError && error.status === 422) {
                 showToast("ファイルの内容に誤りがあります。", "error");
             } else if (error instanceof ApiError && error.status === 409) {
                 showToast("既存の質問と重複する内容が含まれています。", "error");
@@ -77,23 +107,47 @@ export default function UploadQuestionsPage() {
                     className="flex flex-col gap-5"
                 >
                     <div className="flex flex-col gap-1.5">
-                        <label
-                            htmlFor="file"
-                            className="text-sm font-medium text-gray-700"
-                        >
+                        <label className="text-sm font-medium text-gray-700">
                             JSONLファイル
                             <span className="ml-1 text-red-600" aria-hidden="true">
                                 *
                             </span>
                         </label>
 
-                        <input
-                            id="file"
-                            type="file"
-                            accept=".jsonl"
-                            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                            className="text-sm text-gray-700"
-                        />
+                        <label
+                            htmlFor="file"
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
+                            className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed px-4 py-8 text-center transition-colors ${
+                                dragActive
+                                    ? "border-blue-500 bg-blue-50"
+                                    : "border-gray-300 bg-gray-50 hover:bg-gray-100"
+                            }`}
+                        >
+                            <span className="text-sm text-gray-600">
+                                ファイルをドラッグ&ドロップ、またはクリックして選択
+                            </span>
+                            <span className="text-xs text-gray-400">
+                                .jsonl形式のファイル
+                            </span>
+
+                            <input
+                                id="file"
+                                type="file"
+                                accept=".jsonl"
+                                onChange={(e) =>
+                                    selectFile(e.target.files?.[0] ?? null)
+                                }
+                                className="hidden"
+                            />
+                        </label>
+
+                        {file && (
+                            <p className="text-sm text-gray-700">
+                                選択中のファイル: {file.name}({formatFileSize(file.size)})
+                            </p>
+                        )}
 
                         {errors.file && (
                             <p className="text-sm text-red-600">{errors.file}</p>

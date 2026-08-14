@@ -153,7 +153,7 @@ def test_get_questions_filters_by_keyword(admin_client):
 
 def test_get_questions_invalid_size_rejected(client):
     assert client.get(PATH, params={"size": 0}).status_code == 422
-    assert client.get(PATH, params={"size": 101}).status_code == 422
+    assert client.get(PATH, params={"size": 121}).status_code == 422
 
 
 def test_get_questions_invalid_page_rejected(client):

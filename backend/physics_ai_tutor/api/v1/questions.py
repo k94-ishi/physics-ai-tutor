@@ -63,7 +63,7 @@ def _is_admin(current_user: JWTPayload | None) -> bool:
 )
 def get_questions(
     page: int = Query(default=1, ge=1),
-    size: int = Query(default=20, ge=1, le=100),
+    size: int = Query(default=30, ge=1, le=120),
     keyword: str | None = Query(default=None, min_length=1, max_length=200),
     status: QuestionStatus | None = Query(default=None),
     db: Session = Depends(get_db),

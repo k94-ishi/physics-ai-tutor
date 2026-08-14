@@ -22,10 +22,12 @@ import Pagination from "@/components/ui/Pagination";
 import MarkdownContent from "@/components/ui/MarkdownContent";
 import { showToast } from "@/components/ui/Toast";
 import { useQueryState } from "@/lib/hooks/useQueryState";
+import { runWithConcurrencyLimit } from "@/lib/concurrency";
 
 type Mode = "ai" | "keyword";
 type BulkAction = "delete" | "approve" | "reject" | "extract";
 type ConceptFilter = "" | "extracted" | "unextracted";
+type ExtractionStatus = "processing" | "done" | "error";
 
 type ReviewTarget = {
     question: Question;
@@ -105,6 +107,12 @@ function AdminQuestionsPageInner() {
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [bulkAction, setBulkAction] = useState<BulkAction | null>(null);
     const [bulkProcessing, setBulkProcessing] = useState(false);
+
+    // Concept抽出は選択質問ごとに非同期(並列)で進めるため、状態はフロント側でのみ管理する
+    const [extractionStatus, setExtractionStatus] = useState<
+        Map<number, ExtractionStatus>
+    >(new Map());
+    const processingIdsRef = useRef<Set<number>>(new Set());
 
     // 単体操作
     const [deleteTarget, setDeleteTarget] = useState<Question | null>(null);
@@ -304,7 +312,7 @@ function AdminQuestionsPageInner() {
     };
 
     const handleConfirmBulkAction = async () => {
-        if (!bulkAction || selectedIds.size === 0) {
+        if (!bulkAction || bulkAction === "extract" || selectedIds.size === 0) {
             return;
         }
 
@@ -315,19 +323,13 @@ function AdminQuestionsPageInner() {
             if (bulkAction === "delete") {
                 const result = await bulkDeleteQuestions(ids);
                 showToast(`${result.deleted_count}件を削除しました。`);
-            } else if (bulkAction === "approve" || bulkAction === "reject") {
+            } else {
                 const result = await bulkReviewQuestions(
                     ids,
                     bulkAction === "approve" ? "APPROVE" : "REJECT"
                 );
                 showToast(
                     `${result.questions.length}件を${bulkAction === "approve" ? "承認" : "却下"}しました。`
-                );
-            } else {
-                const result = await extractConcepts(ids);
-                const successCount = result.results.filter((r) => r.success).length;
-                showToast(
-                    `${successCount}/${result.results.length}件のConcept抽出に成功しました。`
                 );
             }
 
@@ -340,6 +342,61 @@ function AdminQuestionsPageInner() {
         } finally {
             setBulkProcessing(false);
         }
+    };
+
+    // Concept抽出は質問ごとに個別のAPI呼び出しを並列実行し、ダイアログはすぐ閉じて
+    // 各カードのバッジ(処理中/完了/失敗)で進捗を表示する。全件完了を待たずに
+    // 画面を操作できるようにするための非同期化(フロント側での状態管理)。
+    const startConceptExtraction = (ids: number[]) => {
+        const targetIds = ids.filter(
+            (id) => !processingIdsRef.current.has(id)
+        );
+
+        setBulkAction(null);
+        setSelectedIds(new Set());
+
+        if (targetIds.length === 0) {
+            return;
+        }
+
+        targetIds.forEach((id) => processingIdsRef.current.add(id));
+        setExtractionStatus((prev) => {
+            const next = new Map(prev);
+            targetIds.forEach((id) => next.set(id, "processing"));
+            return next;
+        });
+
+        runWithConcurrencyLimit(targetIds, 4, async (id) => {
+            try {
+                const { results } = await extractConcepts([id]);
+                const result = results[0];
+
+                setExtractionStatus((prev) => {
+                    const next = new Map(prev);
+                    next.set(id, result?.success ? "done" : "error");
+                    return next;
+                });
+
+                if (result?.success) {
+                    setListItems((prev) =>
+                        prev.map((question) =>
+                            question.id === id
+                                ? { ...question, concepts: result.concepts }
+                                : question
+                        )
+                    );
+                }
+            } catch (error) {
+                console.error(error);
+                setExtractionStatus((prev) => {
+                    const next = new Map(prev);
+                    next.set(id, "error");
+                    return next;
+                });
+            } finally {
+                processingIdsRef.current.delete(id);
+            }
+        });
     };
 
     return (
@@ -584,6 +641,7 @@ function AdminQuestionsPageInner() {
                                 {visibleItems.map((question) => {
                                     const hasConcepts = question.concepts.length > 0;
                                     const isSelected = selectedIds.has(question.id);
+                                    const extraction = extractionStatus.get(question.id);
 
                                     return (
                                         <li key={question.id}>
@@ -623,6 +681,24 @@ function AdminQuestionsPageInner() {
                                                                 ? `概念抽出済み(${question.concepts.length})`
                                                                 : "概念未抽出"}
                                                         </span>
+
+                                                        {extraction === "processing" && (
+                                                            <span className="shrink-0 animate-pulse rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                                                                Concept抽出: 処理中
+                                                            </span>
+                                                        )}
+
+                                                        {extraction === "done" && (
+                                                            <span className="shrink-0 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+                                                                Concept抽出: 完了
+                                                            </span>
+                                                        )}
+
+                                                        {extraction === "error" && (
+                                                            <span className="shrink-0 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
+                                                                Concept抽出: 失敗
+                                                            </span>
+                                                        )}
                                                     </div>
 
                                                     <span className="font-medium text-gray-900">
@@ -754,8 +830,12 @@ function AdminQuestionsPageInner() {
                 title={bulkAction ? BULK_ACTION_LABELS[bulkAction].title : ""}
                 description={`${selectedIds.size}件が対象です。`}
                 confirmLabel={bulkAction ? BULK_ACTION_LABELS[bulkAction].confirmLabel : undefined}
-                confirming={bulkProcessing}
-                onConfirm={handleConfirmBulkAction}
+                confirming={bulkAction === "extract" ? false : bulkProcessing}
+                onConfirm={() =>
+                    bulkAction === "extract"
+                        ? startConceptExtraction(Array.from(selectedIds))
+                        : handleConfirmBulkAction()
+                }
                 onCancel={() => setBulkAction(null)}
             />
         </main>

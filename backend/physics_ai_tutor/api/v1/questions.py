@@ -15,6 +15,16 @@ from sqlalchemy.orm import Session
 
 from physics_ai_tutor.api.dependencies import get_current_user_optional, require_admin
 from physics_ai_tutor.database.dependency import get_db
+from physics_ai_tutor.schemas.bulk import (
+    BulkDeleteRequest,
+    BulkDeleteResponse,
+    BulkReviewRequest,
+    BulkReviewResponse,
+)
+from physics_ai_tutor.schemas.concept import (
+    ConceptExtractionBatchResponse,
+    ConceptExtractionRequest,
+)
 from physics_ai_tutor.schemas.embedding import (
     SimilarQuestionRequest,
     SimilarQuestionResponse,
@@ -143,6 +153,83 @@ def create_question(
         result.id,
     )
     return result
+
+
+@router.post(
+    "/bulk-delete",
+    response_model=BulkDeleteResponse,
+)
+def bulk_delete_questions(
+    data: BulkDeleteRequest,
+    db: Session = Depends(get_db),
+    current_user: JWTPayload = Depends(require_admin),
+):
+    deleted_count, not_found_ids = question_service.bulk_delete_questions(
+        db, data.question_ids
+    )
+
+    logger.info(
+        "Admin action: user_id=%s action=bulk_delete_questions "
+        "deleted_count=%d not_found_count=%d",
+        current_user.sub,
+        deleted_count,
+        len(not_found_ids),
+    )
+
+    return BulkDeleteResponse(deleted_count=deleted_count, not_found_ids=not_found_ids)
+
+
+@router.post(
+    "/bulk-review",
+    response_model=BulkReviewResponse,
+)
+def bulk_review_questions(
+    data: BulkReviewRequest,
+    db: Session = Depends(get_db),
+    current_user: JWTPayload = Depends(require_admin),
+):
+    updated_questions, not_found_ids = question_service.bulk_review_questions(
+        db,
+        data.question_ids,
+        action=data.action,
+        reviewer_id=int(current_user.sub),
+        comment=data.comment,
+    )
+
+    logger.info(
+        "Admin action: user_id=%s action=bulk_review_questions "
+        "review_action=%s updated_count=%d not_found_count=%d",
+        current_user.sub,
+        data.action,
+        len(updated_questions),
+        len(not_found_ids),
+    )
+
+    return BulkReviewResponse(questions=updated_questions, not_found_ids=not_found_ids)
+
+
+@router.post(
+    "/concepts/extract",
+    response_model=ConceptExtractionBatchResponse,
+)
+def extract_concepts(
+    data: ConceptExtractionRequest,
+    db: Session = Depends(get_db),
+    current_user: JWTPayload = Depends(require_admin),
+):
+    results = question_service.reextract_concepts_for_questions(
+        db, data.question_ids
+    )
+
+    logger.info(
+        "Admin action: user_id=%s action=extract_concepts "
+        "requested_count=%d success_count=%d",
+        current_user.sub,
+        len(data.question_ids),
+        sum(1 for r in results if r.success),
+    )
+
+    return ConceptExtractionBatchResponse(results=results)
 
 
 @router.post(

@@ -1,9 +1,11 @@
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
+from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.schemas.ai import AskAiRequest, AskAiResponse
-from physics_ai_tutor.services import deepseek_service
+from physics_ai_tutor.services import deepseek_service, question_service
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +18,11 @@ _SYSTEM_PROMPT = (
 
 
 @router.post("/ask", response_model=AskAiResponse)
-def ask_ai(request: AskAiRequest):
+def ask_ai(request: AskAiRequest, db: Session = Depends(get_db)):
     answer = deepseek_service.chat_completion(_SYSTEM_PROMPT, request.question)
 
     logger.info("Ask AI request answered: question_length=%d", len(request.question))
+
+    question_service.save_ai_question(db, request.question, answer)
 
     return AskAiResponse(answer=answer)

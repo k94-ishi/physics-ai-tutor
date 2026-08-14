@@ -22,6 +22,7 @@ import { showToast } from "@/components/ui/Toast";
 
 type Mode = "ai" | "keyword";
 type BulkAction = "delete" | "approve" | "reject" | "extract";
+type ConceptFilter = "" | "extracted" | "unextracted";
 
 type ReviewTarget = {
     question: Question;
@@ -73,6 +74,7 @@ export default function AdminQuestionsPage() {
     const [keywordInput, setKeywordInput] = useState("");
     const [debouncedKeyword, setDebouncedKeyword] = useState("");
     const [statusFilter, setStatusFilter] = useState<QuestionStatus | "">("");
+    const [conceptFilter, setConceptFilter] = useState<ConceptFilter>("");
     const [page, setPage] = useState(1);
     const [listItems, setListItems] = useState<Question[]>([]);
     const [listTotal, setListTotal] = useState(0);
@@ -154,7 +156,7 @@ export default function AdminQuestionsPage() {
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelectedIds(new Set());
-    }, [debouncedKeyword, statusFilter, page]);
+    }, [debouncedKeyword, statusFilter, conceptFilter, page]);
 
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -205,6 +207,16 @@ export default function AdminQuestionsPage() {
 
     const showSimilarityView = mode === "ai" && similaritySearched;
 
+    const visibleItems = listItems.filter((question) => {
+        if (conceptFilter === "extracted") {
+            return question.concepts.length > 0;
+        }
+        if (conceptFilter === "unextracted") {
+            return question.concepts.length === 0;
+        }
+        return true;
+    });
+
     const hasPrevPage = page > 1;
     const hasNextPage = page * PAGE_SIZE < listTotal;
     const rangeStart = listTotal === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
@@ -224,9 +236,9 @@ export default function AdminQuestionsPage() {
 
     const toggleSelectAll = () => {
         setSelectedIds((prev) =>
-            prev.size === listItems.length
+            prev.size === visibleItems.length
                 ? new Set()
-                : new Set(listItems.map((q) => q.id))
+                : new Set(visibleItems.map((q) => q.id))
         );
     };
 
@@ -359,22 +371,40 @@ export default function AdminQuestionsPage() {
                 </div>
 
                 {mode === "keyword" && (
-                    <div className="w-56">
-                        <SelectField
-                            id="status-filter"
-                            label="ステータスで絞り込み"
-                            value={statusFilter}
-                            onChange={(e) =>
-                                setStatusFilter(e.target.value as QuestionStatus | "")
-                            }
-                            options={[
-                                { value: "", label: "すべて" },
-                                { value: "UNREVIEWED", label: "未レビュー" },
-                                { value: "APPROVED", label: "承認済み" },
-                                { value: "REJECTED", label: "却下" },
-                            ]}
-                        />
-                    </div>
+                    <>
+                        <div className="w-56">
+                            <SelectField
+                                id="status-filter"
+                                label="ステータスで絞り込み"
+                                value={statusFilter}
+                                onChange={(e) =>
+                                    setStatusFilter(e.target.value as QuestionStatus | "")
+                                }
+                                options={[
+                                    { value: "", label: "すべて" },
+                                    { value: "UNREVIEWED", label: "未レビュー" },
+                                    { value: "APPROVED", label: "承認済み" },
+                                    { value: "REJECTED", label: "却下" },
+                                ]}
+                            />
+                        </div>
+
+                        <div className="w-56">
+                            <SelectField
+                                id="concept-filter"
+                                label="Concept状態で絞り込み"
+                                value={conceptFilter}
+                                onChange={(e) =>
+                                    setConceptFilter(e.target.value as ConceptFilter)
+                                }
+                                options={[
+                                    { value: "", label: "すべて" },
+                                    { value: "extracted", label: "抽出済み" },
+                                    { value: "unextracted", label: "未抽出" },
+                                ]}
+                            />
+                        </div>
+                    </>
                 )}
             </div>
 
@@ -473,7 +503,14 @@ export default function AdminQuestionsPage() {
                         <StatusMessage message="登録されている質問がありません。" />
                     )}
 
-                    {!listLoading && !listError && listItems.length > 0 && (
+                    {!listLoading &&
+                        !listError &&
+                        listItems.length > 0 &&
+                        visibleItems.length === 0 && (
+                            <StatusMessage message="Concept状態の条件に一致する質問がこのページにはありません。" />
+                        )}
+
+                    {!listLoading && !listError && visibleItems.length > 0 && (
                         <>
                             <div className="flex flex-wrap items-center gap-3">
                                 <label className="flex items-center gap-2 text-sm text-gray-600">
@@ -481,7 +518,7 @@ export default function AdminQuestionsPage() {
                                         type="checkbox"
                                         checked={
                                             selectedIds.size > 0 &&
-                                            selectedIds.size === listItems.length
+                                            selectedIds.size === visibleItems.length
                                         }
                                         onChange={toggleSelectAll}
                                     />
@@ -521,7 +558,7 @@ export default function AdminQuestionsPage() {
                             </div>
 
                             <ul className="flex flex-col gap-3">
-                                {listItems.map((question) => {
+                                {visibleItems.map((question) => {
                                     const hasConcepts = question.concepts.length > 0;
 
                                     return (

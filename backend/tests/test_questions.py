@@ -606,3 +606,152 @@ def test_delete_question_removes_embeddings(admin_client, db):
     )
 
     assert remaining == []
+
+
+def test_create_question_response_includes_concepts_and_language(admin_client):
+    response = _post(admin_client, "概念テスト質問", "概念テスト回答")
+
+    data = response.json()
+
+    assert data["concepts"] == ["概念A", "概念B"]
+    assert data["language"] == "ja"
+
+
+def test_get_questions_response_includes_concepts(admin_client):
+    _post(admin_client, "一覧概念質問", "一覧概念回答")
+
+    response = admin_client.get(PATH, params={"keyword": "一覧概念質問"})
+
+    assert response.json()["items"][0]["concepts"] == ["概念A", "概念B"]
+
+
+BULK_DELETE_PATH = f"{PATH}/bulk-delete"
+BULK_REVIEW_PATH = f"{PATH}/bulk-review"
+CONCEPTS_EXTRACT_PATH = f"{PATH}/concepts/extract"
+
+
+def test_bulk_delete_questions(admin_client):
+    id1 = _post(admin_client, "一括削除1", "回答1").json()[Key.ID]
+    id2 = _post(admin_client, "一括削除2", "回答2").json()[Key.ID]
+
+    response = admin_client.post(
+        BULK_DELETE_PATH, json={"question_ids": [id1, id2, 99999]}
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["deleted_count"] == 2
+    assert data["not_found_ids"] == [99999]
+
+
+def test_bulk_delete_questions_requires_admin(client):
+    response = client.post(BULK_DELETE_PATH, json={"question_ids": [1]})
+
+    assert response.status_code == 401
+
+
+def test_bulk_delete_questions_forbidden_for_non_admin(user_client):
+    response = user_client.post(BULK_DELETE_PATH, json={"question_ids": [1]})
+
+    assert response.status_code == 403
+
+
+def test_bulk_delete_questions_empty_list_rejected(admin_client):
+    response = admin_client.post(BULK_DELETE_PATH, json={"question_ids": []})
+
+    assert response.status_code == 422
+
+
+def test_bulk_review_questions_approve(admin_client):
+    id1 = _post_import(admin_client, [("一括承認1", "回答1")]).json()["questions"][0][
+        Key.ID
+    ]
+    id2 = _post_import(admin_client, [("一括承認2", "回答2")]).json()["questions"][0][
+        Key.ID
+    ]
+
+    response = admin_client.post(
+        BULK_REVIEW_PATH,
+        json={"question_ids": [id1, id2, 99999], "action": "APPROVE"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert len(data["questions"]) == 2
+    assert all(q[Key.STATUS] == "APPROVED" for q in data["questions"])
+    assert data["not_found_ids"] == [99999]
+
+
+def test_bulk_review_questions_reject(admin_client):
+    id1 = _post(admin_client, "一括却下1", "回答1").json()[Key.ID]
+
+    response = admin_client.post(
+        BULK_REVIEW_PATH, json={"question_ids": [id1], "action": "REJECT"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["questions"][0][Key.STATUS] == "REJECTED"
+
+
+def test_bulk_review_questions_edit_approve_rejected(admin_client):
+    id1 = _post(admin_client, "質問", "回答").json()[Key.ID]
+
+    response = admin_client.post(
+        BULK_REVIEW_PATH, json={"question_ids": [id1], "action": "EDIT_APPROVE"}
+    )
+
+    assert response.status_code == 422
+
+
+def test_bulk_review_questions_requires_admin(client):
+    response = client.post(
+        BULK_REVIEW_PATH, json={"question_ids": [1], "action": "APPROVE"}
+    )
+
+    assert response.status_code == 401
+
+
+def test_extract_concepts(admin_client):
+    import_response = _post_import(
+        admin_client, [("未抽出質問", "回答")], status="UNREVIEWED"
+    )
+    id1 = import_response.json()["questions"][0][Key.ID]
+
+    response = admin_client.post(
+        CONCEPTS_EXTRACT_PATH, json={"question_ids": [id1]}
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()["results"]
+    assert data[0]["question_id"] == id1
+    assert data[0]["success"] is True
+    assert data[0]["concepts"] == ["概念A", "概念B"]
+
+    detail_response = admin_client.get(f"{PATH}/{id1}")
+    assert detail_response.json()["concepts"] == ["概念A", "概念B"]
+
+
+def test_extract_concepts_requires_admin(client):
+    response = client.post(CONCEPTS_EXTRACT_PATH, json={"question_ids": [1]})
+
+    assert response.status_code == 401
+
+
+def test_extract_concepts_forbidden_for_non_admin(user_client):
+    response = user_client.post(CONCEPTS_EXTRACT_PATH, json={"question_ids": [1]})
+
+    assert response.status_code == 403
+
+
+def test_extract_concepts_not_found(admin_client):
+    response = admin_client.post(
+        CONCEPTS_EXTRACT_PATH, json={"question_ids": [99999]}
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()["results"][0]
+    assert data["success"] is False

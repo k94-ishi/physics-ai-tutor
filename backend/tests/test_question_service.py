@@ -400,3 +400,284 @@ def test_review_question_not_found_returns_none(db):
     )
 
     assert result is None
+
+
+def _spy_extract_concept_names(monkeypatch, calls):
+    def _fake(question, answer):
+        calls.append((question, answer))
+        return ["概念A", "概念B"]
+
+    monkeypatch.setattr(concept_service, "extract_concept_names", _fake)
+
+
+def test_create_question_unreviewed_skips_concept_extraction(db, monkeypatch):
+    calls = []
+    _spy_extract_concept_names(monkeypatch, calls)
+
+    created = question_service.create_question(
+        db,
+        QuestionCreate(question="質問", answer="回答"),
+        status=QuestionStatus.UNREVIEWED,
+        source=QuestionSource.AI_GENERATED,
+    )
+
+    assert calls == []
+    assert question_concept_repository.get_concepts_for_question(db, created.id) == []
+
+
+def test_create_question_approved_extracts_concepts(db, monkeypatch):
+    calls = []
+    _spy_extract_concept_names(monkeypatch, calls)
+
+    created = _create(db)
+
+    assert len(calls) == 1
+    assert question_concept_repository.get_concepts_for_question(db, created.id) != []
+
+
+def test_import_questions_unreviewed_skips_concept_extraction(db, monkeypatch):
+    calls = []
+    _spy_extract_concept_names(monkeypatch, calls)
+
+    created = question_service.import_questions_from_jsonl(
+        db,
+        [QuestionCreate(question="一括質問1", answer="一括回答1")],
+        status=QuestionStatus.UNREVIEWED,
+        source=QuestionSource.AI_GENERATED,
+    )
+
+    assert calls == []
+    assert (
+        question_concept_repository.get_concepts_for_question(db, created[0].id) == []
+    )
+
+
+def test_import_questions_approved_extracts_concepts(db, monkeypatch):
+    calls = []
+    _spy_extract_concept_names(monkeypatch, calls)
+
+    created = question_service.import_questions_from_jsonl(
+        db,
+        [
+            QuestionCreate(question="一括質問1", answer="一括回答1"),
+            QuestionCreate(question="一括質問2", answer="一括回答2"),
+        ],
+        status=QuestionStatus.APPROVED,
+        source=QuestionSource.MANUAL,
+    )
+
+    assert len(calls) == 2
+    for question in created:
+        assert question_concept_repository.get_concepts_for_question(
+            db, question.id
+        ) != []
+
+
+def test_review_question_approve_extracts_concepts(db, monkeypatch):
+    created = question_service.create_question(
+        db,
+        QuestionCreate(question="レビュー対象", answer="レビュー回答"),
+        status=QuestionStatus.UNREVIEWED,
+        source=QuestionSource.AI_GENERATED,
+    )
+    admin = create_user(
+        db, "extract-approve@example.com", "reviewerpass123", role="admin"
+    )
+
+    calls = []
+    _spy_extract_concept_names(monkeypatch, calls)
+
+    question_service.review_question(
+        db, created.id, action=QuestionReviewAction.APPROVE, reviewer_id=admin.id,
+    )
+
+    assert len(calls) == 1
+    assert question_concept_repository.get_concepts_for_question(db, created.id) != []
+
+
+def test_review_question_reject_does_not_extract_concepts(db, monkeypatch):
+    created = _create(db)
+    admin = create_user(
+        db, "extract-reject@example.com", "reviewerpass123", role="admin"
+    )
+
+    calls = []
+    _spy_extract_concept_names(monkeypatch, calls)
+
+    question_service.review_question(
+        db, created.id, action=QuestionReviewAction.REJECT, reviewer_id=admin.id,
+    )
+
+    assert calls == []
+
+
+def test_review_question_edit_approve_extracts_from_updated_content(db, monkeypatch):
+    created = question_service.create_question(
+        db,
+        QuestionCreate(question="編集前", answer="編集前回答"),
+        status=QuestionStatus.UNREVIEWED,
+        source=QuestionSource.AI_GENERATED,
+    )
+    admin = create_user(db, "extract-edit@example.com", "reviewerpass123", role="admin")
+
+    calls = []
+    _spy_extract_concept_names(monkeypatch, calls)
+
+    question_service.review_question(
+        db,
+        created.id,
+        action=QuestionReviewAction.EDIT_APPROVE,
+        reviewer_id=admin.id,
+        question="編集後",
+        answer="編集後回答",
+    )
+
+    assert calls == [("編集後", "編集後回答")]
+
+
+def test_fetch_questions_includes_concepts(db):
+    created = _create(db)
+
+    result = question_service.fetch_questions(db, page=1, size=20)
+
+    assert result.items[0].concepts == ["概念A", "概念B"]
+    assert created.id == result.items[0].id
+
+
+def test_fetch_question_includes_concepts(db):
+    created = _create(db)
+
+    found = question_service.fetch_question(db, created.id)
+
+    assert found.concepts == ["概念A", "概念B"]
+
+
+def test_save_ai_question_success(db):
+    saved = question_service.save_ai_question(db, "AIへの質問", "AIの回答")
+
+    assert saved is not None
+    assert saved.status == "UNREVIEWED"
+    assert saved.source == "AI_GENERATED"
+    assert saved.language == "ja"
+    assert _embeddings_for(db, saved.id) != []
+
+
+def test_save_ai_question_does_not_extract_concepts(db, monkeypatch):
+    calls = []
+    _spy_extract_concept_names(monkeypatch, calls)
+
+    saved = question_service.save_ai_question(db, "AIへの質問2", "AIの回答2")
+
+    assert calls == []
+    assert question_concept_repository.get_concepts_for_question(db, saved.id) == []
+
+
+def test_save_ai_question_duplicate_returns_none(db):
+    _create(db, "既にある質問", "既にある回答")
+
+    saved = question_service.save_ai_question(db, "既にある質問", "別の回答")
+
+    assert saved is None
+
+
+def test_save_ai_question_embedding_failure_returns_none(db, monkeypatch):
+    def _raise(texts):
+        raise EmbeddingGenerationError("boom")
+
+    monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
+
+    saved = question_service.save_ai_question(db, "失敗する質問", "失敗する回答")
+
+    assert saved is None
+    assert question_service.fetch_questions(db, page=1, size=20).items == []
+
+
+def test_bulk_delete_questions(db):
+    q1 = _create(db, "質問1", "回答1")
+    q2 = _create(db, "質問2", "回答2")
+
+    deleted_count, not_found_ids = question_service.bulk_delete_questions(
+        db, [q1.id, q2.id, 99999]
+    )
+
+    assert deleted_count == 2
+    assert not_found_ids == [99999]
+    assert question_service.fetch_questions(db, page=1, size=20).total == 0
+
+
+def test_bulk_review_questions_approve(db):
+    q1 = question_service.create_question(
+        db, QuestionCreate(question="質問1", answer="回答1"),
+        status=QuestionStatus.UNREVIEWED, source=QuestionSource.AI_GENERATED,
+    )
+    q2 = question_service.create_question(
+        db, QuestionCreate(question="質問2", answer="回答2"),
+        status=QuestionStatus.UNREVIEWED, source=QuestionSource.AI_GENERATED,
+    )
+    admin = create_user(db, "bulk-approve@example.com", "reviewerpass123", role="admin")
+
+    updated, not_found_ids = question_service.bulk_review_questions(
+        db, [q1.id, q2.id, 99999], action=QuestionReviewAction.APPROVE,
+        reviewer_id=admin.id,
+    )
+
+    assert {q.status for q in updated} == {"APPROVED"}
+    assert len(updated) == 2
+    assert not_found_ids == [99999]
+
+
+def test_bulk_review_questions_reject(db):
+    q1 = _create(db, "質問1", "回答1")
+    admin = create_user(db, "bulk-reject@example.com", "reviewerpass123", role="admin")
+
+    updated, not_found_ids = question_service.bulk_review_questions(
+        db, [q1.id], action=QuestionReviewAction.REJECT, reviewer_id=admin.id,
+    )
+
+    assert updated[0].status == "REJECTED"
+    assert not_found_ids == []
+
+
+def test_reextract_concepts_for_questions_replaces_existing_links(db, monkeypatch):
+    created = _create(db)
+    assert question_concept_repository.get_concepts_for_question(db, created.id) != []
+
+    monkeypatch.setattr(
+        concept_service,
+        "extract_concept_names",
+        lambda question, answer: ["新概念"],
+    )
+
+    results = question_service.reextract_concepts_for_questions(db, [created.id])
+
+    assert results[0].success is True
+    assert results[0].concepts == ["新概念"]
+    concepts = question_concept_repository.get_concepts_for_question(db, created.id)
+    assert [c.name for c in concepts] == ["新概念"]
+
+
+def test_reextract_concepts_for_questions_not_found(db):
+    results = question_service.reextract_concepts_for_questions(db, [99999])
+
+    assert len(results) == 1
+    assert results[0].question_id == 99999
+    assert results[0].success is False
+
+
+def test_reextract_concepts_for_questions_partial_failure_continues(db, monkeypatch):
+    q1 = _create(db, "質問1", "回答1")
+    q2 = _create(db, "質問2", "回答2")
+
+    def _fake(question, answer):
+        if question == "質問1":
+            raise ConceptExtractionError("boom")
+        return ["概念X"]
+
+    monkeypatch.setattr(concept_service, "extract_concept_names", _fake)
+
+    results = question_service.reextract_concepts_for_questions(db, [q1.id, q2.id])
+
+    results_by_id = {r.question_id: r for r in results}
+    assert results_by_id[q1.id].success is False
+    assert results_by_id[q2.id].success is True
+    assert question_concept_repository.get_concepts_for_question(db, q2.id) != []

@@ -5,6 +5,7 @@ import { askAi } from "@/lib/api";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import LoadingState from "@/components/ui/LoadingState";
+import MarkdownContent from "@/components/ui/MarkdownContent";
 import { showToast } from "@/components/ui/Toast";
 
 const inputClassName =
@@ -64,8 +65,8 @@ export default function AskAiBox() {
             {loading && <LoadingState label="回答を生成中..." />}
 
             {!loading && answer && (
-                <Card className="whitespace-pre-wrap text-sm text-gray-700">
-                    {answer}
+                <Card>
+                    <MarkdownContent content={answer} variant="full" />
                 </Card>
             )}
         </div>

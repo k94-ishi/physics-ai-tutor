@@ -424,6 +424,11 @@ function AdminQuestionsPageInner() {
         });
     };
 
+    const handlePageChange = (nextPage: number) =>
+        setQueryState({ page: String(nextPage) });
+    const handleSizeChange = (nextSize: number) =>
+        setQueryState({ size: String(nextSize), page: "1" });
+
     return (
         <main className="flex flex-col gap-6">
             <div className="flex items-center justify-between">
@@ -455,7 +460,7 @@ function AdminQuestionsPageInner() {
                         className={modeButtonClassName(mode === "ai")}
                         onClick={() => setMode("ai")}
                     >
-                        AI検索(関連度)
+                        関連度検索
                     </button>
 
                     <button
@@ -582,7 +587,7 @@ function AdminQuestionsPageInner() {
 
                                             <MarkdownContent
                                                 content={result.answer}
-                                                variant="preview"
+                                                variant="full"
                                             />
                                         </Card>
                                     </Link>
@@ -617,6 +622,14 @@ function AdminQuestionsPageInner() {
 
                     {!listLoading && !listError && visibleItems.length > 0 && (
                         <>
+                            <Pagination
+                                page={page}
+                                size={size}
+                                total={listTotal}
+                                onPageChange={handlePageChange}
+                                onSizeChange={handleSizeChange}
+                            />
+
                             <div className="flex flex-wrap items-center gap-3">
                                 <label className="flex items-center gap-2 text-sm text-gray-600">
                                     <input
@@ -749,7 +762,7 @@ function AdminQuestionsPageInner() {
 
                                                     <MarkdownContent
                                                         content={question.answer}
-                                                        variant="preview"
+                                                        variant="full"
                                                     />
 
                                                     {hasConcepts && (
@@ -831,15 +844,8 @@ function AdminQuestionsPageInner() {
                                 page={page}
                                 size={size}
                                 total={listTotal}
-                                onPageChange={(nextPage) =>
-                                    setQueryState({ page: String(nextPage) })
-                                }
-                                onSizeChange={(nextSize) =>
-                                    setQueryState({
-                                        size: String(nextSize),
-                                        page: "1",
-                                    })
-                                }
+                                onPageChange={handlePageChange}
+                                onSizeChange={handleSizeChange}
                             />
                         </>
                     )}

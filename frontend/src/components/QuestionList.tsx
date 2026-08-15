@@ -9,7 +9,7 @@ import {
     useRef,
     useState,
 } from "react";
-import { fetchQuestions, searchQuestions } from "@/lib/api";
+import { askAi, fetchQuestions, searchQuestions } from "@/lib/api";
 import { Question, SimilarQuestion } from "@/types/question";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -17,9 +17,10 @@ import LoadingState from "@/components/ui/LoadingState";
 import StatusMessage from "@/components/ui/StatusMessage";
 import Pagination from "@/components/ui/Pagination";
 import MarkdownContent from "@/components/ui/MarkdownContent";
+import { showToast } from "@/components/ui/Toast";
 import { useQueryState } from "@/lib/hooks/useQueryState";
 
-type Mode = "ai" | "keyword";
+type Mode = "similarity" | "keyword" | "ask";
 
 const SIMILARITY_LIMIT = 10;
 const KEYWORD_DEBOUNCE_MS = 300;
@@ -46,7 +47,7 @@ const inputClassName =
     "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
 
 function QuestionListInner() {
-    const [mode, setMode] = useState<Mode>("ai");
+    const [mode, setMode] = useState<Mode>("similarity");
 
     // 一覧(pagination + keyword filter、page/size/keywordはURLで管理)
     const [queryState, setQueryState] = useQueryState(LIST_QUERY_DEFAULTS);
@@ -59,7 +60,7 @@ function QuestionListInner() {
     const [listError, setListError] = useState(false);
     const listRequestId = useRef(0);
 
-    // AI関連度検索(送信時のみ実行)
+    // 関連度検索(送信時のみ実行)
     const [similarityInput, setSimilarityInput] = useState("");
     const [similaritySearched, setSimilaritySearched] = useState(false);
     const [similarityResults, setSimilarityResults] = useState<
@@ -68,6 +69,12 @@ function QuestionListInner() {
     const [similarityLoading, setSimilarityLoading] = useState(false);
     const [similarityError, setSimilarityError] = useState(false);
     const similarityRequestId = useRef(0);
+
+    // AIに質問する(既存回答の検索ではなく、その場でAIが新しい回答を生成する)
+    const [askInput, setAskInput] = useState("");
+    const [askAnswer, setAskAnswer] = useState<string | null>(null);
+    const [askLoading, setAskLoading] = useState(false);
+    const askRequestId = useRef(0);
 
     const loadList = useCallback(
         async (targetPage: number, targetSize: number, keyword: string) => {
@@ -167,26 +174,91 @@ function QuestionListInner() {
         }
     }, []);
 
-    const handleSimilaritySubmit = (e: FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        runSimilaritySearch(similarityInput);
-    };
+    const runAsk = useCallback(async (question: string) => {
+        const trimmed = question.trim();
 
-    const showSimilarityView = mode === "ai" && similaritySearched;
+        if (!trimmed) {
+            return;
+        }
+
+        const requestId = ++askRequestId.current;
+        setAskLoading(true);
+        setAskAnswer(null);
+
+        try {
+            const result = await askAi(trimmed);
+
+            if (requestId !== askRequestId.current) {
+                return;
+            }
+
+            setAskAnswer(result.answer);
+        } catch (error) {
+            if (requestId !== askRequestId.current) {
+                return;
+            }
+
+            console.error(error);
+            showToast("AIへの質問に失敗しました。", "error");
+        } finally {
+            if (requestId === askRequestId.current) {
+                setAskLoading(false);
+            }
+        }
+    }, []);
+
+    const searchValue =
+        mode === "similarity"
+            ? similarityInput
+            : mode === "ask"
+                ? askInput
+                : keywordInput;
+
+    function handleInputChange(value: string) {
+        if (mode === "similarity") {
+            setSimilarityInput(value);
+        } else if (mode === "ask") {
+            setAskInput(value);
+        } else {
+            setKeywordInput(value);
+        }
+    }
+
+    function handleSubmit(e: FormEvent<HTMLFormElement>) {
+        e.preventDefault();
+        if (mode === "similarity") {
+            runSimilaritySearch(similarityInput);
+        } else if (mode === "ask") {
+            runAsk(askInput);
+        }
+    }
+
+    const placeholder =
+        mode === "similarity"
+            ? "質問を入力すると意味が近い質問を検索します"
+            : mode === "ask"
+                ? "物理に関する質問を入力してください"
+                : "キーワードで質問・回答を絞り込み";
+
+    const isBusy = mode === "similarity" ? similarityLoading : askLoading;
+
+    const showSimilarityView = mode === "similarity" && similaritySearched;
+    const showAskView = mode === "ask";
+
+    const handlePageChange = (nextPage: number) =>
+        setQueryState({ page: String(nextPage) });
+    const handleSizeChange = (nextSize: number) =>
+        setQueryState({ size: String(nextSize), page: "1" });
 
     return (
         <div className="flex flex-col gap-4">
-            <h2 className="text-lg font-semibold text-gray-900">
-                質問一覧
-            </h2>
-
             <div className="flex gap-2">
                 <button
                     type="button"
-                    className={modeButtonClassName(mode === "ai")}
-                    onClick={() => setMode("ai")}
+                    className={modeButtonClassName(mode === "similarity")}
+                    onClick={() => setMode("similarity")}
                 >
-                    AI検索(関連度)
+                    関連度検索
                 </button>
 
                 <button
@@ -196,40 +268,35 @@ function QuestionListInner() {
                 >
                     キーワード検索
                 </button>
+
+                <button
+                    type="button"
+                    className={modeButtonClassName(mode === "ask")}
+                    onClick={() => setMode("ask")}
+                >
+                    AIに質問する
+                </button>
             </div>
 
-            {mode === "ai" ? (
-                <form
-                    onSubmit={handleSimilaritySubmit}
-                    className="flex gap-2"
-                >
-                    <input
-                        type="text"
-                        value={similarityInput}
-                        onChange={(e) => setSimilarityInput(e.target.value)}
-                        placeholder="質問を入力すると意味が近い質問を検索します"
-                        className={inputClassName}
-                    />
-
-                    <Button
-                        type="submit"
-                        disabled={
-                            similarityLoading || !similarityInput.trim()
-                        }
-                        className="shrink-0"
-                    >
-                        検索
-                    </Button>
-                </form>
-            ) : (
+            <form onSubmit={handleSubmit} className="flex gap-2">
                 <input
                     type="text"
-                    value={keywordInput}
-                    onChange={(e) => setKeywordInput(e.target.value)}
-                    placeholder="キーワードで質問・回答を絞り込み"
+                    value={searchValue}
+                    onChange={(e) => handleInputChange(e.target.value)}
+                    placeholder={placeholder}
                     className={inputClassName}
                 />
-            )}
+
+                {mode !== "keyword" && (
+                    <Button
+                        type="submit"
+                        disabled={isBusy || !searchValue.trim()}
+                        className="shrink-0"
+                    >
+                        {mode === "ask" ? "質問する" : "検索"}
+                    </Button>
+                )}
+            </form>
 
             {showSimilarityView ? (
                 <>
@@ -285,6 +352,16 @@ function QuestionListInner() {
                             </div>
                         )}
                 </>
+            ) : showAskView ? (
+                <>
+                    {askLoading && <LoadingState label="回答を生成中..." />}
+
+                    {!askLoading && askAnswer && (
+                        <Card>
+                            <MarkdownContent content={askAnswer} variant="full" />
+                        </Card>
+                    )}
+                </>
             ) : (
                 <>
                     {listLoading && <LoadingState />}
@@ -305,6 +382,14 @@ function QuestionListInner() {
 
                     {!listLoading && !listError && listItems.length > 0 && (
                         <>
+                            <Pagination
+                                page={page}
+                                size={size}
+                                total={listTotal}
+                                onPageChange={handlePageChange}
+                                onSizeChange={handleSizeChange}
+                            />
+
                             <div className="flex flex-col gap-3">
                                 {listItems.map((question) => (
                                     <Link
@@ -329,17 +414,8 @@ function QuestionListInner() {
                                 page={page}
                                 size={size}
                                 total={listTotal}
-                                onPageChange={(nextPage) =>
-                                    setQueryState({
-                                        page: String(nextPage),
-                                    })
-                                }
-                                onSizeChange={(nextSize) =>
-                                    setQueryState({
-                                        size: String(nextSize),
-                                        page: "1",
-                                    })
-                                }
+                                onPageChange={handlePageChange}
+                                onSizeChange={handleSizeChange}
                             />
                         </>
                     )}

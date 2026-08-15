@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 CONCEPT_EXTRACTION_PROMPT_VERSION = "v1"
 
 _SYSTEM_PROMPT = (
-    "あなたは物理の専門家です。指示に従い、JSON配列のみを出力してください。"
+    "あなたは物理教育の専門家です。指示に従い、JSON配列のみを出力してください。"
 )
 
 _USER_PROMPT_TEMPLATE = """例
@@ -25,9 +25,12 @@ _USER_PROMPT_TEMPLATE = """例
 質問:
 加速度って何?
 
+
 回答:
 加速度は単位時間あたりの速度の変化量です。
-速度と同じくベクトル量で、単位はm/s^2です。
+速度と同じくベクトル量で、単位は $m/s^2$ です。
+
+速度-時間グラフの接線の傾きを考えると、加速度になります。
 
 Output:
 [
@@ -37,7 +40,10 @@ Output:
  "変化量",
  "ベクトル",
  "単位",
- "m/s^2"
+ "$m/s^2$",
+ "v-tグラフ",
+ "接線の傾き",
+ "微分"
 ]
 
 
@@ -46,6 +52,7 @@ Output:
 
 質問:
 {question}
+
 
 回答:
 {answer}

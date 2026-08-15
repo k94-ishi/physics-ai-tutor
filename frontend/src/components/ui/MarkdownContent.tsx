@@ -5,6 +5,7 @@ import ReactMarkdown, { type ExtraProps } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import { normalizeMathDelimiters } from "@/lib/markdown";
 import MermaidDiagram from "./MermaidDiagram";
 
 type Variant = "full" | "preview";
@@ -85,7 +86,7 @@ export default function MarkdownContent({
                     code: (props) => <CodeBlock {...props} variant={variant} />,
                 }}
             >
-                {content}
+                {normalizeMathDelimiters(content)}
             </ReactMarkdown>
         </div>
     );

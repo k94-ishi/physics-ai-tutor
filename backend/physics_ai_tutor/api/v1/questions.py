@@ -115,8 +115,15 @@ def get_related_questions(
     question_id: int,
     limit: int = Query(default=5, ge=1, le=20),
     db: Session = Depends(get_db),
+    current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
-    return recommendation_service.get_related_questions(db, question_id, limit=limit)
+    is_admin = _is_admin(current_user)
+    return recommendation_service.get_related_questions(
+        db,
+        question_id,
+        limit=limit,
+        exclude_statuses=["REJECTED"] if is_admin else ["REJECTED", "UNREVIEWED"],
+    )
 
 
 @router.get(
@@ -392,9 +399,12 @@ def update_question(
 def search_questions(
     request: SimilarQuestionRequest,
     db: Session = Depends(get_db),
+    current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
+    is_admin = _is_admin(current_user)
     return search_similar_questions(
         db=db,
         query=request.query,
         limit=request.limit,
+        exclude_statuses=None if is_admin else ["UNREVIEWED", "REJECTED"],
     )

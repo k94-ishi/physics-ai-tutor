@@ -39,6 +39,7 @@ def search_similar_questions(
     db: Session,
     query: str,
     limit: int = 10,
+    exclude_statuses: list[str] | None = None,
 ) -> list[SimilarQuestionResponse]:
     query_embedding = create_embeddings([query])[0]
 
@@ -47,6 +48,7 @@ def search_similar_questions(
         embedding=query_embedding,
         embedding_type="question",
         limit=limit,
+        exclude_statuses=exclude_statuses,
     )
 
     logger.info(

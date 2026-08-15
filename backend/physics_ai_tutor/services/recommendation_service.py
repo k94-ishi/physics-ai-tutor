@@ -25,7 +25,11 @@ def get_related_questions(
     db: Session,
     question_id: int,
     limit: int = 5,
+    exclude_statuses: list[str] | None = None,
 ) -> list[QuestionResponse]:
+    if exclude_statuses is None:
+        exclude_statuses = ["REJECTED"]
+
     question_similarity: dict[int, float] = {}
     questions_by_id = {}
 
@@ -38,7 +42,7 @@ def get_related_questions(
             embedding_type="question",
             limit=CANDIDATE_POOL_SIZE,
             exclude_question_ids=[question_id],
-            exclude_status="REJECTED",
+            exclude_statuses=exclude_statuses,
         )
 
         for _, question, distance in embedding_rows:
@@ -63,10 +67,8 @@ def get_related_questions(
 
     for candidate_id in candidate_ids:
         if candidate_id not in questions_by_id:
-            question = question_repository.get_question(
-                db, candidate_id, exclude_status="REJECTED"
-            )
-            if question is not None:
+            question = question_repository.get_question(db, candidate_id)
+            if question is not None and question.status not in exclude_statuses:
                 questions_by_id[candidate_id] = question
 
     concept_similarity = concept_repository.average_concept_similarity(

@@ -44,7 +44,7 @@ def search_similar_embeddings(
     embedding_type: str = "question",
     limit: int = 10,
     exclude_question_ids: list[int] | None = None,
-    exclude_status: str | None = None,
+    exclude_statuses: list[str] | None = None,
 ) -> list[tuple[QuestionEmbedding, Question, float]]:
     """
     SELECT question_embeddings.*, questions.*
@@ -73,8 +73,8 @@ def search_similar_embeddings(
     if exclude_question_ids:
         query = query.filter(Question.id.notin_(exclude_question_ids))
 
-    if exclude_status is not None:
-        query = query.filter(Question.status != exclude_status)
+    if exclude_statuses:
+        query = query.filter(Question.status.notin_(exclude_statuses))
 
     return (
         query

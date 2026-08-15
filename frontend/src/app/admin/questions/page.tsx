@@ -28,10 +28,12 @@ type Mode = "ai" | "keyword";
 type BulkAction = "delete" | "approve" | "reject" | "extract";
 type ConceptFilter = "" | "extracted" | "unextracted";
 type ExtractionStatus = "processing" | "done" | "error";
+type ReviewAction = "APPROVE" | "REJECT";
+type ReviewActionState = { action: ReviewAction; state: "processing" | "error" };
 
 type ReviewTarget = {
     question: Question;
-    action: "APPROVE" | "REJECT";
+    action: ReviewAction;
 };
 
 const SIMILARITY_LIMIT = 10;
@@ -118,7 +120,12 @@ function AdminQuestionsPageInner() {
     const [deleteTarget, setDeleteTarget] = useState<Question | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null);
-    const [reviewing, setReviewing] = useState(false);
+
+    // 承認/却下は非同期化し、ダイアログは即座に閉じてカードごとにバッジで進捗を表示する
+    const [reviewStatus, setReviewStatus] = useState<
+        Map<number, ReviewActionState>
+    >(new Map());
+    const reviewingIdsRef = useRef<Set<number>>(new Set());
 
     const loadList = useCallback(
         async (
@@ -285,30 +292,48 @@ function AdminQuestionsPageInner() {
         }
     };
 
-    const handleConfirmReview = async () => {
-        if (!reviewTarget) {
+    const startReview = (question: Question, action: ReviewAction) => {
+        setReviewTarget(null);
+
+        if (reviewingIdsRef.current.has(question.id)) {
             return;
         }
 
-        setReviewing(true);
+        reviewingIdsRef.current.add(question.id);
+        setReviewStatus((prev) => {
+            const next = new Map(prev);
+            next.set(question.id, { action, state: "processing" });
+            return next;
+        });
 
-        try {
-            await reviewQuestion(reviewTarget.question.id, {
-                action: reviewTarget.action,
-            });
-            await loadList(page, size, queryState.keyword, statusFilter);
-            showToast(
-                reviewTarget.action === "APPROVE"
-                    ? "質問を承認しました。"
-                    : "質問を却下しました。"
-            );
-            setReviewTarget(null);
-        } catch (error) {
-            console.error(error);
-            showToast("処理に失敗しました。", "error");
-        } finally {
-            setReviewing(false);
-        }
+        (async () => {
+            try {
+                const updated = await reviewQuestion(question.id, { action });
+                setListItems((prev) =>
+                    prev.map((q) => (q.id === question.id ? updated : q))
+                );
+                setReviewStatus((prev) => {
+                    const next = new Map(prev);
+                    next.delete(question.id);
+                    return next;
+                });
+                showToast(
+                    action === "APPROVE"
+                        ? "質問を承認しました。"
+                        : "質問を却下しました。"
+                );
+            } catch (error) {
+                console.error(error);
+                setReviewStatus((prev) => {
+                    const next = new Map(prev);
+                    next.set(question.id, { action, state: "error" });
+                    return next;
+                });
+                showToast("処理に失敗しました。", "error");
+            } finally {
+                reviewingIdsRef.current.delete(question.id);
+            }
+        })();
     };
 
     const handleConfirmBulkAction = async () => {
@@ -399,6 +424,11 @@ function AdminQuestionsPageInner() {
         });
     };
 
+    const handlePageChange = (nextPage: number) =>
+        setQueryState({ page: String(nextPage) });
+    const handleSizeChange = (nextSize: number) =>
+        setQueryState({ size: String(nextSize), page: "1" });
+
     return (
         <main className="flex flex-col gap-6">
             <div className="flex items-center justify-between">
@@ -430,7 +460,7 @@ function AdminQuestionsPageInner() {
                         className={modeButtonClassName(mode === "ai")}
                         onClick={() => setMode("ai")}
                     >
-                        AI検索(関連度)
+                        関連度検索
                     </button>
 
                     <button
@@ -557,7 +587,7 @@ function AdminQuestionsPageInner() {
 
                                             <MarkdownContent
                                                 content={result.answer}
-                                                variant="preview"
+                                                variant="full"
                                             />
                                         </Card>
                                     </Link>
@@ -592,6 +622,14 @@ function AdminQuestionsPageInner() {
 
                     {!listLoading && !listError && visibleItems.length > 0 && (
                         <>
+                            <Pagination
+                                page={page}
+                                size={size}
+                                total={listTotal}
+                                onPageChange={handlePageChange}
+                                onSizeChange={handleSizeChange}
+                            />
+
                             <div className="flex flex-wrap items-center gap-3">
                                 <label className="flex items-center gap-2 text-sm text-gray-600">
                                     <input
@@ -642,6 +680,7 @@ function AdminQuestionsPageInner() {
                                     const hasConcepts = question.concepts.length > 0;
                                     const isSelected = selectedIds.has(question.id);
                                     const extraction = extractionStatus.get(question.id);
+                                    const review = reviewStatus.get(question.id);
 
                                     return (
                                         <li key={question.id}>
@@ -699,6 +738,22 @@ function AdminQuestionsPageInner() {
                                                                 Concept抽出: 失敗
                                                             </span>
                                                         )}
+
+                                                        {review?.state === "processing" && (
+                                                            <span className="shrink-0 animate-pulse rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                                                                {review.action === "APPROVE"
+                                                                    ? "承認中"
+                                                                    : "却下中"}
+                                                            </span>
+                                                        )}
+
+                                                        {review?.state === "error" && (
+                                                            <span className="shrink-0 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
+                                                                {review.action === "APPROVE"
+                                                                    ? "承認に失敗"
+                                                                    : "却下に失敗"}
+                                                            </span>
+                                                        )}
                                                     </div>
 
                                                     <span className="font-medium text-gray-900">
@@ -707,7 +762,7 @@ function AdminQuestionsPageInner() {
 
                                                     <MarkdownContent
                                                         content={question.answer}
-                                                        variant="preview"
+                                                        variant="full"
                                                     />
 
                                                     {hasConcepts && (
@@ -730,6 +785,7 @@ function AdminQuestionsPageInner() {
                                                         {question.status !== "APPROVED" && (
                                                             <Button
                                                                 variant="secondary"
+                                                                disabled={review?.state === "processing"}
                                                                 onClick={() =>
                                                                     setReviewTarget({
                                                                         question,
@@ -744,6 +800,7 @@ function AdminQuestionsPageInner() {
                                                         {question.status !== "REJECTED" && (
                                                             <Button
                                                                 variant="secondary"
+                                                                disabled={review?.state === "processing"}
                                                                 onClick={() =>
                                                                     setReviewTarget({
                                                                         question,
@@ -787,15 +844,8 @@ function AdminQuestionsPageInner() {
                                 page={page}
                                 size={size}
                                 total={listTotal}
-                                onPageChange={(nextPage) =>
-                                    setQueryState({ page: String(nextPage) })
-                                }
-                                onSizeChange={(nextSize) =>
-                                    setQueryState({
-                                        size: String(nextSize),
-                                        page: "1",
-                                    })
-                                }
+                                onPageChange={handlePageChange}
+                                onSizeChange={handleSizeChange}
                             />
                         </>
                     )}
@@ -820,8 +870,9 @@ function AdminQuestionsPageInner() {
                 }
                 description={reviewTarget?.question.question}
                 confirmLabel={reviewTarget?.action === "APPROVE" ? "承認" : "却下"}
-                confirming={reviewing}
-                onConfirm={handleConfirmReview}
+                onConfirm={() =>
+                    reviewTarget && startReview(reviewTarget.question, reviewTarget.action)
+                }
                 onCancel={() => setReviewTarget(null)}
             />
 

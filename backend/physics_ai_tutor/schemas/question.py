@@ -20,6 +20,7 @@ class QuestionStatus(StrEnum):
 class QuestionSource(StrEnum):
     MANUAL = "MANUAL"
     AI_GENERATED = "AI_GENERATED"
+    RAG_RESULT = "RAG_RESULT"
 
 
 class QuestionCreate(BaseModel):

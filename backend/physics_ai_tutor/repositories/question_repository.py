@@ -89,12 +89,14 @@ def create_question(
     answer: str,
     status: str = "APPROVED",
     source: str = "MANUAL",
+    retrieved_question_ids: list[int] | None = None,
 ):
     db_question = Question(
         question=question,
         answer=answer,
         status=status,
         source=source,
+        retrieved_question_ids=retrieved_question_ids or [],
     )
 
     db.add(db_question)

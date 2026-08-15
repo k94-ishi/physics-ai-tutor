@@ -64,6 +64,7 @@ export default function Pagination({
                 <Button
                     type="button"
                     variant="secondary"
+                    size="sm"
                     disabled={page <= 1}
                     onClick={() => goTo(page - 1)}
                 >
@@ -73,6 +74,7 @@ export default function Pagination({
                 <Button
                     type="button"
                     variant="secondary"
+                    size="sm"
                     disabled={page + 2 > lastPage}
                     onClick={() => goTo(page + 2)}
                 >
@@ -82,6 +84,7 @@ export default function Pagination({
                 <Button
                     type="button"
                     variant="secondary"
+                    size="sm"
                     disabled={page + 3 > lastPage}
                     onClick={() => goTo(page + 3)}
                 >
@@ -91,6 +94,7 @@ export default function Pagination({
                 <Button
                     type="button"
                     variant="secondary"
+                    size="sm"
                     disabled={page >= lastPage}
                     onClick={() => goTo(page + 1)}
                 >
@@ -100,6 +104,7 @@ export default function Pagination({
                 <Button
                     type="button"
                     variant="secondary"
+                    size="sm"
                     disabled={page >= lastPage}
                     onClick={() => goTo(lastPage)}
                 >
@@ -117,10 +122,10 @@ export default function Pagination({
                         placeholder={`${page}`}
                         value={jumpInput}
                         onChange={(e) => setJumpInput(e.target.value)}
-                        className="w-16 rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="w-16 rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                         aria-label="ページ番号を直接入力"
                     />
-                    <Button type="submit" variant="secondary">
+                    <Button type="submit" variant="secondary" size="sm">
                         移動
                     </Button>
                 </form>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
     FormEvent,
+    Suspense,
     useCallback,
     useEffect,
     useRef,
@@ -14,12 +15,20 @@ import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import LoadingState from "@/components/ui/LoadingState";
 import StatusMessage from "@/components/ui/StatusMessage";
+import Pagination from "@/components/ui/Pagination";
+import MarkdownContent from "@/components/ui/MarkdownContent";
+import { useQueryState } from "@/lib/hooks/useQueryState";
 
 type Mode = "ai" | "keyword";
 
-const PAGE_SIZE = 20;
 const SIMILARITY_LIMIT = 10;
 const KEYWORD_DEBOUNCE_MS = 300;
+
+const LIST_QUERY_DEFAULTS = {
+    page: "1",
+    size: "30",
+    keyword: "",
+};
 
 function similarityPercent(distance: number): number {
     return Math.max(0, Math.round((1 - distance) * 100));
@@ -36,13 +45,14 @@ function modeButtonClassName(active: boolean): string {
 const inputClassName =
     "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
 
-export default function QuestionList() {
+function QuestionListInner() {
     const [mode, setMode] = useState<Mode>("ai");
 
-    // 一覧(pagination + keyword filter)
-    const [keywordInput, setKeywordInput] = useState("");
-    const [debouncedKeyword, setDebouncedKeyword] = useState("");
-    const [page, setPage] = useState(1);
+    // 一覧(pagination + keyword filter、page/size/keywordはURLで管理)
+    const [queryState, setQueryState] = useQueryState(LIST_QUERY_DEFAULTS);
+    const page = Number(queryState.page);
+    const size = Number(queryState.size);
+    const [keywordInput, setKeywordInput] = useState(queryState.keyword);
     const [listItems, setListItems] = useState<Question[]>([]);
     const [listTotal, setListTotal] = useState(0);
     const [listLoading, setListLoading] = useState(true);
@@ -59,58 +69,66 @@ export default function QuestionList() {
     const [similarityError, setSimilarityError] = useState(false);
     const similarityRequestId = useRef(0);
 
-    const loadList = useCallback(async (targetPage: number, keyword: string) => {
-        const requestId = ++listRequestId.current;
-        setListLoading(true);
-        setListError(false);
+    const loadList = useCallback(
+        async (targetPage: number, targetSize: number, keyword: string) => {
+            const requestId = ++listRequestId.current;
+            setListLoading(true);
+            setListError(false);
 
-        try {
-            const data = await fetchQuestions({
-                page: targetPage,
-                size: PAGE_SIZE,
-                keyword: keyword || undefined,
-            });
+            try {
+                const data = await fetchQuestions({
+                    page: targetPage,
+                    size: targetSize,
+                    keyword: keyword || undefined,
+                    status: "APPROVED",
+                });
 
-            if (requestId !== listRequestId.current) {
-                return;
+                if (requestId !== listRequestId.current) {
+                    return;
+                }
+
+                setListItems(data.items);
+                setListTotal(data.total);
+            } catch (error) {
+                if (requestId !== listRequestId.current) {
+                    return;
+                }
+
+                console.error(error);
+                setListError(true);
+            } finally {
+                if (requestId === listRequestId.current) {
+                    setListLoading(false);
+                }
             }
+        },
+        []
+    );
 
-            setListItems(data.items);
-            setListTotal(data.total);
-        } catch (error) {
-            if (requestId !== listRequestId.current) {
-                return;
-            }
+    // URLのkeywordが外部要因(戻る/進む等)で変わったら入力欄に反映する
+    useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setKeywordInput(queryState.keyword);
+    }, [queryState.keyword]);
 
-            console.error(error);
-            setListError(true);
-        } finally {
-            if (requestId === listRequestId.current) {
-                setListLoading(false);
-            }
-        }
-    }, []);
-
-    // キーワード入力をデバウンスする
+    // キーワード入力をデバウンスしてURLへ反映する(1ページ目に戻す)
     useEffect(() => {
         const timer = setTimeout(() => {
-            setDebouncedKeyword(keywordInput.trim());
+            const trimmed = keywordInput.trim();
+            if (trimmed !== queryState.keyword) {
+                setQueryState({ keyword: trimmed, page: "1" });
+            }
         }, KEYWORD_DEBOUNCE_MS);
 
         return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [keywordInput]);
 
-    // キーワードが変わったら1ページ目に戻す
+    // ページ・サイズ・キーワードが確定するたびに一覧を取得する(初回ロードも含む)
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        setPage(1);
-    }, [debouncedKeyword]);
-
-    // ページ・キーワードが確定するたびに一覧を取得する(初回ロードも含む)
-    useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        loadList(page, debouncedKeyword);
-    }, [loadList, page, debouncedKeyword]);
+        loadList(page, size, queryState.keyword);
+    }, [loadList, page, size, queryState.keyword]);
 
     const runSimilaritySearch = useCallback(async (query: string) => {
         const trimmed = query.trim();
@@ -155,11 +173,6 @@ export default function QuestionList() {
     };
 
     const showSimilarityView = mode === "ai" && similaritySearched;
-
-    const hasPrevPage = page > 1;
-    const hasNextPage = page * PAGE_SIZE < listTotal;
-    const rangeStart = listTotal === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-    const rangeEnd = Math.min(page * PAGE_SIZE, listTotal);
 
     return (
         <div className="flex flex-col gap-4">
@@ -262,9 +275,10 @@ export default function QuestionList() {
                                                 </span>
                                             </div>
 
-                                            <p className="mt-1 line-clamp-3 text-sm text-gray-600">
-                                                {result.answer}
-                                            </p>
+                                            <MarkdownContent
+                                                content={result.answer}
+                                                variant="preview"
+                                            />
                                         </Card>
                                     </Link>
                                 ))}
@@ -279,7 +293,9 @@ export default function QuestionList() {
                         <StatusMessage
                             variant="error"
                             message="質問を取得できませんでした。"
-                            onRetry={() => loadList(page, debouncedKeyword)}
+                            onRetry={() =>
+                                loadList(page, size, queryState.keyword)
+                            }
                         />
                     )}
 
@@ -300,45 +316,43 @@ export default function QuestionList() {
                                                 {question.question}
                                             </span>
 
-                                            <p className="mt-1 line-clamp-3 text-sm text-gray-600">
-                                                {question.answer}
-                                            </p>
+                                            <MarkdownContent
+                                                content={question.answer}
+                                                variant="preview"
+                                            />
                                         </Card>
                                     </Link>
                                 ))}
                             </div>
 
-                            <div className="flex items-center justify-between gap-4">
-                                <span className="text-sm text-gray-500">
-                                    {rangeStart}–{rangeEnd}件 / 全{listTotal}件
-                                </span>
-
-                                <div className="flex gap-2">
-                                    <Button
-                                        type="button"
-                                        variant="secondary"
-                                        disabled={!hasPrevPage}
-                                        onClick={() =>
-                                            setPage((p) => Math.max(1, p - 1))
-                                        }
-                                    >
-                                        前へ
-                                    </Button>
-
-                                    <Button
-                                        type="button"
-                                        variant="secondary"
-                                        disabled={!hasNextPage}
-                                        onClick={() => setPage((p) => p + 1)}
-                                    >
-                                        次へ
-                                    </Button>
-                                </div>
-                            </div>
+                            <Pagination
+                                page={page}
+                                size={size}
+                                total={listTotal}
+                                onPageChange={(nextPage) =>
+                                    setQueryState({
+                                        page: String(nextPage),
+                                    })
+                                }
+                                onSizeChange={(nextSize) =>
+                                    setQueryState({
+                                        size: String(nextSize),
+                                        page: "1",
+                                    })
+                                }
+                            />
                         </>
                     )}
                 </>
             )}
         </div>
+    );
+}
+
+export default function QuestionList() {
+    return (
+        <Suspense fallback={<LoadingState />}>
+            <QuestionListInner />
+        </Suspense>
     );
 }

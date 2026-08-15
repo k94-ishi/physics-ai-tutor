@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ApiError, fetchQuestion, fetchRelatedQuestions } from "@/lib/api";
 import { Question } from "@/types/question";
 import Card from "@/components/ui/Card";
+import MarkdownContent from "@/components/ui/MarkdownContent";
 import AskAiBox from "@/components/AskAiBox";
 
 export default async function QuestionPage(
@@ -35,9 +36,7 @@ export default async function QuestionPage(
                     {question.question}
                 </h1>
 
-                <p className="whitespace-pre-wrap text-gray-700">
-                    {question.answer}
-                </p>
+                <MarkdownContent content={question.answer} variant="full" />
             </Card>
 
             {relatedQuestions.length > 0 && (
@@ -54,9 +53,10 @@ export default async function QuestionPage(
                                         {related.question}
                                     </span>
 
-                                    <p className="mt-1 line-clamp-3 text-sm text-gray-600">
-                                        {related.answer}
-                                    </p>
+                                    <MarkdownContent
+                                        content={related.answer}
+                                        variant="preview"
+                                    />
                                 </Card>
                             </Link>
                         ))}

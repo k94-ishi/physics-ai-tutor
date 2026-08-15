@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
     fetchQuestions,
@@ -18,20 +18,32 @@ import SelectField from "@/components/ui/SelectField";
 import LoadingState from "@/components/ui/LoadingState";
 import StatusMessage from "@/components/ui/StatusMessage";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import Pagination from "@/components/ui/Pagination";
+import MarkdownContent from "@/components/ui/MarkdownContent";
 import { showToast } from "@/components/ui/Toast";
+import { useQueryState } from "@/lib/hooks/useQueryState";
+import { runWithConcurrencyLimit } from "@/lib/concurrency";
 
 type Mode = "ai" | "keyword";
 type BulkAction = "delete" | "approve" | "reject" | "extract";
 type ConceptFilter = "" | "extracted" | "unextracted";
+type ExtractionStatus = "processing" | "done" | "error";
 
 type ReviewTarget = {
     question: Question;
     action: "APPROVE" | "REJECT";
 };
 
-const PAGE_SIZE = 20;
 const SIMILARITY_LIMIT = 10;
 const KEYWORD_DEBOUNCE_MS = 300;
+
+const ADMIN_QUERY_DEFAULTS = {
+    page: "1",
+    size: "30",
+    keyword: "",
+    status: "",
+    conceptFilter: "",
+};
 
 const STATUS_LABELS: Record<QuestionStatus, string> = {
     UNREVIEWED: "未レビュー",
@@ -67,15 +79,16 @@ function similarityPercent(distance: number): number {
 const inputClassName =
     "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
 
-export default function AdminQuestionsPage() {
+function AdminQuestionsPageInner() {
     const [mode, setMode] = useState<Mode>("keyword");
 
-    // 一覧(pagination + keyword filter + status filter)
-    const [keywordInput, setKeywordInput] = useState("");
-    const [debouncedKeyword, setDebouncedKeyword] = useState("");
-    const [statusFilter, setStatusFilter] = useState<QuestionStatus | "">("");
-    const [conceptFilter, setConceptFilter] = useState<ConceptFilter>("");
-    const [page, setPage] = useState(1);
+    // 一覧(pagination + keyword filter + status filter、URLで管理)
+    const [queryState, setQueryState] = useQueryState(ADMIN_QUERY_DEFAULTS);
+    const page = Number(queryState.page);
+    const size = Number(queryState.size);
+    const statusFilter = queryState.status as QuestionStatus | "";
+    const conceptFilter = queryState.conceptFilter as ConceptFilter;
+    const [keywordInput, setKeywordInput] = useState(queryState.keyword);
     const [listItems, setListItems] = useState<Question[]>([]);
     const [listTotal, setListTotal] = useState(0);
     const [listLoading, setListLoading] = useState(true);
@@ -95,6 +108,12 @@ export default function AdminQuestionsPage() {
     const [bulkAction, setBulkAction] = useState<BulkAction | null>(null);
     const [bulkProcessing, setBulkProcessing] = useState(false);
 
+    // Concept抽出は選択質問ごとに非同期(並列)で進めるため、状態はフロント側でのみ管理する
+    const [extractionStatus, setExtractionStatus] = useState<
+        Map<number, ExtractionStatus>
+    >(new Map());
+    const processingIdsRef = useRef<Set<number>>(new Set());
+
     // 単体操作
     const [deleteTarget, setDeleteTarget] = useState<Question | null>(null);
     const [deleting, setDeleting] = useState(false);
@@ -102,7 +121,12 @@ export default function AdminQuestionsPage() {
     const [reviewing, setReviewing] = useState(false);
 
     const loadList = useCallback(
-        async (targetPage: number, keyword: string, status: QuestionStatus | "") => {
+        async (
+            targetPage: number,
+            targetSize: number,
+            keyword: string,
+            status: QuestionStatus | ""
+        ) => {
             const requestId = ++listRequestId.current;
             setListLoading(true);
             setListError(false);
@@ -110,7 +134,7 @@ export default function AdminQuestionsPage() {
             try {
                 const data = await fetchQuestions({
                     page: targetPage,
-                    size: PAGE_SIZE,
+                    size: targetSize,
                     keyword: keyword || undefined,
                     status: status || undefined,
                 });
@@ -137,31 +161,35 @@ export default function AdminQuestionsPage() {
         []
     );
 
-    // キーワード入力をデバウンスする
+    // URLのkeywordが外部要因(戻る/進む等)で変わったら入力欄に反映する
+    useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setKeywordInput(queryState.keyword);
+    }, [queryState.keyword]);
+
+    // キーワード入力をデバウンスしてURLへ反映する(1ページ目に戻す)
     useEffect(() => {
         const timer = setTimeout(() => {
-            setDebouncedKeyword(keywordInput.trim());
+            const trimmed = keywordInput.trim();
+            if (trimmed !== queryState.keyword) {
+                setQueryState({ keyword: trimmed, page: "1" });
+            }
         }, KEYWORD_DEBOUNCE_MS);
 
         return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [keywordInput]);
-
-    // キーワード・ステータスが変わったら1ページ目に戻す
-    useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setPage(1);
-    }, [debouncedKeyword, statusFilter]);
 
     // 検索条件・ページが変わったら選択状態をリセットする
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelectedIds(new Set());
-    }, [debouncedKeyword, statusFilter, conceptFilter, page]);
+    }, [queryState.keyword, statusFilter, conceptFilter, page]);
 
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        loadList(page, debouncedKeyword, statusFilter);
-    }, [loadList, page, debouncedKeyword, statusFilter]);
+        loadList(page, size, queryState.keyword, statusFilter);
+    }, [loadList, page, size, queryState.keyword, statusFilter]);
 
     const runSimilaritySearch = useCallback(async (query: string) => {
         const trimmed = query.trim();
@@ -217,11 +245,6 @@ export default function AdminQuestionsPage() {
         return true;
     });
 
-    const hasPrevPage = page > 1;
-    const hasNextPage = page * PAGE_SIZE < listTotal;
-    const rangeStart = listTotal === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-    const rangeEnd = Math.min(page * PAGE_SIZE, listTotal);
-
     const toggleSelected = (id: number) => {
         setSelectedIds((prev) => {
             const next = new Set(prev);
@@ -251,7 +274,7 @@ export default function AdminQuestionsPage() {
 
         try {
             await deleteQuestion(deleteTarget.id);
-            await loadList(page, debouncedKeyword, statusFilter);
+            await loadList(page, size, queryState.keyword, statusFilter);
             showToast("質問を削除しました。");
             setDeleteTarget(null);
         } catch (error) {
@@ -273,7 +296,7 @@ export default function AdminQuestionsPage() {
             await reviewQuestion(reviewTarget.question.id, {
                 action: reviewTarget.action,
             });
-            await loadList(page, debouncedKeyword, statusFilter);
+            await loadList(page, size, queryState.keyword, statusFilter);
             showToast(
                 reviewTarget.action === "APPROVE"
                     ? "質問を承認しました。"
@@ -289,7 +312,7 @@ export default function AdminQuestionsPage() {
     };
 
     const handleConfirmBulkAction = async () => {
-        if (!bulkAction || selectedIds.size === 0) {
+        if (!bulkAction || bulkAction === "extract" || selectedIds.size === 0) {
             return;
         }
 
@@ -300,7 +323,7 @@ export default function AdminQuestionsPage() {
             if (bulkAction === "delete") {
                 const result = await bulkDeleteQuestions(ids);
                 showToast(`${result.deleted_count}件を削除しました。`);
-            } else if (bulkAction === "approve" || bulkAction === "reject") {
+            } else {
                 const result = await bulkReviewQuestions(
                     ids,
                     bulkAction === "approve" ? "APPROVE" : "REJECT"
@@ -308,23 +331,72 @@ export default function AdminQuestionsPage() {
                 showToast(
                     `${result.questions.length}件を${bulkAction === "approve" ? "承認" : "却下"}しました。`
                 );
-            } else {
-                const result = await extractConcepts(ids);
-                const successCount = result.results.filter((r) => r.success).length;
-                showToast(
-                    `${successCount}/${result.results.length}件のConcept抽出に成功しました。`
-                );
             }
 
             setSelectedIds(new Set());
             setBulkAction(null);
-            await loadList(page, debouncedKeyword, statusFilter);
+            await loadList(page, size, queryState.keyword, statusFilter);
         } catch (error) {
             console.error(error);
             showToast("一括処理に失敗しました。", "error");
         } finally {
             setBulkProcessing(false);
         }
+    };
+
+    // Concept抽出は質問ごとに個別のAPI呼び出しを並列実行し、ダイアログはすぐ閉じて
+    // 各カードのバッジ(処理中/完了/失敗)で進捗を表示する。全件完了を待たずに
+    // 画面を操作できるようにするための非同期化(フロント側での状態管理)。
+    const startConceptExtraction = (ids: number[]) => {
+        const targetIds = ids.filter(
+            (id) => !processingIdsRef.current.has(id)
+        );
+
+        setBulkAction(null);
+        setSelectedIds(new Set());
+
+        if (targetIds.length === 0) {
+            return;
+        }
+
+        targetIds.forEach((id) => processingIdsRef.current.add(id));
+        setExtractionStatus((prev) => {
+            const next = new Map(prev);
+            targetIds.forEach((id) => next.set(id, "processing"));
+            return next;
+        });
+
+        runWithConcurrencyLimit(targetIds, 4, async (id) => {
+            try {
+                const { results } = await extractConcepts([id]);
+                const result = results[0];
+
+                setExtractionStatus((prev) => {
+                    const next = new Map(prev);
+                    next.set(id, result?.success ? "done" : "error");
+                    return next;
+                });
+
+                if (result?.success) {
+                    setListItems((prev) =>
+                        prev.map((question) =>
+                            question.id === id
+                                ? { ...question, concepts: result.concepts }
+                                : question
+                        )
+                    );
+                }
+            } catch (error) {
+                console.error(error);
+                setExtractionStatus((prev) => {
+                    const next = new Map(prev);
+                    next.set(id, "error");
+                    return next;
+                });
+            } finally {
+                processingIdsRef.current.delete(id);
+            }
+        });
     };
 
     return (
@@ -378,7 +450,10 @@ export default function AdminQuestionsPage() {
                                 label="ステータスで絞り込み"
                                 value={statusFilter}
                                 onChange={(e) =>
-                                    setStatusFilter(e.target.value as QuestionStatus | "")
+                                    setQueryState({
+                                        status: e.target.value,
+                                        page: "1",
+                                    })
                                 }
                                 options={[
                                     { value: "", label: "すべて" },
@@ -395,7 +470,9 @@ export default function AdminQuestionsPage() {
                                 label="Concept状態で絞り込み"
                                 value={conceptFilter}
                                 onChange={(e) =>
-                                    setConceptFilter(e.target.value as ConceptFilter)
+                                    setQueryState({
+                                        conceptFilter: e.target.value,
+                                    })
                                 }
                                 options={[
                                     { value: "", label: "すべて" },
@@ -478,9 +555,10 @@ export default function AdminQuestionsPage() {
                                                 </span>
                                             </div>
 
-                                            <p className="mt-1 line-clamp-3 text-sm text-gray-600">
-                                                {result.answer}
-                                            </p>
+                                            <MarkdownContent
+                                                content={result.answer}
+                                                variant="preview"
+                                            />
                                         </Card>
                                     </Link>
                                 ))}
@@ -495,7 +573,9 @@ export default function AdminQuestionsPage() {
                         <StatusMessage
                             variant="error"
                             message="質問一覧を取得できませんでした。"
-                            onRetry={() => loadList(page, debouncedKeyword, statusFilter)}
+                            onRetry={() =>
+                                loadList(page, size, queryState.keyword, statusFilter)
+                            }
                         />
                     )}
 
@@ -560,14 +640,24 @@ export default function AdminQuestionsPage() {
                             <ul className="flex flex-col gap-3">
                                 {visibleItems.map((question) => {
                                     const hasConcepts = question.concepts.length > 0;
+                                    const isSelected = selectedIds.has(question.id);
+                                    const extraction = extractionStatus.get(question.id);
 
                                     return (
                                         <li key={question.id}>
-                                            <Card className="flex items-start gap-3">
+                                            <Card
+                                                onClick={() => toggleSelected(question.id)}
+                                                className={`flex cursor-pointer items-start gap-3 transition-colors ${
+                                                    isSelected
+                                                        ? "border-blue-400 bg-blue-50/40"
+                                                        : "hover:border-gray-300"
+                                                }`}
+                                            >
                                                 <input
                                                     type="checkbox"
-                                                    checked={selectedIds.has(question.id)}
+                                                    checked={isSelected}
                                                     onChange={() => toggleSelected(question.id)}
+                                                    onClick={(e) => e.stopPropagation()}
                                                     className="mt-1 shrink-0"
                                                     aria-label={`${question.question}を選択`}
                                                 />
@@ -591,15 +681,34 @@ export default function AdminQuestionsPage() {
                                                                 ? `概念抽出済み(${question.concepts.length})`
                                                                 : "概念未抽出"}
                                                         </span>
+
+                                                        {extraction === "processing" && (
+                                                            <span className="shrink-0 animate-pulse rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                                                                Concept抽出: 処理中
+                                                            </span>
+                                                        )}
+
+                                                        {extraction === "done" && (
+                                                            <span className="shrink-0 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+                                                                Concept抽出: 完了
+                                                            </span>
+                                                        )}
+
+                                                        {extraction === "error" && (
+                                                            <span className="shrink-0 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
+                                                                Concept抽出: 失敗
+                                                            </span>
+                                                        )}
                                                     </div>
 
                                                     <span className="font-medium text-gray-900">
                                                         {question.question}
                                                     </span>
 
-                                                    <p className="line-clamp-3 text-sm text-gray-600">
-                                                        {question.answer}
-                                                    </p>
+                                                    <MarkdownContent
+                                                        content={question.answer}
+                                                        variant="preview"
+                                                    />
 
                                                     {hasConcepts && (
                                                         <div className="flex flex-wrap gap-1">
@@ -614,7 +723,10 @@ export default function AdminQuestionsPage() {
                                                         </div>
                                                     )}
 
-                                                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                                                    <div
+                                                        className="flex flex-wrap items-center gap-2 pt-1"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
                                                         {question.status !== "APPROVED" && (
                                                             <Button
                                                                 variant="secondary"
@@ -671,31 +783,20 @@ export default function AdminQuestionsPage() {
                                 })}
                             </ul>
 
-                            <div className="flex items-center justify-between gap-4">
-                                <span className="text-sm text-gray-500">
-                                    {rangeStart}–{rangeEnd}件 / 全{listTotal}件
-                                </span>
-
-                                <div className="flex gap-2">
-                                    <Button
-                                        type="button"
-                                        variant="secondary"
-                                        disabled={!hasPrevPage}
-                                        onClick={() => setPage((p) => Math.max(1, p - 1))}
-                                    >
-                                        前へ
-                                    </Button>
-
-                                    <Button
-                                        type="button"
-                                        variant="secondary"
-                                        disabled={!hasNextPage}
-                                        onClick={() => setPage((p) => p + 1)}
-                                    >
-                                        次へ
-                                    </Button>
-                                </div>
-                            </div>
+                            <Pagination
+                                page={page}
+                                size={size}
+                                total={listTotal}
+                                onPageChange={(nextPage) =>
+                                    setQueryState({ page: String(nextPage) })
+                                }
+                                onSizeChange={(nextSize) =>
+                                    setQueryState({
+                                        size: String(nextSize),
+                                        page: "1",
+                                    })
+                                }
+                            />
                         </>
                     )}
                 </>
@@ -729,10 +830,22 @@ export default function AdminQuestionsPage() {
                 title={bulkAction ? BULK_ACTION_LABELS[bulkAction].title : ""}
                 description={`${selectedIds.size}件が対象です。`}
                 confirmLabel={bulkAction ? BULK_ACTION_LABELS[bulkAction].confirmLabel : undefined}
-                confirming={bulkProcessing}
-                onConfirm={handleConfirmBulkAction}
+                confirming={bulkAction === "extract" ? false : bulkProcessing}
+                onConfirm={() =>
+                    bulkAction === "extract"
+                        ? startConceptExtraction(Array.from(selectedIds))
+                        : handleConfirmBulkAction()
+                }
                 onCancel={() => setBulkAction(null)}
             />
         </main>
+    );
+}
+
+export default function AdminQuestionsPage() {
+    return (
+        <Suspense fallback={<LoadingState />}>
+            <AdminQuestionsPageInner />
+        </Suspense>
     );
 }

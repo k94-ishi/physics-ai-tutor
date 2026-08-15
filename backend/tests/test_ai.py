@@ -3,7 +3,7 @@ from physics_ai_tutor.core.exceptions import (
     EmbeddingGenerationError,
 )
 from physics_ai_tutor.models import Question
-from physics_ai_tutor.services import deepseek_service, embedding_service
+from physics_ai_tutor.services import deepseek_service, embedding_service, rag_service
 
 ASK_PATH = "/api/v1/ai/ask"
 
@@ -73,6 +73,7 @@ def test_ask_ai_saves_question_as_unreviewed_ai_generated(client, monkeypatch, d
     assert saved.status == "UNREVIEWED"
     assert saved.source == "AI_GENERATED"
     assert saved.language == "ja"
+    assert saved.retrieved_question_ids == []
 
 
 def test_ask_ai_save_failure_does_not_affect_response(client, monkeypatch, db):
@@ -98,3 +99,55 @@ def test_ask_ai_save_failure_does_not_affect_response(client, monkeypatch, db):
     )
 
     assert saved is None
+
+
+def test_ask_ai_rag_mode_calls_rag_service_and_saves_as_rag_result(
+    client, monkeypatch, db
+):
+    monkeypatch.setattr(
+        rag_service,
+        "generate_rag_answer",
+        lambda db, question: ("RAG回答", [11, 22]),
+    )
+
+    response = client.post(
+        ASK_PATH, json={"question": "RAGモード質問", "mode": "RAG"}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"answer": "RAG回答"}
+
+    saved = (
+        db.query(Question)
+        .filter(Question.question == "RAGモード質問")
+        .first()
+    )
+
+    assert saved is not None
+    assert saved.answer == "RAG回答"
+    assert saved.status == "UNREVIEWED"
+    assert saved.source == "RAG_RESULT"
+    assert saved.retrieved_question_ids == [11, 22]
+
+
+def test_ask_ai_default_mode_does_not_call_rag_service(client, monkeypatch):
+    def _fail(db, question):
+        raise AssertionError("generate_rag_answer should not be called")
+
+    monkeypatch.setattr(rag_service, "generate_rag_answer", _fail)
+    monkeypatch.setattr(
+        deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
+    )
+
+    response = client.post(ASK_PATH, json={"question": "通常モード質問"})
+
+    assert response.status_code == 200
+    assert response.json() == {"answer": "回答"}
+
+
+def test_ask_ai_invalid_mode_rejected(client):
+    response = client.post(
+        ASK_PATH, json={"question": "質問", "mode": "INVALID"}
+    )
+
+    assert response.status_code == 422

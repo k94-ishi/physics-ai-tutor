@@ -57,6 +57,32 @@ def test_get_related_questions_excludes_rejected(db):
     assert other.id not in [q.id for q in result]
 
 
+def test_get_related_questions_excludes_unreviewed_by_default(db):
+    vector = [0.1] * 1536
+    source = _create_question_with_embedding(db, "元質問", "元回答", vector)
+    other = _create_question_with_embedding(db, "他の質問", "他の回答", vector)
+    question_repository.update_content_and_status(db, other.id, status="UNREVIEWED")
+
+    result = recommendation_service.get_related_questions(
+        db, source.id, limit=5, exclude_statuses=["REJECTED", "UNREVIEWED"]
+    )
+
+    assert other.id not in [q.id for q in result]
+
+
+def test_get_related_questions_includes_unreviewed_when_allowed(db):
+    vector = [0.1] * 1536
+    source = _create_question_with_embedding(db, "元質問", "元回答", vector)
+    other = _create_question_with_embedding(db, "他の質問", "他の回答", vector)
+    question_repository.update_content_and_status(db, other.id, status="UNREVIEWED")
+
+    result = recommendation_service.get_related_questions(
+        db, source.id, limit=5, exclude_statuses=["REJECTED"]
+    )
+
+    assert other.id in [q.id for q in result]
+
+
 def test_get_related_questions_ranks_by_weighted_score(db):
     close_vector = [0.1] * 1536
     far_vector = [0.9] * 1536

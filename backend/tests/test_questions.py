@@ -513,6 +513,30 @@ def test_search_questions(admin_client):
     assert isinstance(result[Key.DISTANCE], float)
 
 
+def test_search_questions_excludes_unreviewed_for_non_admin(admin_client, client):
+    import_response = _post_import(
+        admin_client,
+        [("未承認検索対象質問", "未承認検索対象回答")],
+        status="UNREVIEWED",
+    )
+    question_id = import_response.json()[Key.QUESTIONS][0][Key.ID]
+
+    non_admin_response = client.post(
+        SEARCH_PATH,
+        json={"query": "未承認検索対象質問に似た質問", "limit": 20},
+    )
+    admin_response = admin_client.post(
+        SEARCH_PATH,
+        json={"query": "未承認検索対象質問に似た質問", "limit": 20},
+    )
+
+    non_admin_ids = [item[Key.ID] for item in non_admin_response.json()]
+    admin_ids = [item[Key.ID] for item in admin_response.json()]
+
+    assert question_id not in non_admin_ids
+    assert question_id in admin_ids
+
+
 def test_create_question_embedding_failure_returns_503(admin_client, monkeypatch):
     def _raise(texts):
         raise EmbeddingGenerationError("boom")

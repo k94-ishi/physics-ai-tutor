@@ -65,6 +65,7 @@ def test_search_similar_questions_returns_response_schema(db, monkeypatch):
             "embedding": fake_vector,
             "embedding_type": "question",
             "limit": 3,
+            "exclude_statuses": None,
         }
     ]
 

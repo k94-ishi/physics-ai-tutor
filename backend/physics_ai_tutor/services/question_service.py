@@ -529,8 +529,14 @@ def bulk_review_questions(
     return updated_questions, not_found_ids
 
 
-def save_ai_question(db: Session, question: str, answer: str) -> Question | None:
-    """Best-effort save of a direct AI answer as a new question.
+def save_ai_question(
+    db: Session,
+    question: str,
+    answer: str,
+    source: str = QuestionSource.AI_GENERATED,
+    retrieved_question_ids: list[int] | None = None,
+) -> Question | None:
+    """Best-effort save of a direct AI (or RAG) answer as a new question.
 
     Never raises: any failure (duplicate text, embedding generation, DB
     error) is logged and swallowed so the caller can always still return
@@ -548,7 +554,8 @@ def save_ai_question(db: Session, question: str, answer: str) -> Question | None
             question=question,
             answer=answer,
             status=QuestionStatus.UNREVIEWED,
-            source=QuestionSource.AI_GENERATED,
+            source=source,
+            retrieved_question_ids=retrieved_question_ids,
         )
 
         texts = [question, answer]

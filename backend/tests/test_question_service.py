@@ -6,7 +6,10 @@ from physics_ai_tutor.core.exceptions import (
     EmbeddingGenerationError,
 )
 from physics_ai_tutor.models import QuestionEmbedding
-from physics_ai_tutor.repositories import question_concept_repository
+from physics_ai_tutor.repositories import (
+    question_concept_repository,
+    question_repository,
+)
 from physics_ai_tutor.schemas.question import (
     QuestionCreate,
     QuestionSource,
@@ -681,3 +684,43 @@ def test_reextract_concepts_for_questions_partial_failure_continues(db, monkeypa
     assert results_by_id[q1.id].success is False
     assert results_by_id[q2.id].success is True
     assert question_concept_repository.get_concepts_for_question(db, q2.id) != []
+
+
+def test_attach_retrieved_questions_resolves_ids_to_summaries(db):
+    referenced1 = question_repository.create_question(
+        db, question="参照質問1", answer="回答1"
+    )
+    referenced2 = question_repository.create_question(
+        db, question="参照質問2", answer="回答2"
+    )
+    rag_question = question_repository.create_question(
+        db,
+        question="RAG質問",
+        answer="RAG回答",
+        retrieved_question_ids=[referenced1.id, referenced2.id],
+    )
+
+    question_service.attach_retrieved_questions(db, [rag_question])
+
+    assert rag_question.retrieved_questions == [
+        {"id": referenced1.id, "question": "参照質問1"},
+        {"id": referenced2.id, "question": "参照質問2"},
+    ]
+
+
+def test_attach_retrieved_questions_skips_missing_ids(db):
+    rag_question = question_repository.create_question(
+        db, question="RAG質問", answer="RAG回答", retrieved_question_ids=[999999]
+    )
+
+    question_service.attach_retrieved_questions(db, [rag_question])
+
+    assert rag_question.retrieved_questions == []
+
+
+def test_attach_retrieved_questions_empty_for_normal_questions(db):
+    question = _create(db)
+
+    question_service.attach_retrieved_questions(db, [question])
+
+    assert question.retrieved_questions == []

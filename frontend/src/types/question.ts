@@ -1,5 +1,10 @@
 export type QuestionStatus = "UNREVIEWED" | "APPROVED" | "REJECTED";
-export type QuestionSource = "MANUAL" | "AI_GENERATED";
+export type QuestionSource = "MANUAL" | "AI_GENERATED" | "RAG_RESULT";
+
+export type RetrievedQuestionRef = {
+    id: number;
+    question: string;
+};
 
 export type Question = {
     id: number;
@@ -9,6 +14,7 @@ export type Question = {
     source: QuestionSource;
     language: string;
     concepts: string[];
+    retrieved_questions: RetrievedQuestionRef[];
 };
 
 export type QuestionListResponse = {

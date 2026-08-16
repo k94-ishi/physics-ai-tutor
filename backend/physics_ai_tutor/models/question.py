@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, Text, func
+from sqlalchemy import DateTime, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from physics_ai_tutor.database.base import Base
@@ -21,6 +22,11 @@ class Question(Base):
     source: Mapped[str] = mapped_column(
         String(20),
         server_default="MANUAL",
+        nullable=False,
+    )
+    retrieved_question_ids: Mapped[list[int]] = mapped_column(
+        ARRAY(Integer),
+        server_default="{}",
         nullable=False,
     )
     language: Mapped[str] = mapped_column(

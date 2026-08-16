@@ -47,6 +47,41 @@ def attach_concept_names(db: Session, questions: list[Question]) -> None:
         question.concepts = concepts_by_id.get(question.id, [])
 
 
+def attach_retrieved_questions(db: Session, questions: list[Question]) -> None:
+    """Populate each question's transient `.retrieved_questions` attribute
+    (list[dict]) by resolving `retrieved_question_ids` to lightweight
+    {id, question} summaries, so RAG result cards can show what they were
+    generated from without a per-card frontend fetch. Same pattern as
+    `attach_concept_names` - must run before every QuestionResponse
+    serialization since the attribute is transient, not a mapped column.
+    """
+    if not questions:
+        return
+
+    all_ids = {
+        question_id
+        for question in questions
+        for question_id in question.retrieved_question_ids
+    }
+
+    if not all_ids:
+        for question in questions:
+            question.retrieved_questions = []
+        return
+
+    referenced_by_id = {
+        referenced.id: referenced
+        for referenced in question_repository.get_questions_by_ids(db, list(all_ids))
+    }
+
+    for question in questions:
+        question.retrieved_questions = [
+            {"id": referenced_id, "question": referenced_by_id[referenced_id].question}
+            for referenced_id in question.retrieved_question_ids
+            if referenced_id in referenced_by_id
+        ]
+
+
 def fetch_questions(
     db: Session,
     page: int,
@@ -72,6 +107,7 @@ def fetch_questions(
     )
 
     attach_concept_names(db, questions)
+    attach_retrieved_questions(db, questions)
 
     logger.info(
         "Questions fetched: page=%d size=%d keyword_present=%s results=%d total=%d",
@@ -103,6 +139,7 @@ def fetch_question(
 
     if question is not None:
         attach_concept_names(db, [question])
+        attach_retrieved_questions(db, [question])
 
     return question
 
@@ -169,6 +206,7 @@ def create_question(
             )
 
         attach_concept_names(db, [db_question])
+        attach_retrieved_questions(db, [db_question])
 
         db.commit()
 
@@ -258,6 +296,7 @@ def import_questions_from_jsonl(
                     _attach_concepts_best_effort(db, q.id, q.question, q.answer)
 
             attach_concept_names(db, db_questions)
+            attach_retrieved_questions(db, db_questions)
 
         db.commit()
 
@@ -328,6 +367,7 @@ def update_question(
         )
 
         attach_concept_names(db, [question])
+        attach_retrieved_questions(db, [question])
 
         db.commit()
 
@@ -420,6 +460,7 @@ def review_question(
         )
 
         attach_concept_names(db, [updated])
+        attach_retrieved_questions(db, [updated])
 
         db.commit()
 
@@ -529,8 +570,14 @@ def bulk_review_questions(
     return updated_questions, not_found_ids
 
 
-def save_ai_question(db: Session, question: str, answer: str) -> Question | None:
-    """Best-effort save of a direct AI answer as a new question.
+def save_ai_question(
+    db: Session,
+    question: str,
+    answer: str,
+    source: str = QuestionSource.AI_GENERATED,
+    retrieved_question_ids: list[int] | None = None,
+) -> Question | None:
+    """Best-effort save of a direct AI (or RAG) answer as a new question.
 
     Never raises: any failure (duplicate text, embedding generation, DB
     error) is logged and swallowed so the caller can always still return
@@ -548,7 +595,8 @@ def save_ai_question(db: Session, question: str, answer: str) -> Question | None
             question=question,
             answer=answer,
             status=QuestionStatus.UNREVIEWED,
-            source=QuestionSource.AI_GENERATED,
+            source=source,
+            retrieved_question_ids=retrieved_question_ids,
         )
 
         texts = [question, answer]

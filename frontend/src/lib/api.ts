@@ -235,13 +235,16 @@ export async function importQuestions(
     });
 }
 
-export async function askAi(question: string): Promise<AskAiResponse> {
+export async function askAi(
+    question: string,
+    mode?: "RAG"
+): Promise<AskAiResponse> {
     return apiFetch<AskAiResponse>(`${getAiUrl()}/ask`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question, mode }),
     });
 }
 

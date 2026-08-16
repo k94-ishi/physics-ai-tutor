@@ -20,6 +20,7 @@ import StatusMessage from "@/components/ui/StatusMessage";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Pagination from "@/components/ui/Pagination";
 import MarkdownContent from "@/components/ui/MarkdownContent";
+import ReferencedQuestions from "@/components/ui/ReferencedQuestions";
 import { showToast } from "@/components/ui/Toast";
 import { useQueryState } from "@/lib/hooks/useQueryState";
 import { runWithConcurrencyLimit } from "@/lib/concurrency";
@@ -709,6 +710,12 @@ function AdminQuestionsPageInner() {
                                                             {STATUS_LABELS[question.status]}
                                                         </span>
 
+                                                        {question.source === "RAG_RESULT" && (
+                                                            <span className="shrink-0 rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">
+                                                                RAG生成
+                                                            </span>
+                                                        )}
+
                                                         <span
                                                             className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
                                                                 hasConcepts
@@ -777,6 +784,10 @@ function AdminQuestionsPageInner() {
                                                             ))}
                                                         </div>
                                                     )}
+
+                                                    <ReferencedQuestions
+                                                        items={question.retrieved_questions}
+                                                    />
 
                                                     <div
                                                         className="flex flex-wrap items-center gap-2 pt-1"

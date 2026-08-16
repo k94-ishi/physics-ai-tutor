@@ -155,3 +155,87 @@ def test_generate_rag_answer_without_context_still_answers(db, monkeypatch):
 
     assert answer == "回答"
     assert ids == []
+
+
+def test_load_context_by_ids_preserves_order(db):
+    first = _create_question(db, "質問1", "回答1")
+    second = _create_question(db, "質問2", "回答2")
+
+    context = rag_service.load_context_by_ids(db, [second.id, first.id])
+
+    assert [c.id for c in context] == [second.id, first.id]
+
+
+def test_load_context_by_ids_excludes_unapproved(db):
+    approved = _create_question(db, "承認済み質問", "回答", status="APPROVED")
+    unreviewed = _create_question(db, "未レビュー質問", "回答", status="UNREVIEWED")
+
+    context = rag_service.load_context_by_ids(db, [approved.id, unreviewed.id])
+
+    assert [c.id for c in context] == [approved.id]
+
+
+def test_load_context_by_ids_caps_at_top_k(db):
+    questions = [_create_question(db, f"質問{i}", f"回答{i}") for i in range(6)]
+
+    context = rag_service.load_context_by_ids(db, [q.id for q in questions])
+
+    assert len(context) == rag_service.RAG_TOP_K
+
+
+def test_load_context_by_ids_includes_concepts(db):
+    question = _create_question(db, "質問", "回答")
+    concept = concept_repository.create(
+        db,
+        name="力学",
+        embedding=_vector(2),
+        extraction_model="test-model",
+        embedding_model="test-model",
+        extraction_prompt_version="v1",
+    )
+    question_concept_repository.link(db, question_id=question.id, concept_id=concept.id)
+
+    context = rag_service.load_context_by_ids(db, [question.id])
+
+    assert context[0].concepts == ["力学"]
+
+
+def test_load_context_by_ids_empty_list_returns_empty(db):
+    assert rag_service.load_context_by_ids(db, []) == []
+
+
+def test_generate_rag_answer_with_ids_skips_embedding_search(db, monkeypatch):
+    question = _create_question(
+        db, "力とは何ですか", "力は物体を変形・加速させる作用です"
+    )
+
+    def _fail_create_embeddings(texts):
+        raise AssertionError("create_embeddings should not be called")
+
+    monkeypatch.setattr(embedding_service, "create_embeddings", _fail_create_embeddings)
+    monkeypatch.setattr(
+        deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
+    )
+
+    answer, ids = rag_service.generate_rag_answer(
+        db, "力の説明をして", retrieved_question_ids=[question.id]
+    )
+
+    assert answer == "回答"
+    assert ids == [question.id]
+
+
+def test_generate_rag_answer_falls_back_to_search_when_no_approved_ids(db, monkeypatch):
+    question = _create_question(db, "力とは何ですか", "力は説明です")
+    _embed_question(db, question, _vector(0))
+    _stub_query_embedding(monkeypatch, _vector(0))
+    monkeypatch.setattr(
+        deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
+    )
+
+    answer, ids = rag_service.generate_rag_answer(
+        db, "力の説明をして", retrieved_question_ids=None
+    )
+
+    assert answer == "回答"
+    assert ids == [question.id]

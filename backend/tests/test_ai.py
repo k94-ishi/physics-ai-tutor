@@ -107,7 +107,7 @@ def test_ask_ai_rag_mode_calls_rag_service_and_saves_as_rag_result(
     monkeypatch.setattr(
         rag_service,
         "generate_rag_answer",
-        lambda db, question: ("RAG回答", [11, 22]),
+        lambda db, question, retrieved_question_ids=None: ("RAG回答", [11, 22]),
     )
 
     response = client.post(
@@ -218,6 +218,30 @@ def test_ask_ai_rate_limit_exceeded_returns_429(client, monkeypatch):
     limited_response = client.post(ASK_PATH, json={"question": "テスト質問です"})
 
     assert limited_response.status_code == 429
+
+
+def test_ask_ai_rag_mode_passes_retrieved_question_ids_to_service(client, monkeypatch):
+    captured = {}
+
+    def _fake_generate_rag_answer(db, question, retrieved_question_ids=None):
+        captured["retrieved_question_ids"] = retrieved_question_ids
+        return "RAG回答", retrieved_question_ids or []
+
+    monkeypatch.setattr(
+        rag_service, "generate_rag_answer", _fake_generate_rag_answer
+    )
+
+    response = client.post(
+        ASK_PATH,
+        json={
+            "question": "テスト質問です",
+            "mode": "RAG",
+            "retrieved_question_ids": [3, 7],
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["retrieved_question_ids"] == [3, 7]
 
 
 def test_ask_ai_admin_bypasses_minute_limit(client, admin_client, monkeypatch):

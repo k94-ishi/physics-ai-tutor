@@ -75,6 +75,13 @@ def get_question(
     return query.first()
 
 
+def get_questions_by_ids(db: Session, ids: list[int]) -> list[Question]:
+    if not ids:
+        return []
+
+    return db.query(Question).filter(Question.id.in_(ids)).all()
+
+
 def get_by_exact_text(db: Session, question_text: str) -> Question | None:
     return (
         db.query(Question)

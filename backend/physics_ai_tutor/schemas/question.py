@@ -32,6 +32,15 @@ class QuestionUpdate(QuestionCreate):
     pass
 
 
+class QuestionRefSummary(BaseModel):
+    id: int
+    question: str
+
+    model_config = {
+        "from_attributes": True
+    }
+
+
 class QuestionResponse(BaseModel):
     id: int
     question: str
@@ -40,6 +49,7 @@ class QuestionResponse(BaseModel):
     source: QuestionSource
     language: str
     concepts: list[str] = Field(default_factory=list)
+    retrieved_questions: list[QuestionRefSummary] = Field(default_factory=list)
 
     model_config = {
         "from_attributes": True

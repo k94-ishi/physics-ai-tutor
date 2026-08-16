@@ -1,5 +1,3 @@
-import json
-
 import pytest
 
 from physics_ai_tutor.core.exceptions import ConceptExtractionError
@@ -20,11 +18,11 @@ def _create_question(db, question="質問", answer="回答"):
     return q
 
 
-def test_extract_concept_names_parses_json_array(monkeypatch):
+def test_extract_concept_names_parses_newline_separated_list(monkeypatch):
     monkeypatch.setattr(
         deepseek_service,
         "chat_completion",
-        lambda system_prompt, user_prompt: json.dumps(["加速度", "速度"]),
+        lambda system_prompt, user_prompt: "加速度\n速度",
     )
 
     result = real_extract_concept_names(
@@ -34,33 +32,23 @@ def test_extract_concept_names_parses_json_array(monkeypatch):
     assert result == ["加速度", "速度"]
 
 
-def test_extract_concept_names_rejects_invalid_json(monkeypatch):
+def test_extract_concept_names_strips_whitespace_and_blank_lines(monkeypatch):
     monkeypatch.setattr(
         deepseek_service,
         "chat_completion",
-        lambda system_prompt, user_prompt: "not json",
+        lambda system_prompt, user_prompt: "  加速度  \n\n\n 速度 \n",
     )
 
-    with pytest.raises(ConceptExtractionError):
-        real_extract_concept_names("質問", "回答")
+    result = real_extract_concept_names("質問", "回答")
+
+    assert result == ["加速度", "速度"]
 
 
-def test_extract_concept_names_rejects_non_list_shape(monkeypatch):
+def test_extract_concept_names_rejects_empty_output(monkeypatch):
     monkeypatch.setattr(
         deepseek_service,
         "chat_completion",
-        lambda system_prompt, user_prompt: json.dumps({"concepts": ["加速度"]}),
-    )
-
-    with pytest.raises(ConceptExtractionError):
-        real_extract_concept_names("質問", "回答")
-
-
-def test_extract_concept_names_rejects_non_string_items(monkeypatch):
-    monkeypatch.setattr(
-        deepseek_service,
-        "chat_completion",
-        lambda system_prompt, user_prompt: json.dumps(["加速度", 123]),
+        lambda system_prompt, user_prompt: "\n\n   \n",
     )
 
     with pytest.raises(ConceptExtractionError):

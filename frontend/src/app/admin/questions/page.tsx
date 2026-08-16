@@ -32,11 +32,6 @@ type ExtractionStatus = "processing" | "done" | "error";
 type ReviewAction = "APPROVE" | "REJECT";
 type ReviewActionState = { action: ReviewAction; state: "processing" | "error" };
 
-type ReviewTarget = {
-    question: Question;
-    action: ReviewAction;
-};
-
 const SIMILARITY_LIMIT = 10;
 const KEYWORD_DEBOUNCE_MS = 300;
 
@@ -117,10 +112,9 @@ function AdminQuestionsPageInner() {
     >(new Map());
     const processingIdsRef = useRef<Set<number>>(new Set());
 
-    // 単体操作
+    // 単体操作(削除のみ確認ダイアログを経由し、承認・却下は即実行)
     const [deleteTarget, setDeleteTarget] = useState<Question | null>(null);
     const [deleting, setDeleting] = useState(false);
-    const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null);
 
     // 承認/却下は非同期化し、ダイアログは即座に閉じてカードごとにバッジで進捗を表示する
     const [reviewStatus, setReviewStatus] = useState<
@@ -294,8 +288,6 @@ function AdminQuestionsPageInner() {
     };
 
     const startReview = (question: Question, action: ReviewAction) => {
-        setReviewTarget(null);
-
         if (reviewingIdsRef.current.has(question.id)) {
             return;
         }
@@ -798,10 +790,7 @@ function AdminQuestionsPageInner() {
                                                                 variant="secondary"
                                                                 disabled={review?.state === "processing"}
                                                                 onClick={() =>
-                                                                    setReviewTarget({
-                                                                        question,
-                                                                        action: "APPROVE",
-                                                                    })
+                                                                    startReview(question, "APPROVE")
                                                                 }
                                                             >
                                                                 承認
@@ -813,10 +802,7 @@ function AdminQuestionsPageInner() {
                                                                 variant="secondary"
                                                                 disabled={review?.state === "processing"}
                                                                 onClick={() =>
-                                                                    setReviewTarget({
-                                                                        question,
-                                                                        action: "REJECT",
-                                                                    })
+                                                                    startReview(question, "REJECT")
                                                                 }
                                                             >
                                                                 却下
@@ -836,6 +822,16 @@ function AdminQuestionsPageInner() {
                                                         >
                                                             編集
                                                         </Link>
+
+                                                        <Button
+                                                            variant="secondary"
+                                                            disabled={extraction === "processing"}
+                                                            onClick={() =>
+                                                                startConceptExtraction([question.id])
+                                                            }
+                                                        >
+                                                            Concept抽出
+                                                        </Button>
 
                                                         <Button
                                                             variant="danger"
@@ -870,21 +866,6 @@ function AdminQuestionsPageInner() {
                 confirming={deleting}
                 onConfirm={handleConfirmDelete}
                 onCancel={() => setDeleteTarget(null)}
-            />
-
-            <ConfirmDialog
-                open={reviewTarget !== null}
-                title={
-                    reviewTarget?.action === "APPROVE"
-                        ? "質問を承認しますか？"
-                        : "質問を却下しますか？"
-                }
-                description={reviewTarget?.question.question}
-                confirmLabel={reviewTarget?.action === "APPROVE" ? "承認" : "却下"}
-                onConfirm={() =>
-                    reviewTarget && startReview(reviewTarget.question, reviewTarget.action)
-                }
-                onCancel={() => setReviewTarget(null)}
             />
 
             <ConfirmDialog

@@ -21,6 +21,7 @@ def chat_completion(system_prompt: str, user_prompt: str) -> str:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
+            max_tokens=settings.deepseek_max_tokens,
         )
     except OpenAIError as exc:
         logger.warning("DeepSeek chat completion failed: %s", type(exc).__name__)

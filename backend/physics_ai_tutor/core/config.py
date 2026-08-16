@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     deepseek_api_key: str
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_chat_model: str = "deepseek-chat"
+    deepseek_max_tokens: int = 1500
+    # Rate limiting
+    trust_forwarded_for: bool = True
     # JWT
     jwt_secret_key: str
     jwt_algorithm: str

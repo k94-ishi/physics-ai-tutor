@@ -2,13 +2,14 @@ import logging
 from datetime import UTC, datetime
 
 import jwt
-from fastapi import Depends, HTTPException, Response
+from fastapi import Depends, HTTPException, Request, Response
 from fastapi.security import APIKeyCookie
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.jwt import create_access_token, decode_access_token
+from physics_ai_tutor.core.rate_limit import RateLimitExceeded, ai_ask_rate_limiter
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.models.user import User
 from physics_ai_tutor.repositories import user_repository
@@ -150,3 +151,30 @@ def require_admin(
         )
 
     return user
+
+
+def get_client_ip(request: Request) -> str:
+    if settings.trust_forwarded_for:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+
+    return request.client.host if request.client else "unknown"
+
+
+def enforce_ai_ask_rate_limit(
+    request: Request,
+    user: JWTPayload | None = Depends(get_current_user_optional),
+) -> None:
+    if user is not None and user.role == UserRole.ADMIN:
+        limits = [(3000, 86400)]
+    else:
+        limits = [(10, 60), (50, 3600), (200, 86400)]
+
+    try:
+        ai_ask_rate_limiter.check(get_client_ip(request), limits)
+    except RateLimitExceeded:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many requests. Please try again later.",
+        ) from None

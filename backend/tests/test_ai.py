@@ -32,7 +32,7 @@ def test_ask_ai_does_not_require_authentication(client, monkeypatch):
         deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
     )
 
-    response = client.post(ASK_PATH, json={"question": "質問"})
+    response = client.post(ASK_PATH, json={"question": "テスト質問です"})
 
     assert response.status_code == 200
 
@@ -43,7 +43,7 @@ def test_ask_ai_failure_returns_503(client, monkeypatch):
 
     monkeypatch.setattr(deepseek_service, "chat_completion", _raise)
 
-    response = client.post(ASK_PATH, json={"question": "質問"})
+    response = client.post(ASK_PATH, json={"question": "テスト質問です"})
 
     assert response.status_code == 503
     assert response.json() == {
@@ -107,7 +107,7 @@ def test_ask_ai_rag_mode_calls_rag_service_and_saves_as_rag_result(
     monkeypatch.setattr(
         rag_service,
         "generate_rag_answer",
-        lambda db, question: ("RAG回答", [11, 22]),
+        lambda db, question, retrieved_question_ids=None: ("RAG回答", [11, 22]),
     )
 
     response = client.post(
@@ -151,3 +151,107 @@ def test_ask_ai_invalid_mode_rejected(client):
     )
 
     assert response.status_code == 422
+
+
+def test_ask_ai_question_too_short_rejected(client):
+    response = client.post(ASK_PATH, json={"question": "1234"})
+
+    assert response.status_code == 422
+
+
+def test_ask_ai_question_too_long_rejected(client):
+    response = client.post(ASK_PATH, json={"question": "あ" * 201})
+
+    assert response.status_code == 422
+
+
+def test_ask_ai_question_at_length_boundaries_accepted(client, monkeypatch):
+    monkeypatch.setattr(
+        deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
+    )
+
+    short_response = client.post(ASK_PATH, json={"question": "12345"})
+    long_response = client.post(ASK_PATH, json={"question": "あ" * 200})
+
+    assert short_response.status_code == 200
+    assert long_response.status_code == 200
+
+
+def test_ask_ai_passes_max_tokens_to_deepseek(client, monkeypatch):
+    from physics_ai_tutor.core.config import settings
+
+    captured = {}
+
+    class _FakeMessage:
+        content = "回答"
+
+    class _FakeChoice:
+        message = _FakeMessage()
+
+    class _FakeResponse:
+        choices = [_FakeChoice()]
+
+    def _fake_create(**kwargs):
+        captured.update(kwargs)
+        return _FakeResponse()
+
+    monkeypatch.setattr(
+        "physics_ai_tutor.services.deepseek_service.client.chat.completions.create",
+        _fake_create,
+    )
+
+    response = client.post(ASK_PATH, json={"question": "テスト質問です"})
+
+    assert response.status_code == 200
+    assert captured["max_tokens"] == settings.deepseek_max_tokens
+
+
+def test_ask_ai_rate_limit_exceeded_returns_429(client, monkeypatch):
+    monkeypatch.setattr(
+        deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
+    )
+
+    for _ in range(10):
+        ok_response = client.post(ASK_PATH, json={"question": "テスト質問です"})
+        assert ok_response.status_code == 200
+
+    limited_response = client.post(ASK_PATH, json={"question": "テスト質問です"})
+
+    assert limited_response.status_code == 429
+
+
+def test_ask_ai_rag_mode_passes_retrieved_question_ids_to_service(client, monkeypatch):
+    captured = {}
+
+    def _fake_generate_rag_answer(db, question, retrieved_question_ids=None):
+        captured["retrieved_question_ids"] = retrieved_question_ids
+        return "RAG回答", retrieved_question_ids or []
+
+    monkeypatch.setattr(
+        rag_service, "generate_rag_answer", _fake_generate_rag_answer
+    )
+
+    response = client.post(
+        ASK_PATH,
+        json={
+            "question": "テスト質問です",
+            "mode": "RAG",
+            "retrieved_question_ids": [3, 7],
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["retrieved_question_ids"] == [3, 7]
+
+
+def test_ask_ai_admin_bypasses_minute_limit(client, admin_client, monkeypatch):
+    monkeypatch.setattr(
+        deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
+    )
+
+    for _ in range(10):
+        client.post(ASK_PATH, json={"question": "テスト質問です"})
+
+    admin_response = admin_client.post(ASK_PATH, json={"question": "テスト質問です"})
+
+    assert admin_response.status_code == 200

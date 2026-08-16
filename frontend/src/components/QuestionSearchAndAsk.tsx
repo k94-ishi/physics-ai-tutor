@@ -12,6 +12,8 @@ import MarkdownContent from "@/components/ui/MarkdownContent";
 import { showToast } from "@/components/ui/Toast";
 
 const SIMILARITY_LIMIT = 10;
+const QUESTION_MIN_LENGTH = 5;
+const QUESTION_MAX_LENGTH = 200;
 
 const inputClassName =
     "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
@@ -121,24 +123,39 @@ export default function QuestionSearchAndAsk({
         runSearch(query);
     }
 
+    const trimmedLength = query.trim().length;
+    const belowMinLength = trimmedLength > 0 && trimmedLength < QUESTION_MIN_LENGTH;
+
     return (
         <div className="flex flex-col gap-4">
-            <form onSubmit={handleSubmit} className="flex gap-2">
-                <input
-                    type="text"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="質問を入力すると意味が近い質問を検索します"
-                    className={inputClassName}
-                />
+            <form onSubmit={handleSubmit} className="flex flex-col gap-1">
+                <div className="flex gap-2">
+                    <input
+                        type="text"
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder="質問を入力すると意味が近い質問を検索します"
+                        maxLength={QUESTION_MAX_LENGTH}
+                        className={inputClassName}
+                    />
 
-                <Button
-                    type="submit"
-                    disabled={searchLoading || !query.trim()}
-                    className="shrink-0"
-                >
-                    検索
-                </Button>
+                    <Button
+                        type="submit"
+                        disabled={searchLoading || trimmedLength < QUESTION_MIN_LENGTH}
+                        className="shrink-0"
+                    >
+                        検索
+                    </Button>
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                    <span>
+                        {belowMinLength && `${QUESTION_MIN_LENGTH}文字以上入力してください`}
+                    </span>
+                    <span>
+                        {trimmedLength} / {QUESTION_MAX_LENGTH}
+                    </span>
+                </div>
             </form>
 
             {!searched && children}
@@ -193,7 +210,7 @@ export default function QuestionSearchAndAsk({
                             <Button
                                 type="button"
                                 variant="secondary"
-                                disabled={ragLoading}
+                                disabled={ragLoading || trimmedLength < QUESTION_MIN_LENGTH}
                                 onClick={() => runRag(query)}
                             >
                                 AIに質問する

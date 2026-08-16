@@ -14,12 +14,55 @@ import { showToast } from "@/components/ui/Toast";
 const SIMILARITY_LIMIT = 10;
 const QUESTION_MIN_LENGTH = 5;
 const QUESTION_MAX_LENGTH = 200;
+const HIGH_SIMILARITY_THRESHOLD = 95;
+const MEDIUM_SIMILARITY_THRESHOLD = 90;
 
 const inputClassName =
     "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
 
 function similarityPercent(distance: number): number {
     return Math.max(0, Math.round((1 - distance) * 100));
+}
+
+// Card.tsx bakes in a fixed "border-gray-200 bg-white" that sorts after
+// plain color utilities in Tailwind's generated stylesheet, so a same-
+// property override (border-color/background-color) from a later className
+// silently loses the cascade. `ring` (box-shadow) and an inline
+// backgroundColor sidestep that instead of fighting it.
+function topResultRingClassName(isTopResult: boolean, percent: number): string {
+    if (!isTopResult) {
+        return "";
+    }
+    if (percent >= HIGH_SIMILARITY_THRESHOLD) {
+        return "ring-2 ring-green-400";
+    }
+    if (percent >= MEDIUM_SIMILARITY_THRESHOLD) {
+        return "ring-2 ring-blue-300";
+    }
+    return "";
+}
+
+function topResultBackgroundColor(
+    isTopResult: boolean,
+    percent: number
+): string | undefined {
+    if (!isTopResult) {
+        return undefined;
+    }
+    if (percent >= HIGH_SIMILARITY_THRESHOLD) {
+        return "#f0fdf4";
+    }
+    if (percent >= MEDIUM_SIMILARITY_THRESHOLD) {
+        return "#eff6ff";
+    }
+    return undefined;
+}
+
+function topResultBadgeClassName(isTopResult: boolean, percent: number): string {
+    if (isTopResult && percent >= HIGH_SIMILARITY_THRESHOLD) {
+        return "bg-green-50 text-green-700";
+    }
+    return "bg-blue-50 text-blue-700";
 }
 
 type QuestionSearchAndAskProps = {
@@ -183,27 +226,47 @@ export default function QuestionSearchAndAsk({
 
                     {!searchLoading && !searchError && results.length > 0 && (
                         <div className="flex flex-col gap-3">
-                            {results.map((result) => (
-                                <Link key={result.id} href={`/questions/${result.id}`}>
-                                    <Card className="transition-colors hover:border-blue-300 hover:bg-blue-50/50">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <span className="font-medium text-gray-900">
-                                                {result.question}
-                                            </span>
+                            {results.map((result, index) => {
+                                const percent = similarityPercent(result.distance);
+                                const isTopResult = index === 0;
 
-                                            <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-                                                関連度{" "}
-                                                {similarityPercent(result.distance)}%
-                                            </span>
-                                        </div>
+                                return (
+                                    <Link key={result.id} href={`/questions/${result.id}`}>
+                                        <Card
+                                            className={`transition-colors hover:border-blue-300 hover:bg-blue-50/50 ${topResultRingClassName(isTopResult, percent)}`}
+                                            style={{
+                                                backgroundColor: topResultBackgroundColor(
+                                                    isTopResult,
+                                                    percent
+                                                ),
+                                            }}
+                                        >
+                                            {isTopResult && percent >= HIGH_SIMILARITY_THRESHOLD && (
+                                                <p className="mb-1 text-xs font-medium text-green-700">
+                                                    聞きたいのはこの質問ですか？
+                                                </p>
+                                            )}
 
-                                        <MarkdownContent
-                                            content={result.answer}
-                                            variant="preview"
-                                        />
-                                    </Card>
-                                </Link>
-                            ))}
+                                            <div className="flex items-start justify-between gap-3">
+                                                <span className="font-medium text-gray-900">
+                                                    {result.question}
+                                                </span>
+
+                                                <span
+                                                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${topResultBadgeClassName(isTopResult, percent)}`}
+                                                >
+                                                    関連度 {percent}%
+                                                </span>
+                                            </div>
+
+                                            <MarkdownContent
+                                                content={result.answer}
+                                                variant="preview"
+                                            />
+                                        </Card>
+                                    </Link>
+                                );
+                            })}
                         </div>
                     )}
 

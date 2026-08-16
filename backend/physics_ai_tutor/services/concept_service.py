@@ -1,4 +1,3 @@
-import json
 import logging
 
 from sqlalchemy.orm import Session
@@ -17,10 +16,12 @@ logger = logging.getLogger(__name__)
 CONCEPT_EXTRACTION_PROMPT_VERSION = "v1"
 
 _SYSTEM_PROMPT = (
-    "あなたは物理教育の専門家です。指示に従い、JSON配列のみを出力してください。"
+    "あなたは物理教育の専門家です。"
+    "あなたの出力は自動処理されるため、"
+    "指定フォーマット(概念名を1行に1つずつ）以外は一切出力しないでください。"
 )
 
-_USER_PROMPT_TEMPLATE = """例
+_USER_PROMPT_TEMPLATE = """---例---
 
 質問:
 加速度って何?
@@ -33,22 +34,19 @@ _USER_PROMPT_TEMPLATE = """例
 速度-時間グラフの接線の傾きを考えると、加速度になります。
 
 Output:
-[
- "加速度",
- "単位時間",
- "速度",
- "変化量",
- "ベクトル",
- "単位",
- "$m/s^2$",
- "v-tグラフ",
- "接線の傾き",
- "微分"
-]
-
-
-上記例のように以下の物理に関する質問および回答から、
-物理概念を抜き出してjson形式で列挙してください。
+加速度
+単位時間
+速度
+変化量
+ベクトル
+単位
+$m/s^2$
+v-tグラフ
+接線の傾き
+微分
+---例 ここまで---
+上記例のように、以下の物理に関する質問および回答から、物理概念を抜き出してください。
+概念名を1行に1つずつ、改行区切りで出力してください。それ以外は一切出力しないこと。
 
 質問:
 {question}
@@ -56,6 +54,8 @@ Output:
 
 回答:
 {answer}
+
+Output:
 """
 
 
@@ -64,18 +64,14 @@ def extract_concept_names(question: str, answer: str) -> list[str]:
 
     content = deepseek_service.chat_completion(_SYSTEM_PROMPT, user_prompt)
 
-    try:
-        concept_names = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise ConceptExtractionError(
-            "DeepSeek returned invalid JSON for concept extraction."
-        ) from exc
+    concept_names = [line.strip() for line in content.splitlines() if line.strip()]
 
-    if not isinstance(concept_names, list) or not all(
-        isinstance(name, str) for name in concept_names
-    ):
+    if not concept_names:
+        logger.warning(
+            "Concept extraction returned no concepts: content=%r", content[:500]
+        )
         raise ConceptExtractionError(
-            "DeepSeek returned an unexpected shape for concept extraction."
+            "DeepSeek returned no concepts for concept extraction."
         )
 
     logger.info("Concepts extracted: count=%d", len(concept_names))

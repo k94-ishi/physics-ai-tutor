@@ -16,7 +16,9 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 
 
 @router.post(
-    "/ask", response_model=AskAiResponse, dependencies=[Depends(enforce_ai_ask_rate_limit)]
+    "/ask",
+    response_model=AskAiResponse,
+    dependencies=[Depends(enforce_ai_ask_rate_limit)],
 )
 def ask_ai(request: AskAiRequest, db: Session = Depends(get_db)):
     if request.mode == "RAG":

@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
+from physics_ai_tutor.core.rate_limit import ai_ask_rate_limiter
 from physics_ai_tutor.database.base import Base
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.main import app
@@ -56,6 +57,13 @@ def _mock_extract_concept_names(monkeypatch):
         "extract_concept_names",
         lambda question, answer: ["概念A", "概念B"],
     )
+
+
+@pytest.fixture(autouse=True)
+def _reset_ai_ask_rate_limiter():
+    ai_ask_rate_limiter.reset()
+    yield
+    ai_ask_rate_limiter.reset()
 
 
 @pytest.fixture

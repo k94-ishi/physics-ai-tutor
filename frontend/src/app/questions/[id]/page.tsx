@@ -4,6 +4,7 @@ import { ApiError, fetchQuestion, fetchRelatedQuestions } from "@/lib/api";
 import { Question } from "@/types/question";
 import Card from "@/components/ui/Card";
 import MarkdownContent from "@/components/ui/MarkdownContent";
+import ReferencedQuestions from "@/components/ui/ReferencedQuestions";
 import AskAiBox from "@/components/AskAiBox";
 
 export default async function QuestionPage(
@@ -37,6 +38,8 @@ export default async function QuestionPage(
                 </h1>
 
                 <MarkdownContent content={question.answer} variant="full" />
+
+                <ReferencedQuestions items={question.retrieved_questions} />
             </Card>
 
             {relatedQuestions.length > 0 && (

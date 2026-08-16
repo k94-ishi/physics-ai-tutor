@@ -9,6 +9,7 @@ import LoadingState from "@/components/ui/LoadingState";
 import StatusMessage from "@/components/ui/StatusMessage";
 import Pagination from "@/components/ui/Pagination";
 import MarkdownContent from "@/components/ui/MarkdownContent";
+import ReferencedQuestions from "@/components/ui/ReferencedQuestions";
 import QuestionSearchAndAsk from "@/components/QuestionSearchAndAsk";
 import { useQueryState } from "@/lib/hooks/useQueryState";
 
@@ -143,8 +144,11 @@ function QuestionListInner() {
 
                     <div className="flex flex-col gap-3">
                         {listItems.map((question) => (
-                            <Link key={question.id} href={`/questions/${question.id}`}>
-                                <Card className="transition-colors hover:border-blue-300 hover:bg-blue-50/50">
+                            <Card
+                                key={question.id}
+                                className="transition-colors hover:border-blue-300 hover:bg-blue-50/50"
+                            >
+                                <Link href={`/questions/${question.id}`}>
                                     <span className="font-medium text-gray-900">
                                         {question.question}
                                     </span>
@@ -153,8 +157,12 @@ function QuestionListInner() {
                                         content={question.answer}
                                         variant="preview"
                                     />
-                                </Card>
-                            </Link>
+                                </Link>
+
+                                <ReferencedQuestions
+                                    items={question.retrieved_questions}
+                                />
+                            </Card>
                         ))}
                     </div>
 

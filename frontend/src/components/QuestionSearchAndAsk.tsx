@@ -85,7 +85,7 @@ export default function QuestionSearchAndAsk({
         }
     }, []);
 
-    const runRag = useCallback(async (rawQuery: string) => {
+    const runRag = useCallback(async (rawQuery: string, searchResults: SimilarQuestion[]) => {
         const trimmed = rawQuery.trim();
 
         if (!trimmed) {
@@ -97,7 +97,12 @@ export default function QuestionSearchAndAsk({
         setRagAnswer(null);
 
         try {
-            const result = await askAi(trimmed, "RAG");
+            const retrievedQuestionIds = searchResults.map((result) => result.id);
+            const result = await askAi(
+                trimmed,
+                "RAG",
+                retrievedQuestionIds.length > 0 ? retrievedQuestionIds : undefined
+            );
 
             if (requestId !== ragRequestId.current) {
                 return;
@@ -211,7 +216,7 @@ export default function QuestionSearchAndAsk({
                                 type="button"
                                 variant="secondary"
                                 disabled={ragLoading || trimmedLength < QUESTION_MIN_LENGTH}
-                                onClick={() => runRag(query)}
+                                onClick={() => runRag(query, results)}
                             >
                                 AIに質問する
                             </Button>

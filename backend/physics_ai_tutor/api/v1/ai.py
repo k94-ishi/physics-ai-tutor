@@ -22,7 +22,9 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 )
 def ask_ai(request: AskAiRequest, db: Session = Depends(get_db)):
     if request.mode == "RAG":
-        answer, retrieved_ids = rag_service.generate_rag_answer(db, request.question)
+        answer, retrieved_ids = rag_service.generate_rag_answer(
+            db, request.question, request.retrieved_question_ids
+        )
         source = QuestionSource.RAG_RESULT
     else:
         answer = deepseek_service.chat_completion(

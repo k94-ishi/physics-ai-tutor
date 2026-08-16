@@ -3,6 +3,7 @@ from enum import StrEnum
 
 from physics_ai_tutor.core.exceptions import EmbeddingGenerationError
 from physics_ai_tutor.models import QuestionEmbedding
+from physics_ai_tutor.repositories import question_repository
 from physics_ai_tutor.services import embedding_service
 
 PATH = "/api/v1/questions"
@@ -779,3 +780,57 @@ def test_extract_concepts_not_found(admin_client):
 
     data = response.json()["results"][0]
     assert data["success"] is False
+
+
+def test_create_question_has_empty_retrieved_questions(admin_client):
+    response = _post(admin_client, "普通の質問", "普通の回答")
+
+    assert response.json()["retrieved_questions"] == []
+
+
+def test_get_question_detail_includes_retrieved_questions(admin_client, db):
+    referenced = question_repository.create_question(
+        db, question="参照質問", answer="参照回答"
+    )
+    rag_question = question_repository.create_question(
+        db,
+        question="RAG質問",
+        answer="RAG回答",
+        status="UNREVIEWED",
+        source="RAG_RESULT",
+        retrieved_question_ids=[referenced.id],
+    )
+    db.commit()
+
+    response = admin_client.get(f"{PATH}/{rag_question.id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "RAG_RESULT"
+    assert body["retrieved_questions"] == [
+        {"id": referenced.id, "question": "参照質問"}
+    ]
+
+
+def test_get_questions_list_includes_retrieved_questions(admin_client, db):
+    referenced = question_repository.create_question(
+        db, question="参照質問2", answer="参照回答2"
+    )
+    question_repository.create_question(
+        db,
+        question="RAG質問2",
+        answer="RAG回答2",
+        status="UNREVIEWED",
+        source="RAG_RESULT",
+        retrieved_question_ids=[referenced.id],
+    )
+    db.commit()
+
+    response = admin_client.get(PATH, params={"keyword": "RAG質問2"})
+
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert len(items) == 1
+    assert items[0]["retrieved_questions"] == [
+        {"id": referenced.id, "question": "参照質問2"}
+    ]

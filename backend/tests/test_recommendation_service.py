@@ -129,3 +129,41 @@ def test_get_related_questions_returns_empty_when_no_embedding(db):
     result = recommendation_service.get_related_questions(db, q.id, limit=5)
 
     assert result == []
+
+
+def test_get_related_questions_includes_candidate_via_rag_reference_concepts(db):
+    close_vector = [0.1] * 1536
+    dissimilar_vector = [-0.5] * 1536
+
+    reference = _create_question_with_embedding(
+        db, "参照質問", "参照回答", close_vector
+    )
+    rag_question = _create_question_with_embedding(
+        db, "RAG質問", "RAG回答", close_vector
+    )
+    question_repository.update_content_and_status(
+        db, rag_question.id, status="UNREVIEWED"
+    )
+    rag_question.retrieved_question_ids = [reference.id]
+    db.flush()
+
+    # candidateはRAG質問自身とは概念もembeddingも近くないが、参照質問(reference)
+    # とだけ概念を共有している -> retrieved_question_ids経由の拡張がなければ
+    # 見つからないはずの候補
+    candidate = _create_question_with_embedding(
+        db, "参照質問と概念を共有する質問", "回答", dissimilar_vector
+    )
+
+    concept = _create_concept(db, "参照経由の概念", close_vector)
+    question_concept_repository.link(
+        db, question_id=reference.id, concept_id=concept.id
+    )
+    question_concept_repository.link(
+        db, question_id=candidate.id, concept_id=concept.id
+    )
+
+    result = recommendation_service.get_related_questions(
+        db, rag_question.id, limit=5, exclude_statuses=["REJECTED"]
+    )
+
+    assert candidate.id in [q.id for q in result]

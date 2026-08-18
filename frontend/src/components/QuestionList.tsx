@@ -42,6 +42,8 @@ function QuestionListInner() {
     const page = Number(queryState.page);
     const size = Number(queryState.size);
     const [keywordInput, setKeywordInput] = useState(queryState.keyword);
+    const [searchQuestion, setSearchQuestion] = useState(true);
+    const [searchAnswer, setSearchAnswer] = useState(true);
     const [listItems, setListItems] = useState<Question[]>([]);
     const [listTotal, setListTotal] = useState(0);
     const [listLoading, setListLoading] = useState(true);
@@ -49,7 +51,13 @@ function QuestionListInner() {
     const listRequestId = useRef(0);
 
     const loadList = useCallback(
-        async (targetPage: number, targetSize: number, keyword: string) => {
+        async (
+            targetPage: number,
+            targetSize: number,
+            keyword: string,
+            targetSearchQuestion: boolean,
+            targetSearchAnswer: boolean
+        ) => {
             const requestId = ++listRequestId.current;
             setListLoading(true);
             setListError(false);
@@ -60,6 +68,8 @@ function QuestionListInner() {
                     size: targetSize,
                     keyword: keyword || undefined,
                     status: "APPROVED",
+                    searchQuestion: targetSearchQuestion,
+                    searchAnswer: targetSearchAnswer,
                 });
 
                 if (requestId !== listRequestId.current) {
@@ -103,18 +113,26 @@ function QuestionListInner() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [keywordInput]);
 
-    // ページ・サイズ・キーワードが確定するたびに一覧を取得する(初回ロードも含む)
+    // ページ・サイズ・キーワード・検索対象フィールドが確定するたびに一覧を取得する(初回ロードも含む)
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        loadList(page, size, queryState.keyword);
-    }, [loadList, page, size, queryState.keyword]);
+        loadList(page, size, queryState.keyword, searchQuestion, searchAnswer);
+    }, [loadList, page, size, queryState.keyword, searchQuestion, searchAnswer]);
 
     const handlePageChange = (nextPage: number) =>
         setQueryState({ page: String(nextPage) });
     const handleSizeChange = (nextSize: number) =>
         setQueryState({ size: String(nextSize), page: "1" });
 
-    // 「関連QA検索/AI回答」タブでまだ検索していない間のフォールバックにも、
+    // 検索対象(質問/回答)は最低1つはオンのまま維持する(両方オフだと絞り込みが崩れるため)。
+    const toggleSearchQuestion = () => {
+        setSearchQuestion((prev) => (prev && !searchAnswer ? prev : !prev));
+    };
+    const toggleSearchAnswer = () => {
+        setSearchAnswer((prev) => (prev && !searchQuestion ? prev : !prev));
+    };
+
+    // 「AIに聞く-検索/生成」タブでまだ検索していない間のフォールバックにも、
     // 「キーワード検索」タブの主表示にも、同じ質問一覧を使う(重複させない)。
     const browseList = (
         <>
@@ -124,7 +142,9 @@ function QuestionListInner() {
                 <StatusMessage
                     variant="error"
                     message="質問を取得できませんでした。"
-                    onRetry={() => loadList(page, size, queryState.keyword)}
+                    onRetry={() =>
+                        loadList(page, size, queryState.keyword, searchQuestion, searchAnswer)
+                    }
                 />
             )}
 
@@ -186,7 +206,7 @@ function QuestionListInner() {
                     className={modeButtonClassName(mode === "similarity")}
                     onClick={() => setMode("similarity")}
                 >
-                    関連QA検索/AI回答
+                    AIに聞く-検索/生成
                 </button>
 
                 <button
@@ -206,9 +226,29 @@ function QuestionListInner() {
                         type="text"
                         value={keywordInput}
                         onChange={(e) => setKeywordInput(e.target.value)}
-                        placeholder="キーワードで質問・回答を絞り込み"
+                        placeholder="キーワードで質問・回答を絞り込み(スペース区切りでAND検索)"
                         className={inputClassName}
                     />
+
+                    <div className="flex gap-4 text-sm text-gray-600">
+                        <label className="flex items-center gap-2">
+                            <input
+                                type="checkbox"
+                                checked={searchQuestion}
+                                onChange={toggleSearchQuestion}
+                            />
+                            質問を検索対象にする
+                        </label>
+
+                        <label className="flex items-center gap-2">
+                            <input
+                                type="checkbox"
+                                checked={searchAnswer}
+                                onChange={toggleSearchAnswer}
+                            />
+                            回答を検索対象にする
+                        </label>
+                    </div>
 
                     {browseList}
                 </>

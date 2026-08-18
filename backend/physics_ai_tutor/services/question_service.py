@@ -89,6 +89,8 @@ def fetch_questions(
     keyword: str | None = None,
     status: str | None = None,
     exclude_status: str | None = None,
+    search_question: bool = True,
+    search_answer: bool = True,
 ) -> QuestionListResponse:
 
     offset = (page - 1) * size
@@ -100,10 +102,17 @@ def fetch_questions(
         keyword=keyword,
         status=status,
         exclude_status=exclude_status,
+        search_question=search_question,
+        search_answer=search_answer,
     )
 
     total = question_repository.count_questions(
-        db, keyword=keyword, status=status, exclude_status=exclude_status
+        db,
+        keyword=keyword,
+        status=status,
+        exclude_status=exclude_status,
+        search_question=search_question,
+        search_answer=search_answer,
     )
 
     attach_concept_names(db, questions)
@@ -134,6 +143,24 @@ def fetch_question(
     question = question_repository.get_question(
         db,
         question_id,
+        exclude_status=exclude_status,
+    )
+
+    if question is not None:
+        attach_concept_names(db, [question])
+        attach_retrieved_questions(db, [question])
+
+    return question
+
+
+def fetch_question_by_exact_text(
+    db: Session,
+    question_text: str,
+    exclude_status: str | None = None,
+) -> Question | None:
+    question = question_repository.get_by_exact_text(
+        db,
+        question_text,
         exclude_status=exclude_status,
     )
 

@@ -152,6 +152,35 @@ def test_get_questions_filters_by_keyword(admin_client):
     assert data["items"][0][Key.QUESTION] == "運動量保存則とは何ですか"
 
 
+def test_get_questions_keyword_and_across_terms(admin_client):
+    _post(admin_client, "運動量保存則とは何ですか", "衝突の前後で運動量は保存されます")
+    _post(admin_client, "運動量保存則とは何ですか", "エネルギーは保存されます")
+
+    response = admin_client.get(PATH, params={"keyword": "運動量 衝突"})
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+
+
+def test_get_questions_keyword_search_question_only(admin_client):
+    _post(admin_client, "運動量保存則とは何ですか", "回答")
+    _post(admin_client, "第一法則とは", "運動量は保存されます")
+
+    response = admin_client.get(
+        PATH,
+        params={
+            "keyword": "運動量",
+            "search_question": "true",
+            "search_answer": "false",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0][Key.QUESTION] == "運動量保存則とは何ですか"
+
+
 def test_get_questions_invalid_size_rejected(client):
     assert client.get(PATH, params={"size": 0}).status_code == 422
     assert client.get(PATH, params={"size": 121}).status_code == 422
@@ -212,6 +241,55 @@ def test_get_question_rejected_not_found_for_non_admin(admin_client, client):
     admin_client.post(f"{PATH}/{question_id}/review", json={"action": "REJECT"})
 
     response = client.get(f"{PATH}/{question_id}")
+
+    assert response.status_code == 404
+
+
+def test_get_exact_match_question_found(admin_client, client):
+    create_response = _post(admin_client, "完全一致テスト質問", "完全一致テスト回答")
+    question_id = create_response.json()[Key.ID]
+
+    response = client.get(
+        f"{PATH}/exact-match", params={"question": "完全一致テスト質問"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()[Key.ID] == question_id
+
+
+def test_get_exact_match_question_not_found(client):
+    response = client.get(
+        f"{PATH}/exact-match", params={"question": "存在しない完全一致質問"}
+    )
+
+    assert response.status_code == 404
+
+
+def test_get_exact_match_question_includes_unreviewed(admin_client, client):
+    import_response = _post_import(
+        admin_client,
+        [("未レビュー完全一致質問", "回答")],
+        status="UNREVIEWED",
+    )
+    question_id = import_response.json()[Key.QUESTIONS][0][Key.ID]
+
+    response = client.get(
+        f"{PATH}/exact-match", params={"question": "未レビュー完全一致質問"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()[Key.ID] == question_id
+    assert response.json()[Key.STATUS] == "UNREVIEWED"
+
+
+def test_get_exact_match_question_excludes_rejected(admin_client, client):
+    create_response = _post(admin_client, "却下済み完全一致質問", "回答")
+    question_id = create_response.json()[Key.ID]
+    admin_client.post(f"{PATH}/{question_id}/review", json={"action": "REJECT"})
+
+    response = client.get(
+        f"{PATH}/exact-match", params={"question": "却下済み完全一致質問"}
+    )
 
     assert response.status_code == 404
 

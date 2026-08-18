@@ -66,6 +66,8 @@ def get_questions(
     size: int = Query(default=30, ge=1, le=120),
     keyword: str | None = Query(default=None, min_length=1, max_length=200),
     status: QuestionStatus | None = Query(default=None),
+    search_question: bool = Query(default=True),
+    search_answer: bool = Query(default=True),
     db: Session = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
@@ -78,7 +80,32 @@ def get_questions(
         keyword,
         status=status,
         exclude_status=None if is_admin else QuestionStatus.REJECTED,
+        search_question=search_question,
+        search_answer=search_answer,
     )
+
+
+@router.get(
+    "/exact-match",
+    response_model=QuestionResponse,
+)
+def get_exact_match_question(
+    question: str = Query(..., min_length=1, max_length=200),
+    db: Session = Depends(get_db),
+):
+    result = question_service.fetch_question_by_exact_text(
+        db,
+        question,
+        exclude_status=QuestionStatus.REJECTED,
+    )
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Question not found",
+        )
+
+    return result
 
 
 @router.get(

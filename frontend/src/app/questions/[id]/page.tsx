@@ -8,9 +8,16 @@ import ReferencedQuestions from "@/components/ui/ReferencedQuestions";
 import AskAiBox from "@/components/AskAiBox";
 
 export default async function QuestionPage(
-    {params}: {params: Promise<{ id: string }>}
+    {
+        params,
+        searchParams,
+    }: {
+        params: Promise<{ id: string }>;
+        searchParams: Promise<{ matched?: string }>;
+    }
 ) {
     const { id } = await params;
+    const { matched } = await searchParams;
 
     let question;
     try {
@@ -33,9 +40,23 @@ export default async function QuestionPage(
     return (
         <main className="flex flex-col gap-6">
             <Card className="flex flex-col gap-4">
-                <h1 className="text-xl font-bold text-gray-900">
-                    {question.question}
-                </h1>
+                {matched === "exact" && (
+                    <p className="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-700">
+                        この質問に対する回答はすでに生成済みです
+                    </p>
+                )}
+
+                <div className="flex flex-wrap items-center gap-2">
+                    {question.status === "UNREVIEWED" && (
+                        <span className="shrink-0 rounded-full bg-yellow-50 px-2 py-0.5 text-xs font-medium text-yellow-700">
+                            管理者未チェック
+                        </span>
+                    )}
+
+                    <h1 className="text-xl font-bold text-gray-900">
+                        {question.question}
+                    </h1>
+                </div>
 
                 <MarkdownContent content={question.answer} variant="full" />
 

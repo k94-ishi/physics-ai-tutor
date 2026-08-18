@@ -47,6 +47,8 @@ export type FetchQuestionsParams = {
     size?: number;
     keyword?: string;
     status?: QuestionStatus;
+    searchQuestion?: boolean;
+    searchAnswer?: boolean;
 };
 
 export type SearchQuestionsParams = {

@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useCallback, useRef, useState } from "react";
-import { askAi, searchQuestions } from "@/lib/api";
+import { ApiError, askAi, fetchQuestionByExactText, searchQuestions } from "@/lib/api";
 import { SimilarQuestion } from "@/types/question";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -78,6 +79,7 @@ type QuestionSearchAndAskProps = {
 export default function QuestionSearchAndAsk({
     children,
 }: QuestionSearchAndAskProps) {
+    const router = useRouter();
     const [query, setQuery] = useState("");
     const [searched, setSearched] = useState(false);
     const [results, setResults] = useState<SimilarQuestion[]>([]);
@@ -97,9 +99,29 @@ export default function QuestionSearchAndAsk({
         }
 
         const requestId = ++searchRequestId.current;
-        setSearched(true);
         setSearchLoading(true);
         setSearchError(false);
+
+        // 完全一致するQAが既にあれば、検索結果を経由せずその個別ページへ直接遷移する。
+        let exactMatchId: number | null = null;
+        try {
+            exactMatchId = (await fetchQuestionByExactText(trimmed)).id;
+        } catch (error) {
+            if (!(error instanceof ApiError && error.status === 404)) {
+                console.error(error);
+            }
+        }
+
+        if (requestId !== searchRequestId.current) {
+            return;
+        }
+
+        if (exactMatchId !== null) {
+            router.push(`/questions/${exactMatchId}?matched=exact`);
+            return;
+        }
+
+        setSearched(true);
         setRagAnswer(null);
         ragRequestId.current += 1;
 
@@ -126,7 +148,7 @@ export default function QuestionSearchAndAsk({
                 setSearchLoading(false);
             }
         }
-    }, []);
+    }, [router]);
 
     const runRag = useCallback(async (rawQuery: string, searchResults: SimilarQuestion[]) => {
         const trimmed = rawQuery.trim();
@@ -210,6 +232,22 @@ export default function QuestionSearchAndAsk({
 
             {searched && (
                 <>
+                    {!searchLoading && (
+                        <div className="flex flex-col items-start gap-2 rounded-md border border-gray-200 bg-gray-50 p-4">
+                            <p className="text-sm text-gray-600">
+                                以下に目的の質問はありませんか？
+                            </p>
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                disabled={ragLoading || trimmedLength < QUESTION_MIN_LENGTH}
+                                onClick={() => runRag(query, results)}
+                            >
+                                AIによる回答生成を実行
+                            </Button>
+                        </div>
+                    )}
+
                     {searchLoading && <LoadingState label="検索中..." />}
 
                     {!searchLoading && searchError && (
@@ -267,22 +305,6 @@ export default function QuestionSearchAndAsk({
                                     </Link>
                                 );
                             })}
-                        </div>
-                    )}
-
-                    {!searchLoading && (
-                        <div className="flex flex-col items-start gap-2 rounded-md border border-gray-200 bg-gray-50 p-4">
-                            <p className="text-sm text-gray-600">
-                                目的の質問はありませんか？
-                            </p>
-                            <Button
-                                type="button"
-                                variant="secondary"
-                                disabled={ragLoading || trimmedLength < QUESTION_MIN_LENGTH}
-                                onClick={() => runRag(query, results)}
-                            >
-                                AIに質問する
-                            </Button>
                         </div>
                     )}
 

@@ -99,6 +99,12 @@ export async function fetchQuestions(
     if (params.status) {
         searchParams.set("status", params.status);
     }
+    if (params.searchQuestion !== undefined) {
+        searchParams.set("search_question", String(params.searchQuestion));
+    }
+    if (params.searchAnswer !== undefined) {
+        searchParams.set("search_answer", String(params.searchAnswer));
+    }
 
     const query = searchParams.toString();
 
@@ -121,6 +127,13 @@ export async function searchQuestions(
 
 export async function fetchQuestion(id: number): Promise<Question> {
     return apiFetch<Question>(`${getQuestionsUrl()}/${id}`);
+}
+
+export async function fetchQuestionByExactText(
+    question: string
+): Promise<Question> {
+    const query = new URLSearchParams({ question }).toString();
+    return apiFetch<Question>(`${getQuestionsUrl()}/exact-match?${query}`);
 }
 
 export async function deleteQuestion(id: number): Promise<void> {

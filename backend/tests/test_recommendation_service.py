@@ -49,7 +49,10 @@ def test_get_related_questions_excludes_rejected(db):
 
     admin = create_user(db, "rec-reviewer@example.com", "reviewerpass123", role="admin")
     question_service.review_question(
-        db, other.id, action=QuestionReviewAction.REJECT, reviewer_id=admin.id,
+        db,
+        other.id,
+        action=QuestionReviewAction.REJECT,
+        reviewer_id=admin.id,
     )
 
     result = recommendation_service.get_related_questions(db, source.id, limit=5)

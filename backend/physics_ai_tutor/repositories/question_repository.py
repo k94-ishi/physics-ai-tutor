@@ -60,12 +60,7 @@ def get_questions(
     )
     query = _filter_by_status(query, status, exclude_status)
 
-    return (
-        query
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
+    return query.offset(offset).limit(limit).all()
 
 
 def count_questions(
@@ -158,11 +153,7 @@ def create_questions(
 
 
 def delete(db: Session, question_id: int) -> bool:
-    question = (
-        db.query(Question)
-        .filter(Question.id == question_id)
-        .first()
-    )
+    question = db.query(Question).filter(Question.id == question_id).first()
 
     if not question:
         return False
@@ -178,11 +169,7 @@ def update(
     question_id: int,
     question_data: QuestionUpdate,
 ) -> Question | None:
-    question = (
-        db.query(Question)
-        .filter(Question.id == question_id)
-        .first()
-    )
+    question = db.query(Question).filter(Question.id == question_id).first()
 
     if not question:
         return None
@@ -202,11 +189,7 @@ def update_content_and_status(
     question: str | None = None,
     answer: str | None = None,
 ) -> Question | None:
-    db_question = (
-        db.query(Question)
-        .filter(Question.id == question_id)
-        .first()
-    )
+    db_question = db.query(Question).filter(Question.id == question_id).first()
 
     if not db_question:
         return None

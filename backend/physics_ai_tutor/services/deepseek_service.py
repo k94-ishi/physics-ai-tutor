@@ -33,7 +33,8 @@ def chat_completion(system_prompt: str, user_prompt: str) -> str:
 
     logger.info(
         "DeepSeek chat completion succeeded: model=%s response_length=%d",
-        settings.deepseek_chat_model, len(content or ""),
+        settings.deepseek_chat_model,
+        len(content or ""),
     )
 
     return content or ""

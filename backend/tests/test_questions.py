@@ -10,6 +10,7 @@ PATH = "/api/v1/questions"
 IMPORT_PATH = f"{PATH}/import"
 SEARCH_PATH = f"{PATH}/search"
 
+
 class Key(StrEnum):
     QUESTION = "question"
     ANSWER = "answer"
@@ -332,15 +333,11 @@ def test_delete_question(admin_client):
 
     question_id = create_response.json()[Key.ID]
 
-    response = admin_client.delete(
-        f"{PATH}/{question_id}"
-    )
+    response = admin_client.delete(f"{PATH}/{question_id}")
 
     assert response.status_code == 204
 
-    get_response = admin_client.get(
-        f"{PATH}/{question_id}"
-    )
+    get_response = admin_client.get(f"{PATH}/{question_id}")
 
     assert get_response.status_code == 404
 
@@ -510,9 +507,7 @@ def test_review_question_requires_admin(client):
 
 
 def test_review_question_not_found(admin_client):
-    response = admin_client.post(
-        f"{PATH}/99999/review", json={"action": "APPROVE"}
-    )
+    response = admin_client.post(f"{PATH}/99999/review", json={"action": "APPROVE"})
 
     assert response.status_code == 404
 
@@ -822,9 +817,7 @@ def test_extract_concepts(admin_client):
     )
     id1 = import_response.json()["questions"][0][Key.ID]
 
-    response = admin_client.post(
-        CONCEPTS_EXTRACT_PATH, json={"question_ids": [id1]}
-    )
+    response = admin_client.post(CONCEPTS_EXTRACT_PATH, json={"question_ids": [id1]})
 
     assert response.status_code == 200
 
@@ -850,9 +843,7 @@ def test_extract_concepts_forbidden_for_non_admin(user_client):
 
 
 def test_extract_concepts_not_found(admin_client):
-    response = admin_client.post(
-        CONCEPTS_EXTRACT_PATH, json={"question_ids": [99999]}
-    )
+    response = admin_client.post(CONCEPTS_EXTRACT_PATH, json={"question_ids": [99999]})
 
     assert response.status_code == 200
 

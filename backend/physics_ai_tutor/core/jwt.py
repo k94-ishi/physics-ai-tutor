@@ -15,9 +15,7 @@ def create_access_token(
 ):
     now = datetime.now(UTC)
 
-    expire = now + timedelta(
-        minutes=settings.jwt_access_token_expire_minutes
-    )
+    expire = now + timedelta(minutes=settings.jwt_access_token_expire_minutes)
 
     payload = JWTPayload(
         sub=subject,
@@ -38,14 +36,12 @@ def create_access_token(
 def decode_access_token(
     token: str,
 ) -> JWTPayload:
-    
+
     payload = jwt.decode(
         token,
         settings.jwt_secret_key,
         algorithms=[settings.jwt_algorithm],
         issuer=settings.jwt_issuer,
     )
-    
-    return JWTPayload.model_validate(
-        payload
-    )
+
+    return JWTPayload.model_validate(payload)

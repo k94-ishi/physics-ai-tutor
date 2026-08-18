@@ -64,9 +64,7 @@ def get_related_questions(
     source_concept_id_set = {concept.id for concept in source_concepts}
     for reference_id in reference_ids:
         source_concept_id_set.update(
-            question_concept_repository.get_concept_ids_for_question(
-                db, reference_id
-            )
+            question_concept_repository.get_concept_ids_for_question(db, reference_id)
         )
     source_concept_ids = list(source_concept_id_set)
 
@@ -108,10 +106,9 @@ def get_related_questions(
         if question is None:
             continue
 
-        score = (
-            QUESTION_SIMILARITY_WEIGHT * question_similarity.get(candidate_id, 0.0)
-            + CONCEPT_SIMILARITY_WEIGHT * concept_similarity.get(candidate_id, 0.0)
-        )
+        score = QUESTION_SIMILARITY_WEIGHT * question_similarity.get(
+            candidate_id, 0.0
+        ) + CONCEPT_SIMILARITY_WEIGHT * concept_similarity.get(candidate_id, 0.0)
         scored.append((score, question))
 
     scored.sort(key=lambda item: item[0], reverse=True)
@@ -122,7 +119,9 @@ def get_related_questions(
 
     logger.info(
         "Related questions computed: question_id=%d candidates=%d returned=%d",
-        question_id, len(candidate_ids), min(limit, len(scored)),
+        question_id,
+        len(candidate_ids),
+        min(limit, len(scored)),
     )
 
     return [QuestionResponse.model_validate(question) for question in top_questions]

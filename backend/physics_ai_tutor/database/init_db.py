@@ -1,7 +1,5 @@
-from physics_ai_tutor.database.database import engine
 from physics_ai_tutor.database.base import Base
-
-from physics_ai_tutor.models.question import Question
+from physics_ai_tutor.database.database import engine
 
 
 def init_db():

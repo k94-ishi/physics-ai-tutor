@@ -90,9 +90,7 @@ def test_get_questions_sharing_concepts(db):
     question_concept_repository.link(
         db, question_id=q2.id, concept_id=shared_concept.id
     )
-    question_concept_repository.link(
-        db, question_id=q3.id, concept_id=other_concept.id
-    )
+    question_concept_repository.link(db, question_id=q3.id, concept_id=other_concept.id)
 
     result = question_concept_repository.get_questions_sharing_concepts(
         db, question_id=q1.id, exclude_ids=[], limit=10

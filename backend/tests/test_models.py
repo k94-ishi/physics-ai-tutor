@@ -51,9 +51,7 @@ def test_question_concept_cascades_on_question_delete(db):
     db.commit()
 
     remaining = (
-        db.query(QuestionConcept)
-        .filter(QuestionConcept.concept_id == concept.id)
-        .all()
+        db.query(QuestionConcept).filter(QuestionConcept.concept_id == concept.id).all()
     )
     assert remaining == []
 
@@ -98,8 +96,6 @@ def test_question_review_cascades_on_question_delete(db):
     db.commit()
 
     remaining = (
-        db.query(QuestionReview)
-        .filter(QuestionReview.question_id == question.id)
-        .all()
+        db.query(QuestionReview).filter(QuestionReview.question_id == question.id).all()
     )
     assert remaining == []

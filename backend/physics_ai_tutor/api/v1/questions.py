@@ -251,9 +251,7 @@ def extract_concepts(
     db: Session = Depends(get_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
-    results = question_service.reextract_concepts_for_questions(
-        db, data.question_ids
-    )
+    results = question_service.reextract_concepts_for_questions(db, data.question_ids)
 
     logger.info(
         "Admin action: user_id=%s action=extract_concepts "
@@ -359,19 +357,13 @@ def review_question(
     return result
 
 
-@router.delete(
-    "/{question_id}",
-    status_code=204
-)
+@router.delete("/{question_id}", status_code=204)
 def delete_question(
     question_id: int,
     db: Session = Depends(get_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
-    deleted = question_service.delete_question(
-        db,
-        question_id
-    )
+    deleted = question_service.delete_question(db, question_id)
 
     if not deleted:
         raise HTTPException(

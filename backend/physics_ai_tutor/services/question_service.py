@@ -493,7 +493,9 @@ def review_question(
 
         logger.info(
             "Question reviewed: id=%d action=%s reviewer_id=%d",
-            question_id, action, reviewer_id,
+            question_id,
+            action,
+            reviewer_id,
         )
 
         return updated
@@ -534,9 +536,7 @@ def reextract_concepts_for_questions(
             concept_names = concept_service.extract_concept_names(
                 question.question, question.answer
             )
-            concept_service.attach_concepts_to_question(
-                db, question_id, concept_names
-            )
+            concept_service.attach_concepts_to_question(db, question_id, concept_names)
             db.commit()
 
             results.append(

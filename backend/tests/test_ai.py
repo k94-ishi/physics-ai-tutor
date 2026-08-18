@@ -62,11 +62,7 @@ def test_ask_ai_saves_question_as_unreviewed_ai_generated(client, monkeypatch, d
 
     assert response.status_code == 200
 
-    saved = (
-        db.query(Question)
-        .filter(Question.question == "AI保存テスト質問")
-        .first()
-    )
+    saved = db.query(Question).filter(Question.question == "AI保存テスト質問").first()
 
     assert saved is not None
     assert saved.answer == "回答内容"
@@ -83,20 +79,14 @@ def test_ask_ai_save_failure_does_not_affect_response(client, monkeypatch, db):
     monkeypatch.setattr(
         deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
     )
-    monkeypatch.setattr(
-        embedding_service, "create_embeddings", _raise_embedding_error
-    )
+    monkeypatch.setattr(embedding_service, "create_embeddings", _raise_embedding_error)
 
     response = client.post(ASK_PATH, json={"question": "保存失敗テスト"})
 
     assert response.status_code == 200
     assert response.json() == {"answer": "回答"}
 
-    saved = (
-        db.query(Question)
-        .filter(Question.question == "保存失敗テスト")
-        .first()
-    )
+    saved = db.query(Question).filter(Question.question == "保存失敗テスト").first()
 
     assert saved is None
 
@@ -110,18 +100,12 @@ def test_ask_ai_rag_mode_calls_rag_service_and_saves_as_rag_result(
         lambda db, question, retrieved_question_ids=None: ("RAG回答", [11, 22]),
     )
 
-    response = client.post(
-        ASK_PATH, json={"question": "RAGモード質問", "mode": "RAG"}
-    )
+    response = client.post(ASK_PATH, json={"question": "RAGモード質問", "mode": "RAG"})
 
     assert response.status_code == 200
     assert response.json() == {"answer": "RAG回答"}
 
-    saved = (
-        db.query(Question)
-        .filter(Question.question == "RAGモード質問")
-        .first()
-    )
+    saved = db.query(Question).filter(Question.question == "RAGモード質問").first()
 
     assert saved is not None
     assert saved.answer == "RAG回答"
@@ -146,9 +130,7 @@ def test_ask_ai_default_mode_does_not_call_rag_service(client, monkeypatch):
 
 
 def test_ask_ai_invalid_mode_rejected(client):
-    response = client.post(
-        ASK_PATH, json={"question": "質問", "mode": "INVALID"}
-    )
+    response = client.post(ASK_PATH, json={"question": "質問", "mode": "INVALID"})
 
     assert response.status_code == 422
 
@@ -227,9 +209,7 @@ def test_ask_ai_rag_mode_passes_retrieved_question_ids_to_service(client, monkey
         captured["retrieved_question_ids"] = retrieved_question_ids
         return "RAG回答", retrieved_question_ids or []
 
-    monkeypatch.setattr(
-        rag_service, "generate_rag_answer", _fake_generate_rag_answer
-    )
+    monkeypatch.setattr(rag_service, "generate_rag_answer", _fake_generate_rag_answer)
 
     response = client.post(
         ASK_PATH,

@@ -20,7 +20,8 @@ def seed():
         QuestionCreate(
             question=d["question"],
             answer=d["answer"],
-        ) for d in data
+        )
+        for d in data
     ]
 
     db = SessionLocal()

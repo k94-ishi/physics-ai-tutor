@@ -36,9 +36,7 @@ class QuestionRefSummary(BaseModel):
     id: int
     question: str
 
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = {"from_attributes": True}
 
 
 class QuestionResponse(BaseModel):
@@ -51,9 +49,7 @@ class QuestionResponse(BaseModel):
     concepts: list[str] = Field(default_factory=list)
     retrieved_questions: list[QuestionRefSummary] = Field(default_factory=list)
 
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = {"from_attributes": True}
 
 
 class QuestionListResponse(BaseModel):

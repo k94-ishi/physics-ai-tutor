@@ -214,7 +214,7 @@ export default function QuestionSearchAndAsk({
                         disabled={searchLoading || trimmedLength < QUESTION_MIN_LENGTH}
                         className="shrink-0"
                     >
-                        実行
+                        検索
                     </Button>
                 </div>
 
@@ -232,6 +232,22 @@ export default function QuestionSearchAndAsk({
 
             {searched && (
                 <>
+                    {!searchLoading && (
+                        <div className="flex flex-col items-start gap-2 rounded-md border border-gray-200 bg-gray-50 p-4">
+                            <p className="text-sm text-gray-600">
+                                以下に目的の質問はありませんか？
+                            </p>
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                disabled={ragLoading || trimmedLength < QUESTION_MIN_LENGTH}
+                                onClick={() => runRag(query, results)}
+                            >
+                                AIによる回答生成を実行
+                            </Button>
+                        </div>
+                    )}
+
                     {searchLoading && <LoadingState label="検索中..." />}
 
                     {!searchLoading && searchError && (
@@ -289,22 +305,6 @@ export default function QuestionSearchAndAsk({
                                     </Link>
                                 );
                             })}
-                        </div>
-                    )}
-
-                    {!searchLoading && (
-                        <div className="flex flex-col items-start gap-2 rounded-md border border-gray-200 bg-gray-50 p-4">
-                            <p className="text-sm text-gray-600">
-                                目的の質問はありませんか？
-                            </p>
-                            <Button
-                                type="button"
-                                variant="secondary"
-                                disabled={ragLoading || trimmedLength < QUESTION_MIN_LENGTH}
-                                onClick={() => runRag(query, results)}
-                            >
-                                AIに質問する
-                            </Button>
                         </div>
                     )}
 

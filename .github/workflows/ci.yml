@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: physics
+          POSTGRES_PASSWORD: physics
+          POSTGRES_DB: physics_ai_tutor_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd="pg_isready -U physics"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: postgresql+psycopg://physics:physics@localhost:5433/physics_ai_tutor_test
+      OPENAI_API_KEY: ci-test-openai-key
+      DEEPSEEK_API_KEY: ci-test-deepseek-key
+      JWT_SECRET_KEY: ci-test-jwt-secret-key-for-github-actions-ci
+      JWT_ALGORITHM: HS256
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+      SAME_SITE: lax
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: uv sync
+      - name: Run migrations
+        run: uv run alembic upgrade head
+      - name: Rudd
+        run: uv run ruff check .
+      - name: MyPy
+        run: uv run mypy .
+      - name: PyTest
+        run: uv run pytest
+  
+  frontend:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "25"
+      
+      - name: Install dependencies
+        run: npm ci
+      - name: ESLint
+        run: npm run lint
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Build
+        run: npm run build
+        

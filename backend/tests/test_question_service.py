@@ -80,11 +80,17 @@ def test_fetch_questions_excludes_status(db):
         db, "excl-reviewer@example.com", "reviewerpass123", role="admin"
     )
     question_service.review_question(
-        db, rejected.id, action=QuestionReviewAction.REJECT, reviewer_id=admin.id,
+        db,
+        rejected.id,
+        action=QuestionReviewAction.REJECT,
+        reviewer_id=admin.id,
     )
 
     result = question_service.fetch_questions(
-        db, page=1, size=20, exclude_status=QuestionStatus.REJECTED,
+        db,
+        page=1,
+        size=20,
+        exclude_status=QuestionStatus.REJECTED,
     )
 
     remaining_ids = [q.id for q in result.items]
@@ -343,7 +349,10 @@ def test_review_question_approve(db):
     admin = create_user(db, "reviewer1@example.com", "reviewerpass123", role="admin")
 
     updated = question_service.review_question(
-        db, created.id, action=QuestionReviewAction.APPROVE, reviewer_id=admin.id,
+        db,
+        created.id,
+        action=QuestionReviewAction.APPROVE,
+        reviewer_id=admin.id,
     )
 
     assert updated.status == "APPROVED"
@@ -360,7 +369,10 @@ def test_review_question_reject(db):
     admin = create_user(db, "reviewer2@example.com", "reviewerpass123", role="admin")
 
     updated = question_service.review_question(
-        db, created.id, action=QuestionReviewAction.REJECT, reviewer_id=admin.id,
+        db,
+        created.id,
+        action=QuestionReviewAction.REJECT,
+        reviewer_id=admin.id,
     )
 
     assert updated.status == "REJECTED"
@@ -399,7 +411,10 @@ def test_review_question_not_found_returns_none(db):
     admin = create_user(db, "reviewer4@example.com", "reviewerpass123", role="admin")
 
     result = question_service.review_question(
-        db, 99999, action=QuestionReviewAction.APPROVE, reviewer_id=admin.id,
+        db,
+        99999,
+        action=QuestionReviewAction.APPROVE,
+        reviewer_id=admin.id,
     )
 
     assert result is None
@@ -471,9 +486,9 @@ def test_import_questions_approved_extracts_concepts(db, monkeypatch):
 
     assert len(calls) == 2
     for question in created:
-        assert question_concept_repository.get_concepts_for_question(
-            db, question.id
-        ) != []
+        assert (
+            question_concept_repository.get_concepts_for_question(db, question.id) != []
+        )
 
 
 def test_review_question_approve_extracts_concepts(db, monkeypatch):
@@ -491,7 +506,10 @@ def test_review_question_approve_extracts_concepts(db, monkeypatch):
     _spy_extract_concept_names(monkeypatch, calls)
 
     question_service.review_question(
-        db, created.id, action=QuestionReviewAction.APPROVE, reviewer_id=admin.id,
+        db,
+        created.id,
+        action=QuestionReviewAction.APPROVE,
+        reviewer_id=admin.id,
     )
 
     assert len(calls) == 1
@@ -508,7 +526,10 @@ def test_review_question_reject_does_not_extract_concepts(db, monkeypatch):
     _spy_extract_concept_names(monkeypatch, calls)
 
     question_service.review_question(
-        db, created.id, action=QuestionReviewAction.REJECT, reviewer_id=admin.id,
+        db,
+        created.id,
+        action=QuestionReviewAction.REJECT,
+        reviewer_id=admin.id,
     )
 
     assert calls == []
@@ -610,17 +631,23 @@ def test_bulk_delete_questions(db):
 
 def test_bulk_review_questions_approve(db):
     q1 = question_service.create_question(
-        db, QuestionCreate(question="質問1", answer="回答1"),
-        status=QuestionStatus.UNREVIEWED, source=QuestionSource.AI_GENERATED,
+        db,
+        QuestionCreate(question="質問1", answer="回答1"),
+        status=QuestionStatus.UNREVIEWED,
+        source=QuestionSource.AI_GENERATED,
     )
     q2 = question_service.create_question(
-        db, QuestionCreate(question="質問2", answer="回答2"),
-        status=QuestionStatus.UNREVIEWED, source=QuestionSource.AI_GENERATED,
+        db,
+        QuestionCreate(question="質問2", answer="回答2"),
+        status=QuestionStatus.UNREVIEWED,
+        source=QuestionSource.AI_GENERATED,
     )
     admin = create_user(db, "bulk-approve@example.com", "reviewerpass123", role="admin")
 
     updated, not_found_ids = question_service.bulk_review_questions(
-        db, [q1.id, q2.id, 99999], action=QuestionReviewAction.APPROVE,
+        db,
+        [q1.id, q2.id, 99999],
+        action=QuestionReviewAction.APPROVE,
         reviewer_id=admin.id,
     )
 
@@ -634,7 +661,10 @@ def test_bulk_review_questions_reject(db):
     admin = create_user(db, "bulk-reject@example.com", "reviewerpass123", role="admin")
 
     updated, not_found_ids = question_service.bulk_review_questions(
-        db, [q1.id], action=QuestionReviewAction.REJECT, reviewer_id=admin.id,
+        db,
+        [q1.id],
+        action=QuestionReviewAction.REJECT,
+        reviewer_id=admin.id,
     )
 
     assert updated[0].status == "REJECTED"

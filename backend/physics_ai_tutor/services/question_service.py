@@ -139,7 +139,7 @@ def fetch_question(
     db: Session,
     question_id: int,
     exclude_status: str | None = None,
-) -> Question:
+) -> Question | None:
     question = question_repository.get_question(
         db,
         question_id,
@@ -446,6 +446,9 @@ def review_question(
             answer=new_answer,
         )
 
+        if updated is None:
+            return None
+
         if action == QuestionReviewAction.EDIT_APPROVE:
             texts = [updated.question, updated.answer]
             question_vec, answer_vec = embedding_service.create_embeddings(texts)
@@ -493,7 +496,9 @@ def review_question(
 
         logger.info(
             "Question reviewed: id=%d action=%s reviewer_id=%d",
-            question_id, action, reviewer_id,
+            question_id,
+            action,
+            reviewer_id,
         )
 
         return updated
@@ -534,9 +539,7 @@ def reextract_concepts_for_questions(
             concept_names = concept_service.extract_concept_names(
                 question.question, question.answer
             )
-            concept_service.attach_concepts_to_question(
-                db, question_id, concept_names
-            )
+            concept_service.attach_concepts_to_question(db, question_id, concept_names)
             db.commit()
 
             results.append(

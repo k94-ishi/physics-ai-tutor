@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,7 +25,7 @@ class Settings(BaseSettings):
     jwt_issuer: str = "physics-ai-tutor"
     # Cookie
     cookie_secure: bool = False
-    same_site: str | None = None
+    same_site: Literal["lax", "strict", "none"] | None = None
     # CORS
     backend_cors_origins: list[str] = ["http://loaclhost:8000"]
 

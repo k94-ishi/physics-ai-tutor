@@ -34,10 +34,10 @@ def _enable_pgvector_extension():
 @pytest.fixture
 def db():
     Base.metadata.create_all(bind=engine)
-    
+
     with Session(engine) as session:
         yield session
-    
+
     Base.metadata.drop_all(bind=engine)
 
 
@@ -70,7 +70,7 @@ def _reset_ai_ask_rate_limiter():
 def client(db):
     def override_get_db():
         yield db
-    
+
     app.dependency_overrides[get_db] = override_get_db
 
     with TestClient(app) as test_client:

@@ -18,10 +18,10 @@ def create_embedding(
         model=model,
         chunk_index=chunk_index,
     )
-    
+
     db.add(db_embedding)
     db.flush()
-    
+
     return db_embedding
 
 
@@ -29,12 +29,12 @@ def create_embeddings(
     db: Session,
     embeddings: list[dict],
 ) -> list[QuestionEmbedding]:
-    
+
     db_embeddings = [QuestionEmbedding(**emb) for emb in embeddings]
-    
+
     db.add_all(db_embeddings)
     db.flush()
-    
+
     return db_embeddings
 
 
@@ -58,11 +58,7 @@ def search_similar_embeddings(
     distance = QuestionEmbedding.embedding.cosine_distance(embedding)
 
     query = (
-        db.query(
-            QuestionEmbedding,
-            Question,
-            distance.label("distance")
-        )
+        db.query(QuestionEmbedding, Question, distance.label("distance"))
         .join(
             Question,
             QuestionEmbedding.question_id == Question.id,
@@ -76,12 +72,7 @@ def search_similar_embeddings(
     if exclude_statuses:
         query = query.filter(Question.status.notin_(exclude_statuses))
 
-    return (
-        query
-        .order_by(distance)
-        .limit(limit)
-        .all()
-    )
+    return query.order_by(distance).limit(limit).all()
 
 
 def get_embedding(
@@ -105,11 +96,11 @@ def delete_by_question_id(
     db: Session,
     question_id: int,
 ) -> None:
-    
+
     (
         db.query(QuestionEmbedding)
         .filter(QuestionEmbedding.question_id == question_id)
         .delete()
     )
-    
+
     db.flush()

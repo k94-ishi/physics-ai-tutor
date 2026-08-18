@@ -67,4 +67,3 @@ def search_similar_questions(
         )
         for _, question, distance in results
     ]
-    

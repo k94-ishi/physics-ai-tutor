@@ -8,11 +8,7 @@ def get_user_by_email(
     email: str,
 ) -> User | None:
 
-    return (
-        db.query(User)
-        .filter(User.email == email)
-        .first()
-    )
+    return db.query(User).filter(User.email == email).first()
 
 
 def get_user_by_id(
@@ -20,11 +16,7 @@ def get_user_by_id(
     user_id: int,
 ) -> User | None:
 
-    return (
-        db.query(User)
-        .filter(User.id == user_id)
-        .first()
-    )
+    return db.query(User).filter(User.id == user_id).first()
 
 
 def list_users(

@@ -144,6 +144,24 @@ def fetch_question(
     return question
 
 
+def fetch_question_by_exact_text(
+    db: Session,
+    question_text: str,
+    exclude_status: str | None = None,
+) -> Question | None:
+    question = question_repository.get_by_exact_text(
+        db,
+        question_text,
+        exclude_status=exclude_status,
+    )
+
+    if question is not None:
+        attach_concept_names(db, [question])
+        attach_retrieved_questions(db, [question])
+
+    return question
+
+
 def _attach_concepts_best_effort(
     db: Session, question_id: int, question: str, answer: str
 ) -> None:

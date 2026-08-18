@@ -216,6 +216,55 @@ def test_get_question_rejected_not_found_for_non_admin(admin_client, client):
     assert response.status_code == 404
 
 
+def test_get_exact_match_question_found(admin_client, client):
+    create_response = _post(admin_client, "完全一致テスト質問", "完全一致テスト回答")
+    question_id = create_response.json()[Key.ID]
+
+    response = client.get(
+        f"{PATH}/exact-match", params={"question": "完全一致テスト質問"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()[Key.ID] == question_id
+
+
+def test_get_exact_match_question_not_found(client):
+    response = client.get(
+        f"{PATH}/exact-match", params={"question": "存在しない完全一致質問"}
+    )
+
+    assert response.status_code == 404
+
+
+def test_get_exact_match_question_includes_unreviewed(admin_client, client):
+    import_response = _post_import(
+        admin_client,
+        [("未レビュー完全一致質問", "回答")],
+        status="UNREVIEWED",
+    )
+    question_id = import_response.json()[Key.QUESTIONS][0][Key.ID]
+
+    response = client.get(
+        f"{PATH}/exact-match", params={"question": "未レビュー完全一致質問"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()[Key.ID] == question_id
+    assert response.json()[Key.STATUS] == "UNREVIEWED"
+
+
+def test_get_exact_match_question_excludes_rejected(admin_client, client):
+    create_response = _post(admin_client, "却下済み完全一致質問", "回答")
+    question_id = create_response.json()[Key.ID]
+    admin_client.post(f"{PATH}/{question_id}/review", json={"action": "REJECT"})
+
+    response = client.get(
+        f"{PATH}/exact-match", params={"question": "却下済み完全一致質問"}
+    )
+
+    assert response.status_code == 404
+
+
 def test_update_question(admin_client):
     create_response = _post(admin_client, "更新前質問", "更新前回答")
 

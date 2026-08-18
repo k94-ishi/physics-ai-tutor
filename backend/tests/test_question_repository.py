@@ -170,6 +170,31 @@ def test_get_by_exact_text_not_found(db):
     assert found is None
 
 
+def test_get_by_exact_text_excludes_status(db):
+    question_repository.create_question(
+        db, question="却下済み質問", answer="回答", status="REJECTED"
+    )
+
+    found = question_repository.get_by_exact_text(
+        db, "却下済み質問", exclude_status="REJECTED"
+    )
+
+    assert found is None
+
+
+def test_get_by_exact_text_includes_unreviewed_by_default(db):
+    created = question_repository.create_question(
+        db, question="未レビュー質問", answer="回答", status="UNREVIEWED"
+    )
+
+    found = question_repository.get_by_exact_text(
+        db, "未レビュー質問", exclude_status="REJECTED"
+    )
+
+    assert found is not None
+    assert found.id == created.id
+
+
 def test_create_question_with_status_and_source(db):
     created = question_repository.create_question(
         db, question="質問", answer="回答", status="UNREVIEWED", source="AI_GENERATED",

@@ -66,6 +66,8 @@ def get_questions(
     size: int = Query(default=30, ge=1, le=120),
     keyword: str | None = Query(default=None, min_length=1, max_length=200),
     status: QuestionStatus | None = Query(default=None),
+    search_question: bool = Query(default=True),
+    search_answer: bool = Query(default=True),
     db: Session = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
@@ -78,6 +80,8 @@ def get_questions(
         keyword,
         status=status,
         exclude_status=None if is_admin else QuestionStatus.REJECTED,
+        search_question=search_question,
+        search_answer=search_answer,
     )
 
 

@@ -5,18 +5,30 @@ from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.schemas.question import QuestionCreate, QuestionUpdate
 
 
-def _filter_by_keyword(query: Query, keyword: str | None) -> Query:
+def _filter_by_keyword(
+    query: Query,
+    keyword: str | None,
+    search_question: bool = True,
+    search_answer: bool = True,
+) -> Query:
     if not keyword:
         return query
 
-    pattern = f"%{keyword}%"
+    # スペース区切りのAND検索。各語について、質問/回答のうち指定された列を
+    # OR で検索する(シンプルな実装で十分なため、引用符やNOT等は非対応)。
+    for term in keyword.split():
+        pattern = f"%{term}%"
+        conditions = []
 
-    return query.filter(
-        or_(
-            Question.question.ilike(pattern),
-            Question.answer.ilike(pattern),
-        )
-    )
+        if search_question:
+            conditions.append(Question.question.ilike(pattern))
+        if search_answer:
+            conditions.append(Question.answer.ilike(pattern))
+
+        if conditions:
+            query = query.filter(or_(*conditions))
+
+    return query
 
 
 def _filter_by_status(
@@ -40,8 +52,12 @@ def get_questions(
     keyword: str | None = None,
     status: str | None = None,
     exclude_status: str | None = None,
+    search_question: bool = True,
+    search_answer: bool = True,
 ) -> list[Question]:
-    query = _filter_by_keyword(db.query(Question), keyword)
+    query = _filter_by_keyword(
+        db.query(Question), keyword, search_question, search_answer
+    )
     query = _filter_by_status(query, status, exclude_status)
 
     return (
@@ -57,8 +73,12 @@ def count_questions(
     keyword: str | None = None,
     status: str | None = None,
     exclude_status: str | None = None,
+    search_question: bool = True,
+    search_answer: bool = True,
 ) -> int:
-    query = _filter_by_keyword(db.query(Question), keyword)
+    query = _filter_by_keyword(
+        db.query(Question), keyword, search_question, search_answer
+    )
     query = _filter_by_status(query, status, exclude_status)
 
     return query.count()

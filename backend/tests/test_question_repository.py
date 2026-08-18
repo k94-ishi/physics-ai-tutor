@@ -80,6 +80,52 @@ def test_get_questions_keyword_no_match_returns_empty(db):
     assert questions == []
 
 
+def test_get_questions_keyword_and_across_terms(db):
+    matching = _create(
+        db, "運動量保存則とは何ですか", "衝突の前後で運動量は保存されます"
+    )
+    _create(db, "運動量保存則とは何ですか", "エネルギーは保存されます")
+    _create(db, "衝突とは何ですか", "衝突の説明です")
+
+    questions = question_repository.get_questions(
+        db, offset=0, limit=10, keyword="運動量 衝突"
+    )
+
+    assert [q.id for q in questions] == [matching.id]
+
+
+def test_get_questions_keyword_search_question_only(db):
+    matching = _create(db, "運動量保存則とは何ですか", "回答")
+    _create(db, "第一法則とは", "運動量は保存されます")
+
+    questions = question_repository.get_questions(
+        db,
+        offset=0,
+        limit=10,
+        keyword="運動量",
+        search_question=True,
+        search_answer=False,
+    )
+
+    assert [q.id for q in questions] == [matching.id]
+
+
+def test_get_questions_keyword_search_answer_only(db):
+    _create(db, "運動量保存則とは何ですか", "回答")
+    matching = _create(db, "第一法則とは", "運動量は保存されます")
+
+    questions = question_repository.get_questions(
+        db,
+        offset=0,
+        limit=10,
+        keyword="運動量",
+        search_question=False,
+        search_answer=True,
+    )
+
+    assert [q.id for q in questions] == [matching.id]
+
+
 def test_get_question_found(db):
     created = _create(db)
 

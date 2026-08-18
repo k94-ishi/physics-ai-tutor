@@ -31,9 +31,10 @@ jobs:
       DATABASE_URL: postgresql+psycopg://physics:physics@localhost:5433/physics_ai_tutor_test
       OPENAI_API_KEY: ci-test-openai-key
       DEEPSEEK_API_KEY: ci-test-deepseek-key
-      JWT_SECRET_KEY: ci-test-jwt-secret-key
+      JWT_SECRET_KEY: ci-test-jwt-secret-key-for-github-actions-ci
       JWT_ALGORITHM: HS256
       JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+      SAME_SITE: lax
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d

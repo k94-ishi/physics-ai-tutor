@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import type { ReactNode } from "react";
 import Header from "@/components/Header";
 import Toaster from "@/components/ui/Toast";
 import { AuthProvider } from "@/lib/auth/AuthContext";
@@ -30,7 +31,9 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+    children,
+}: Readonly<{ children: ReactNode }>) {
   return (
     <html
       lang="ja"

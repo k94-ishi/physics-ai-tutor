@@ -39,7 +39,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col bg-gray-50 text-gray-900">
         <AuthProvider>
           <Header />
-          <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-8">
+          <div className="mx-auto w-full max-w-4xl flex-1 px-3 py-5">
             {children}
           </div>
           <Toaster />

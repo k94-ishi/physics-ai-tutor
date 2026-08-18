@@ -123,6 +123,13 @@ export async function fetchQuestion(id: number): Promise<Question> {
     return apiFetch<Question>(`${getQuestionsUrl()}/${id}`);
 }
 
+export async function fetchQuestionByExactText(
+    question: string
+): Promise<Question> {
+    const query = new URLSearchParams({ question }).toString();
+    return apiFetch<Question>(`${getQuestionsUrl()}/exact-match?${query}`);
+}
+
 export async function deleteQuestion(id: number): Promise<void> {
     return apiFetch<void>(`${getQuestionsUrl()}/${id}`, {
         method: "DELETE",

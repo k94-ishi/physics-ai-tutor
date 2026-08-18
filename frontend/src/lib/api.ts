@@ -99,6 +99,12 @@ export async function fetchQuestions(
     if (params.status) {
         searchParams.set("status", params.status);
     }
+    if (params.searchQuestion !== undefined) {
+        searchParams.set("search_question", String(params.searchQuestion));
+    }
+    if (params.searchAnswer !== undefined) {
+        searchParams.set("search_answer", String(params.searchAnswer));
+    }
 
     const query = searchParams.toString();
 

@@ -59,6 +59,10 @@ omit = [
 show_missing = true
 skip_empty = true
 
+[tool.mypy]
+plugins = ["pydantic.mypy"]
+exclude = ["^alembic/versions/"]
+
 [tool.ruff]
 line-length = 88
 target-version = "py313"

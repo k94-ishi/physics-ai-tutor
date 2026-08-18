@@ -8,6 +8,7 @@ from physics_ai_tutor.database.base import Base
 
 
 class Question(Base):
+    __allow_unmapped__ = True
     __tablename__ = "questions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -45,3 +46,8 @@ class Question(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+    # Transient, populated by question_service before response
+    # serialization; not a mapped/persisted column.
+    concepts: list[str]
+    retrieved_questions: list[dict[str, int | str]]

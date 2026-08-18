@@ -83,7 +83,7 @@ def get_question(
     db: Session,
     question_id: int,
     exclude_status: str | None = None,
-) -> Question:
+) -> Question | None:
     query = db.query(Question).filter(Question.id == question_id)
     query = _filter_by_status(query, None, exclude_status)
 

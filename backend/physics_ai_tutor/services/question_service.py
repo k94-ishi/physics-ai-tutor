@@ -139,7 +139,7 @@ def fetch_question(
     db: Session,
     question_id: int,
     exclude_status: str | None = None,
-) -> Question:
+) -> Question | None:
     question = question_repository.get_question(
         db,
         question_id,
@@ -445,6 +445,9 @@ def review_question(
             question=new_question,
             answer=new_answer,
         )
+
+        if updated is None:
+            return None
 
         if action == QuestionReviewAction.EDIT_APPROVE:
             texts = [updated.question, updated.answer]

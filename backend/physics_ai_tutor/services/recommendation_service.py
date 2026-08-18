@@ -2,6 +2,7 @@ import logging
 
 from sqlalchemy.orm import Session
 
+from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.repositories import (
     concept_repository,
     embedding_repository,
@@ -34,7 +35,7 @@ def get_related_questions(
         exclude_statuses = ["REJECTED"]
 
     question_similarity: dict[int, float] = {}
-    questions_by_id = {}
+    questions_by_id: dict[int, Question] = {}
 
     source_embedding = embedding_repository.get_embedding(db, question_id, "question")
 
@@ -90,9 +91,12 @@ def get_related_questions(
 
     for candidate_id in candidate_ids:
         if candidate_id not in questions_by_id:
-            question = question_repository.get_question(db, candidate_id)
-            if question is not None and question.status not in exclude_statuses:
-                questions_by_id[candidate_id] = question
+            candidate_question = question_repository.get_question(db, candidate_id)
+            if (
+                candidate_question is not None
+                and candidate_question.status not in exclude_statuses
+            ):
+                questions_by_id[candidate_id] = candidate_question
 
     concept_similarity = concept_repository.average_concept_similarity(
         db,
@@ -102,18 +106,18 @@ def get_related_questions(
 
     scored = []
     for candidate_id in candidate_ids:
-        question = questions_by_id.get(candidate_id)
-        if question is None:
+        candidate_question = questions_by_id.get(candidate_id)
+        if candidate_question is None:
             continue
 
         score = QUESTION_SIMILARITY_WEIGHT * question_similarity.get(
             candidate_id, 0.0
         ) + CONCEPT_SIMILARITY_WEIGHT * concept_similarity.get(candidate_id, 0.0)
-        scored.append((score, question))
+        scored.append((score, candidate_question))
 
     scored.sort(key=lambda item: item[0], reverse=True)
 
-    top_questions = [question for _, question in scored[:limit]]
+    top_questions = [candidate_question for _, candidate_question in scored[:limit]]
     attach_concept_names(db, top_questions)
     attach_retrieved_questions(db, top_questions)
 

@@ -114,7 +114,7 @@ function QuestionListInner() {
     const handleSizeChange = (nextSize: number) =>
         setQueryState({ size: String(nextSize), page: "1" });
 
-    // 「関連QA検索/AI回答」タブでまだ検索していない間のフォールバックにも、
+    // 「AIに聞く-検索/生成」タブでまだ検索していない間のフォールバックにも、
     // 「キーワード検索」タブの主表示にも、同じ質問一覧を使う(重複させない)。
     const browseList = (
         <>
@@ -186,7 +186,7 @@ function QuestionListInner() {
                     className={modeButtonClassName(mode === "similarity")}
                     onClick={() => setMode("similarity")}
                 >
-                    関連QA検索/AI回答
+                    AIに聞く-検索/生成
                 </button>
 
                 <button

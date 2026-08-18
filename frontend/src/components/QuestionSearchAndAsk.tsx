@@ -192,7 +192,7 @@ export default function QuestionSearchAndAsk({
                         disabled={searchLoading || trimmedLength < QUESTION_MIN_LENGTH}
                         className="shrink-0"
                     >
-                        検索
+                        実行
                     </Button>
                 </div>
 

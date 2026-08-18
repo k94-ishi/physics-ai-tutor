@@ -1,3 +1,7 @@
+"use client";
+
+import { useLanguage } from "@/lib/i18n/LanguageContext";
+
 type StatusMessageVariant = "empty" | "error";
 
 type StatusMessageProps = {
@@ -16,6 +20,8 @@ export default function StatusMessage({
     message,
     onRetry,
 }: StatusMessageProps) {
+    const { t } = useLanguage();
+
     return (
         <div
             role={variant === "error" ? "alert" : undefined}
@@ -29,7 +35,7 @@ export default function StatusMessage({
                     onClick={onRetry}
                     className="font-medium underline underline-offset-2 hover:opacity-80"
                 >
-                    再読み込み
+                    {t("common.retry")}
                 </button>
             )}
         </div>

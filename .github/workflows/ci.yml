@@ -31,7 +31,7 @@ jobs:
       TEST_DATABASE_URL: postgresql+psycopg://physics:physics@localhost:5433/physics_ai_tutor_test
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"

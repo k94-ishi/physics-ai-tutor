@@ -12,6 +12,7 @@ import MarkdownContent from "@/components/ui/MarkdownContent";
 import ReferencedQuestions from "@/components/ui/ReferencedQuestions";
 import QuestionSearchAndAsk from "@/components/QuestionSearchAndAsk";
 import { useQueryState } from "@/lib/hooks/useQueryState";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 type Mode = "similarity" | "keyword";
 
@@ -35,6 +36,7 @@ const inputClassName =
     "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
 
 function QuestionListInner() {
+    const { t } = useLanguage();
     const [mode, setMode] = useState<Mode>("similarity");
 
     // 一覧(pagination + keyword filter、page/size/keywordはURLで管理)
@@ -141,7 +143,7 @@ function QuestionListInner() {
             {!listLoading && listError && (
                 <StatusMessage
                     variant="error"
-                    message="質問を取得できませんでした。"
+                    message={t("questionList.fetchFailed")}
                     onRetry={() =>
                         loadList(page, size, queryState.keyword, searchQuestion, searchAnswer)
                     }
@@ -149,7 +151,7 @@ function QuestionListInner() {
             )}
 
             {!listLoading && !listError && listItems.length === 0 && (
-                <StatusMessage message="登録されている質問がありません。" />
+                <StatusMessage message={t("questionList.empty")} />
             )}
 
             {!listLoading && !listError && listItems.length > 0 && (
@@ -206,7 +208,7 @@ function QuestionListInner() {
                     className={modeButtonClassName(mode === "similarity")}
                     onClick={() => setMode("similarity")}
                 >
-                    AIに聞く-検索/生成
+                    {t("questionList.modeAi")}
                 </button>
 
                 <button
@@ -214,7 +216,7 @@ function QuestionListInner() {
                     className={modeButtonClassName(mode === "keyword")}
                     onClick={() => setMode("keyword")}
                 >
-                    キーワード検索
+                    {t("common.keywordSearch")}
                 </button>
             </div>
 
@@ -226,7 +228,7 @@ function QuestionListInner() {
                         type="text"
                         value={keywordInput}
                         onChange={(e) => setKeywordInput(e.target.value)}
-                        placeholder="キーワードで質問・回答を絞り込み(スペース区切りでAND検索)"
+                        placeholder={t("questionList.keywordPlaceholder")}
                         className={inputClassName}
                     />
 
@@ -237,7 +239,7 @@ function QuestionListInner() {
                                 checked={searchQuestion}
                                 onChange={toggleSearchQuestion}
                             />
-                            質問を検索対象にする
+                            {t("questionList.searchInQuestion")}
                         </label>
 
                         <label className="flex items-center gap-2">
@@ -246,7 +248,7 @@ function QuestionListInner() {
                                 checked={searchAnswer}
                                 onChange={toggleSearchAnswer}
                             />
-                            回答を検索対象にする
+                            {t("questionList.searchInAnswer")}
                         </label>
                     </div>
 

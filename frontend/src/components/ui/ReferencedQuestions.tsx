@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { RetrievedQuestionRef } from "@/types/question";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 type ReferencedQuestionsProps = {
     items: RetrievedQuestionRef[];
@@ -12,6 +13,8 @@ type ReferencedQuestionsProps = {
  * 差分を示すため、本文とは別フォント(font-serif)で表示する。
  */
 export default function ReferencedQuestions({ items }: ReferencedQuestionsProps) {
+    const { t } = useLanguage();
+
     if (items.length === 0) {
         return null;
     }
@@ -22,7 +25,7 @@ export default function ReferencedQuestions({ items }: ReferencedQuestionsProps)
             onClick={(e) => e.stopPropagation()}
         >
             <p className="font-serif text-xs text-gray-500">
-                回答生成時に参考にしたQA:
+                {t("referencedQuestions.heading")}
             </p>
 
             <ul className="flex flex-col gap-0.5">

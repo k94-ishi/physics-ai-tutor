@@ -7,10 +7,12 @@ import Card from "@/components/ui/Card";
 import TextField from "@/components/ui/TextField";
 import Button from "@/components/ui/Button";
 import StatusMessage from "@/components/ui/StatusMessage";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 export default function LoginPage() {
     const router = useRouter();
     const { login } = useAuth();
+    const { t } = useLanguage();
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -36,7 +38,9 @@ export default function LoginPage() {
 
     return (
         <main className="mx-auto flex max-w-sm flex-col gap-6">
-            <h1 className="text-2xl font-bold text-gray-900">管理者ログイン</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+                {t("header.adminLogin")}
+            </h1>
 
             <Card>
                 <form
@@ -46,7 +50,7 @@ export default function LoginPage() {
                 >
                     <TextField
                         id="email"
-                        label="メールアドレス"
+                        label={t("login.email")}
                         type="email"
                         required
                         value={email}
@@ -56,7 +60,7 @@ export default function LoginPage() {
 
                     <TextField
                         id="password"
-                        label="パスワード"
+                        label={t("login.password")}
                         type="password"
                         required
                         value={password}
@@ -67,12 +71,12 @@ export default function LoginPage() {
                     {error && (
                         <StatusMessage
                             variant="error"
-                            message="メールアドレスまたはパスワードが正しくありません。"
+                            message={t("login.invalidCredentials")}
                         />
                     )}
 
                     <Button type="submit" disabled={loading} className="self-start">
-                        {loading ? "ログイン中..." : "管理者ログイン"}
+                        {loading ? t("login.loggingIn") : t("header.adminLogin")}
                     </Button>
                 </form>
             </Card>

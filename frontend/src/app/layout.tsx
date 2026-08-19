@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import Header from "@/components/Header";
 import Toaster from "@/components/ui/Toast";
 import { AuthProvider } from "@/lib/auth/AuthContext";
+import { LanguageProvider } from "@/lib/i18n/LanguageContext";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -40,13 +41,15 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-gray-50 text-gray-900">
-        <AuthProvider>
-          <Header />
-          <div className="mx-auto w-full max-w-4xl flex-1 px-3 py-5">
-            {children}
-          </div>
-          <Toaster />
-        </AuthProvider>
+        <LanguageProvider>
+          <AuthProvider>
+            <Header />
+            <div className="mx-auto w-full max-w-4xl flex-1 px-3 py-5">
+              {children}
+            </div>
+            <Toaster />
+          </AuthProvider>
+        </LanguageProvider>
       </body>
     </html>
   );

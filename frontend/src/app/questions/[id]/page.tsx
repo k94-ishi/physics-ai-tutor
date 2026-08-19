@@ -6,6 +6,7 @@ import Card from "@/components/ui/Card";
 import MarkdownContent from "@/components/ui/MarkdownContent";
 import ReferencedQuestions from "@/components/ui/ReferencedQuestions";
 import AskAiBox from "@/components/AskAiBox";
+import T from "@/components/ui/T";
 
 export default async function QuestionPage(
     {
@@ -42,14 +43,14 @@ export default async function QuestionPage(
             <Card className="flex flex-col gap-4">
                 {matched === "exact" && (
                     <p className="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-700">
-                        この質問に対する回答はすでに生成済みです
+                        <T k="questionDetail.alreadyAnswered" />
                     </p>
                 )}
 
                 <div className="flex flex-wrap items-center gap-2">
                     {question.status === "UNREVIEWED" && (
                         <span className="shrink-0 rounded-full bg-yellow-50 px-2 py-0.5 text-xs font-medium text-yellow-700">
-                            管理者未チェック
+                            <T k="questionDetail.unreviewedBadge" />
                         </span>
                     )}
 
@@ -66,7 +67,7 @@ export default async function QuestionPage(
             {relatedQuestions.length > 0 && (
                 <div className="flex flex-col gap-3">
                     <h2 className="text-lg font-semibold text-gray-900">
-                        関連する質問
+                        <T k="questionDetail.relatedQuestions" />
                     </h2>
 
                     <div className="flex flex-col gap-3">

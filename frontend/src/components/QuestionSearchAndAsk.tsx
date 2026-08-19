@@ -11,6 +11,7 @@ import LoadingState from "@/components/ui/LoadingState";
 import StatusMessage from "@/components/ui/StatusMessage";
 import MarkdownContent from "@/components/ui/MarkdownContent";
 import { showToast } from "@/components/ui/Toast";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 const SIMILARITY_LIMIT = 10;
 const QUESTION_MIN_LENGTH = 5;
@@ -80,6 +81,7 @@ export default function QuestionSearchAndAsk({
     children,
 }: QuestionSearchAndAskProps) {
     const router = useRouter();
+    const { language, t } = useLanguage();
     const [query, setQuery] = useState("");
     const [searched, setSearched] = useState(false);
     const [results, setResults] = useState<SimilarQuestion[]>([]);
@@ -180,13 +182,13 @@ export default function QuestionSearchAndAsk({
             }
 
             console.error(error);
-            showToast("AIへの質問に失敗しました。", "error");
+            showToast(t("questionSearch.askFailed"), "error");
         } finally {
             if (requestId === ragRequestId.current) {
                 setRagLoading(false);
             }
         }
-    }, []);
+    }, [t]);
 
     function handleSubmit(e: FormEvent<HTMLFormElement>) {
         e.preventDefault();
@@ -204,7 +206,7 @@ export default function QuestionSearchAndAsk({
                         type="text"
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
-                        placeholder="質問を入力すると意味が近い質問を検索します"
+                        placeholder={t("questionSearch.placeholder")}
                         maxLength={QUESTION_MAX_LENGTH}
                         className={inputClassName}
                     />
@@ -214,19 +216,30 @@ export default function QuestionSearchAndAsk({
                         disabled={searchLoading || trimmedLength < QUESTION_MIN_LENGTH}
                         className="shrink-0"
                     >
-                        検索
+                        {t("common.search")}
                     </Button>
                 </div>
 
                 <div className="flex items-center justify-between text-xs text-gray-500">
                     <span>
-                        {belowMinLength && `${QUESTION_MIN_LENGTH}文字以上入力してください`}
+                        {belowMinLength &&
+                            t("questionSearch.minLength", {
+                                min: QUESTION_MIN_LENGTH,
+                            })}
                     </span>
                     <span>
                         {trimmedLength} / {QUESTION_MAX_LENGTH}
                     </span>
                 </div>
             </form>
+
+            {language === "en" && (
+                <p className="text-xs text-gray-500">
+                    Please write your question in Japanese.
+                    <br />
+                    English questions are not supported yet.
+                </p>
+            )}
 
             {!searched && children}
 
@@ -235,7 +248,7 @@ export default function QuestionSearchAndAsk({
                     {!searchLoading && (
                         <div className="flex flex-col items-start gap-2 rounded-md border border-gray-200 bg-gray-50 p-4">
                             <p className="text-sm text-gray-600">
-                                以下に目的の質問はありませんか？
+                                {t("questionSearch.askPrompt")}
                             </p>
                             <Button
                                 type="button"
@@ -243,23 +256,23 @@ export default function QuestionSearchAndAsk({
                                 disabled={ragLoading || trimmedLength < QUESTION_MIN_LENGTH}
                                 onClick={() => runRag(query, results)}
                             >
-                                AIによる回答生成を実行
+                                {t("questionSearch.askButton")}
                             </Button>
                         </div>
                     )}
 
-                    {searchLoading && <LoadingState label="検索中..." />}
+                    {searchLoading && <LoadingState label={t("common.searching")} />}
 
                     {!searchLoading && searchError && (
                         <StatusMessage
                             variant="error"
-                            message="検索に失敗しました。"
+                            message={t("common.searchFailed")}
                             onRetry={() => runSearch(query)}
                         />
                     )}
 
                     {!searchLoading && !searchError && results.length === 0 && (
-                        <StatusMessage message="関連する質問が見つかりませんでした。" />
+                        <StatusMessage message={t("questionSearch.noResults")} />
                     )}
 
                     {!searchLoading && !searchError && results.length > 0 && (
@@ -281,7 +294,7 @@ export default function QuestionSearchAndAsk({
                                         >
                                             {isTopResult && percent >= HIGH_SIMILARITY_THRESHOLD && (
                                                 <p className="mb-1 text-xs font-medium text-green-700">
-                                                    聞きたいのはこの質問ですか？
+                                                    {t("questionSearch.topMatchBanner")}
                                                 </p>
                                             )}
 
@@ -293,7 +306,7 @@ export default function QuestionSearchAndAsk({
                                                 <span
                                                     className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${topResultBadgeClassName(isTopResult, percent)}`}
                                                 >
-                                                    関連度 {percent}%
+                                                    {t("questionSearch.relevance")} {percent}%
                                                 </span>
                                             </div>
 
@@ -308,7 +321,7 @@ export default function QuestionSearchAndAsk({
                         </div>
                     )}
 
-                    {ragLoading && <LoadingState label="回答を生成中..." />}
+                    {ragLoading && <LoadingState label={t("questionSearch.generating")} />}
 
                     {!ragLoading && ragAnswer && (
                         <Card>

@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import Button from "./Button";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 type PaginationProps = {
     page: number;
@@ -40,6 +41,7 @@ export default function Pagination({
     onSizeChange,
     sizeOptions = DEFAULT_SIZE_OPTIONS,
 }: PaginationProps) {
+    const { t } = useLanguage();
     const [jumpInput, setJumpInput] = useState("");
     const lastPage = Math.max(1, Math.ceil(total / size));
     const rangeStart = total === 0 ? 0 : (page - 1) * size + 1;
@@ -62,7 +64,11 @@ export default function Pagination({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4">
                 <span className="text-sm text-gray-500">
-                    {rangeStart}–{rangeEnd}件 / 全{total}件
+                    {t("common.rangeSummary", {
+                        start: rangeStart,
+                        end: rangeEnd,
+                        total,
+                    })}
                 </span>
 
                 <div className="flex items-center gap-1.5">
@@ -70,7 +76,7 @@ export default function Pagination({
                         htmlFor="page-size"
                         className="text-sm text-gray-500"
                     >
-                        表示件数
+                        {t("common.pageSize")}
                     </label>
                     <select
                         id="page-size"
@@ -80,7 +86,7 @@ export default function Pagination({
                     >
                         {sizeOptions.map((option) => (
                             <option key={option} value={option}>
-                                {option}件
+                                {t("common.itemsUnit", { count: option })}
                             </option>
                         ))}
                     </select>
@@ -94,7 +100,7 @@ export default function Pagination({
                     size="sm"
                     disabled={page <= 1}
                     onClick={() => goTo(page - 1)}
-                    aria-label="前のページ"
+                    aria-label={t("common.prevPage")}
                 >
                     &lt;
                 </Button>
@@ -127,7 +133,7 @@ export default function Pagination({
                     size="sm"
                     disabled={page >= lastPage}
                     onClick={() => goTo(page + 1)}
-                    aria-label="次のページ"
+                    aria-label={t("common.nextPage")}
                 >
                     &gt;
                 </Button>
@@ -144,10 +150,10 @@ export default function Pagination({
                         value={jumpInput}
                         onChange={(e) => setJumpInput(e.target.value)}
                         className="w-16 rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        aria-label="ページ番号を直接入力"
+                        aria-label={t("common.jumpToPage")}
                     />
                     <Button type="submit" variant="secondary" size="sm">
-                        移動
+                        {t("common.move")}
                     </Button>
                 </form>
             </div>

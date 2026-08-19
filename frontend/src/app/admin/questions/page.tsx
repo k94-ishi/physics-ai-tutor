@@ -24,6 +24,8 @@ import ReferencedQuestions from "@/components/ui/ReferencedQuestions";
 import { showToast } from "@/components/ui/Toast";
 import { useQueryState } from "@/lib/hooks/useQueryState";
 import { runWithConcurrencyLimit } from "@/lib/concurrency";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { TranslationKey } from "@/lib/i18n/translations";
 
 type Mode = "ai" | "keyword";
 type BulkAction = "delete" | "approve" | "reject" | "extract";
@@ -43,10 +45,10 @@ const ADMIN_QUERY_DEFAULTS = {
     conceptFilter: "",
 };
 
-const STATUS_LABELS: Record<QuestionStatus, string> = {
-    UNREVIEWED: "未レビュー",
-    APPROVED: "承認済み",
-    REJECTED: "却下",
+const STATUS_LABEL_KEYS: Record<QuestionStatus, TranslationKey> = {
+    UNREVIEWED: "admin.status.unreviewed",
+    APPROVED: "admin.status.approved",
+    REJECTED: "admin.status.rejected",
 };
 
 const STATUS_BADGE_CLASSES: Record<QuestionStatus, string> = {
@@ -55,11 +57,14 @@ const STATUS_BADGE_CLASSES: Record<QuestionStatus, string> = {
     REJECTED: "bg-red-50 text-red-700",
 };
 
-const BULK_ACTION_LABELS: Record<BulkAction, { title: string; confirmLabel: string }> = {
-    delete: { title: "選択した質問を削除しますか？", confirmLabel: "削除" },
-    approve: { title: "選択した質問を承認しますか？", confirmLabel: "承認" },
-    reject: { title: "選択した質問を却下しますか？", confirmLabel: "却下" },
-    extract: { title: "選択した質問のConceptを抽出しますか？", confirmLabel: "抽出" },
+const BULK_ACTION_KEYS: Record<
+    BulkAction,
+    { title: TranslationKey; confirmLabel: TranslationKey }
+> = {
+    delete: { title: "admin.confirmBulkDelete", confirmLabel: "common.delete" },
+    approve: { title: "admin.confirmBulkApprove", confirmLabel: "common.approve" },
+    reject: { title: "admin.confirmBulkReject", confirmLabel: "common.reject" },
+    extract: { title: "admin.confirmBulkExtract", confirmLabel: "admin.extractLabel" },
 };
 
 function modeButtonClassName(active: boolean): string {
@@ -78,6 +83,7 @@ const inputClassName =
     "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
 
 function AdminQuestionsPageInner() {
+    const { t } = useLanguage();
     const [mode, setMode] = useState<Mode>("keyword");
 
     // 一覧(pagination + keyword filter + status filter、URLで管理)
@@ -277,11 +283,11 @@ function AdminQuestionsPageInner() {
         try {
             await deleteQuestion(deleteTarget.id);
             await loadList(page, size, queryState.keyword, statusFilter);
-            showToast("質問を削除しました。");
+            showToast(t("admin.questionDeleted"));
             setDeleteTarget(null);
         } catch (error) {
             console.error(error);
-            showToast("質問の削除に失敗しました。", "error");
+            showToast(t("admin.questionDeleteFailed"), "error");
         } finally {
             setDeleting(false);
         }
@@ -312,8 +318,8 @@ function AdminQuestionsPageInner() {
                 });
                 showToast(
                     action === "APPROVE"
-                        ? "質問を承認しました。"
-                        : "質問を却下しました。"
+                        ? t("admin.questionApproved")
+                        : t("admin.questionRejected")
                 );
             } catch (error) {
                 console.error(error);
@@ -322,7 +328,7 @@ function AdminQuestionsPageInner() {
                     next.set(question.id, { action, state: "error" });
                     return next;
                 });
-                showToast("処理に失敗しました。", "error");
+                showToast(t("admin.actionFailed"), "error");
             } finally {
                 reviewingIdsRef.current.delete(question.id);
             }
@@ -340,14 +346,21 @@ function AdminQuestionsPageInner() {
         try {
             if (bulkAction === "delete") {
                 const result = await bulkDeleteQuestions(ids);
-                showToast(`${result.deleted_count}件を削除しました。`);
+                showToast(
+                    t("admin.bulkDeletedCount", { count: result.deleted_count })
+                );
             } else {
                 const result = await bulkReviewQuestions(
                     ids,
                     bulkAction === "approve" ? "APPROVE" : "REJECT"
                 );
                 showToast(
-                    `${result.questions.length}件を${bulkAction === "approve" ? "承認" : "却下"}しました。`
+                    t(
+                        bulkAction === "approve"
+                            ? "admin.bulkApprovedCount"
+                            : "admin.bulkRejectedCount",
+                        { count: result.questions.length }
+                    )
                 );
             }
 
@@ -356,7 +369,7 @@ function AdminQuestionsPageInner() {
             await loadList(page, size, queryState.keyword, statusFilter);
         } catch (error) {
             console.error(error);
-            showToast("一括処理に失敗しました。", "error");
+            showToast(t("admin.bulkActionFailed"), "error");
         } finally {
             setBulkProcessing(false);
         }
@@ -426,7 +439,7 @@ function AdminQuestionsPageInner() {
         <main className="flex flex-col gap-6">
             <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-bold text-gray-900">
-                    質問管理
+                    {t("header.questionManagement")}
                 </h1>
 
                 <div className="flex items-center gap-2">
@@ -434,14 +447,14 @@ function AdminQuestionsPageInner() {
                         href="/admin/questions/upload"
                         className={buttonClassName("secondary")}
                     >
-                        JSONLアップロード
+                        {t("admin.uploadJsonl")}
                     </Link>
 
                     <Link
                         href="/admin/questions/new"
                         className={buttonClassName("primary")}
                     >
-                        新規登録
+                        {t("admin.newQuestion")}
                     </Link>
                 </div>
             </div>
@@ -453,7 +466,7 @@ function AdminQuestionsPageInner() {
                         className={modeButtonClassName(mode === "ai")}
                         onClick={() => setMode("ai")}
                     >
-                        関連度検索
+                        {t("admin.similaritySearchMode")}
                     </button>
 
                     <button
@@ -461,7 +474,7 @@ function AdminQuestionsPageInner() {
                         className={modeButtonClassName(mode === "keyword")}
                         onClick={() => setMode("keyword")}
                     >
-                        キーワード検索
+                        {t("common.keywordSearch")}
                     </button>
                 </div>
 
@@ -470,7 +483,7 @@ function AdminQuestionsPageInner() {
                         <div className="w-56">
                             <SelectField
                                 id="status-filter"
-                                label="ステータスで絞り込み"
+                                label={t("admin.statusFilterLabel")}
                                 value={statusFilter}
                                 onChange={(e) =>
                                     setQueryState({
@@ -479,10 +492,19 @@ function AdminQuestionsPageInner() {
                                     })
                                 }
                                 options={[
-                                    { value: "", label: "すべて" },
-                                    { value: "UNREVIEWED", label: "未レビュー" },
-                                    { value: "APPROVED", label: "承認済み" },
-                                    { value: "REJECTED", label: "却下" },
+                                    { value: "", label: t("common.all") },
+                                    {
+                                        value: "UNREVIEWED",
+                                        label: t("admin.status.unreviewed"),
+                                    },
+                                    {
+                                        value: "APPROVED",
+                                        label: t("admin.status.approved"),
+                                    },
+                                    {
+                                        value: "REJECTED",
+                                        label: t("admin.status.rejected"),
+                                    },
                                 ]}
                             />
                         </div>
@@ -490,7 +512,7 @@ function AdminQuestionsPageInner() {
                         <div className="w-56">
                             <SelectField
                                 id="concept-filter"
-                                label="Concept状態で絞り込み"
+                                label={t("admin.conceptFilterLabel")}
                                 value={conceptFilter}
                                 onChange={(e) =>
                                     setQueryState({
@@ -498,9 +520,15 @@ function AdminQuestionsPageInner() {
                                     })
                                 }
                                 options={[
-                                    { value: "", label: "すべて" },
-                                    { value: "extracted", label: "抽出済み" },
-                                    { value: "unextracted", label: "未抽出" },
+                                    { value: "", label: t("common.all") },
+                                    {
+                                        value: "extracted",
+                                        label: t("admin.conceptExtracted"),
+                                    },
+                                    {
+                                        value: "unextracted",
+                                        label: t("admin.conceptUnextracted"),
+                                    },
                                 ]}
                             />
                         </div>
@@ -517,7 +545,7 @@ function AdminQuestionsPageInner() {
                         type="text"
                         value={similarityInput}
                         onChange={(e) => setSimilarityInput(e.target.value)}
-                        placeholder="質問を入力すると意味が近い質問を検索します"
+                        placeholder={t("questionSearch.placeholder")}
                         className={inputClassName}
                     />
 
@@ -526,7 +554,7 @@ function AdminQuestionsPageInner() {
                         disabled={similarityLoading || !similarityInput.trim()}
                         className="shrink-0"
                     >
-                        検索
+                        {t("common.search")}
                     </Button>
                 </form>
             ) : (
@@ -534,19 +562,19 @@ function AdminQuestionsPageInner() {
                     type="text"
                     value={keywordInput}
                     onChange={(e) => setKeywordInput(e.target.value)}
-                    placeholder="キーワードで質問・回答を絞り込み"
+                    placeholder={t("admin.keywordPlaceholder")}
                     className={inputClassName}
                 />
             )}
 
             {showSimilarityView ? (
                 <>
-                    {similarityLoading && <LoadingState label="検索中..." />}
+                    {similarityLoading && <LoadingState label={t("common.searching")} />}
 
                     {!similarityLoading && similarityError && (
                         <StatusMessage
                             variant="error"
-                            message="検索に失敗しました。"
+                            message={t("common.searchFailed")}
                             onRetry={() => runSimilaritySearch(similarityInput)}
                         />
                     )}
@@ -554,7 +582,7 @@ function AdminQuestionsPageInner() {
                     {!similarityLoading &&
                         !similarityError &&
                         similarityResults.length === 0 && (
-                            <StatusMessage message="関連する質問が見つかりませんでした。" />
+                            <StatusMessage message={t("questionSearch.noResults")} />
                         )}
 
                     {!similarityLoading &&
@@ -573,7 +601,7 @@ function AdminQuestionsPageInner() {
                                                 </span>
 
                                                 <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-                                                    関連度{" "}
+                                                    {t("questionSearch.relevance")}{" "}
                                                     {similarityPercent(result.distance)}%
                                                 </span>
                                             </div>
@@ -595,7 +623,7 @@ function AdminQuestionsPageInner() {
                     {!listLoading && listError && (
                         <StatusMessage
                             variant="error"
-                            message="質問一覧を取得できませんでした。"
+                            message={t("admin.fetchFailed")}
                             onRetry={() =>
                                 loadList(page, size, queryState.keyword, statusFilter)
                             }
@@ -603,14 +631,14 @@ function AdminQuestionsPageInner() {
                     )}
 
                     {!listLoading && !listError && listItems.length === 0 && (
-                        <StatusMessage message="登録されている質問がありません。" />
+                        <StatusMessage message={t("questionList.empty")} />
                     )}
 
                     {!listLoading &&
                         !listError &&
                         listItems.length > 0 &&
                         visibleItems.length === 0 && (
-                            <StatusMessage message="Concept状態の条件に一致する質問がこのページにはありません。" />
+                            <StatusMessage message={t("admin.noConceptMatch")} />
                         )}
 
                     {!listLoading && !listError && visibleItems.length > 0 && (
@@ -634,8 +662,10 @@ function AdminQuestionsPageInner() {
                                         onChange={toggleSelectAll}
                                     />
                                     {selectedIds.size > 0
-                                        ? `${selectedIds.size}件選択中`
-                                        : "全選択"}
+                                        ? t("common.selectedCount", {
+                                              count: selectedIds.size,
+                                          })
+                                        : t("common.selectAll")}
                                 </label>
 
                                 {selectedIds.size > 0 && (
@@ -644,25 +674,25 @@ function AdminQuestionsPageInner() {
                                             variant="secondary"
                                             onClick={() => setBulkAction("approve")}
                                         >
-                                            一括承認
+                                            {t("admin.bulkApprove")}
                                         </Button>
                                         <Button
                                             variant="secondary"
                                             onClick={() => setBulkAction("reject")}
                                         >
-                                            一括却下
+                                            {t("admin.bulkReject")}
                                         </Button>
                                         <Button
                                             variant="secondary"
                                             onClick={() => setBulkAction("extract")}
                                         >
-                                            Concept抽出
+                                            {t("admin.extractConcepts")}
                                         </Button>
                                         <Button
                                             variant="danger"
                                             onClick={() => setBulkAction("delete")}
                                         >
-                                            一括削除
+                                            {t("admin.bulkDelete")}
                                         </Button>
                                     </div>
                                 )}
@@ -691,7 +721,9 @@ function AdminQuestionsPageInner() {
                                                     onChange={() => toggleSelected(question.id)}
                                                     onClick={(e) => e.stopPropagation()}
                                                     className="mt-1 shrink-0"
-                                                    aria-label={`${question.question}を選択`}
+                                                    aria-label={t("admin.selectQuestion", {
+                                                        question: question.question,
+                                                    })}
                                                 />
 
                                                 <div className="flex min-w-0 flex-1 flex-col gap-2">
@@ -699,12 +731,12 @@ function AdminQuestionsPageInner() {
                                                         <span
                                                             className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASSES[question.status]}`}
                                                         >
-                                                            {STATUS_LABELS[question.status]}
+                                                            {t(STATUS_LABEL_KEYS[question.status])}
                                                         </span>
 
                                                         {question.source === "RAG_RESULT" && (
                                                             <span className="shrink-0 rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">
-                                                                RAG生成
+                                                                {t("admin.ragGenerated")}
                                                             </span>
                                                         )}
 
@@ -716,41 +748,43 @@ function AdminQuestionsPageInner() {
                                                             }`}
                                                         >
                                                             {hasConcepts
-                                                                ? `概念抽出済み(${question.concepts.length})`
-                                                                : "概念未抽出"}
+                                                                ? t("admin.conceptsExtractedCount", {
+                                                                      count: question.concepts.length,
+                                                                  })
+                                                                : t("admin.conceptsNotExtracted")}
                                                         </span>
 
                                                         {extraction === "processing" && (
                                                             <span className="shrink-0 animate-pulse rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-                                                                Concept抽出: 処理中
+                                                                {t("admin.extractionProcessing")}
                                                             </span>
                                                         )}
 
                                                         {extraction === "done" && (
                                                             <span className="shrink-0 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
-                                                                Concept抽出: 完了
+                                                                {t("admin.extractionDone")}
                                                             </span>
                                                         )}
 
                                                         {extraction === "error" && (
                                                             <span className="shrink-0 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
-                                                                Concept抽出: 失敗
+                                                                {t("admin.extractionFailed")}
                                                             </span>
                                                         )}
 
                                                         {review?.state === "processing" && (
                                                             <span className="shrink-0 animate-pulse rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
                                                                 {review.action === "APPROVE"
-                                                                    ? "承認中"
-                                                                    : "却下中"}
+                                                                    ? t("admin.approving")
+                                                                    : t("admin.rejecting")}
                                                             </span>
                                                         )}
 
                                                         {review?.state === "error" && (
                                                             <span className="shrink-0 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
                                                                 {review.action === "APPROVE"
-                                                                    ? "承認に失敗"
-                                                                    : "却下に失敗"}
+                                                                    ? t("admin.approveFailed")
+                                                                    : t("admin.rejectFailed")}
                                                             </span>
                                                         )}
                                                     </div>
@@ -793,7 +827,7 @@ function AdminQuestionsPageInner() {
                                                                     startReview(question, "APPROVE")
                                                                 }
                                                             >
-                                                                承認
+                                                                {t("common.approve")}
                                                             </Button>
                                                         )}
 
@@ -805,7 +839,7 @@ function AdminQuestionsPageInner() {
                                                                     startReview(question, "REJECT")
                                                                 }
                                                             >
-                                                                却下
+                                                                {t("common.reject")}
                                                             </Button>
                                                         )}
 
@@ -813,14 +847,14 @@ function AdminQuestionsPageInner() {
                                                             href={`/admin/questions/${question.id}/reviews`}
                                                             className={buttonClassName("secondary")}
                                                         >
-                                                            履歴
+                                                            {t("common.history")}
                                                         </Link>
 
                                                         <Link
                                                             href={`/admin/questions/${question.id}/edit`}
                                                             className={buttonClassName("secondary")}
                                                         >
-                                                            編集
+                                                            {t("common.edit")}
                                                         </Link>
 
                                                         <Button
@@ -830,14 +864,14 @@ function AdminQuestionsPageInner() {
                                                                 startConceptExtraction([question.id])
                                                             }
                                                         >
-                                                            Concept抽出
+                                                            {t("admin.extractConcepts")}
                                                         </Button>
 
                                                         <Button
                                                             variant="danger"
                                                             onClick={() => setDeleteTarget(question)}
                                                         >
-                                                            削除
+                                                            {t("common.delete")}
                                                         </Button>
                                                     </div>
                                                 </div>
@@ -861,7 +895,7 @@ function AdminQuestionsPageInner() {
 
             <ConfirmDialog
                 open={deleteTarget !== null}
-                title="質問を削除しますか？"
+                title={t("admin.confirmDeleteQuestion")}
                 description={deleteTarget?.question}
                 confirming={deleting}
                 onConfirm={handleConfirmDelete}
@@ -870,9 +904,11 @@ function AdminQuestionsPageInner() {
 
             <ConfirmDialog
                 open={bulkAction !== null}
-                title={bulkAction ? BULK_ACTION_LABELS[bulkAction].title : ""}
-                description={`${selectedIds.size}件が対象です。`}
-                confirmLabel={bulkAction ? BULK_ACTION_LABELS[bulkAction].confirmLabel : undefined}
+                title={bulkAction ? t(BULK_ACTION_KEYS[bulkAction].title) : ""}
+                description={t("admin.bulkTargetCount", { count: selectedIds.size })}
+                confirmLabel={
+                    bulkAction ? t(BULK_ACTION_KEYS[bulkAction].confirmLabel) : undefined
+                }
                 confirming={bulkAction === "extract" ? false : bulkProcessing}
                 onConfirm={() =>
                     bulkAction === "extract"

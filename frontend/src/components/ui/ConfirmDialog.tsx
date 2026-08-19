@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect } from "react";
 import Button from "@/components/ui/Button";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 type ConfirmDialogProps = {
     open: boolean;
@@ -18,12 +19,16 @@ export default function ConfirmDialog({
     open,
     title,
     description,
-    confirmLabel = "削除",
-    cancelLabel = "キャンセル",
+    confirmLabel,
+    cancelLabel,
     confirming = false,
     onConfirm,
     onCancel,
 }: ConfirmDialogProps) {
+    const { t } = useLanguage();
+    const resolvedConfirmLabel = confirmLabel ?? t("common.delete");
+    const resolvedCancelLabel = cancelLabel ?? t("common.cancel");
+
     useEffect(() => {
         if (!open) {
             return;
@@ -71,7 +76,7 @@ export default function ConfirmDialog({
                         onClick={onCancel}
                         disabled={confirming}
                     >
-                        {cancelLabel}
+                        {resolvedCancelLabel}
                     </Button>
 
                     <Button
@@ -80,7 +85,7 @@ export default function ConfirmDialog({
                         onClick={onConfirm}
                         disabled={confirming}
                     >
-                        {confirming ? "処理中..." : confirmLabel}
+                        {confirming ? t("common.processing") : resolvedConfirmLabel}
                     </Button>
                 </div>
             </div>

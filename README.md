@@ -51,14 +51,21 @@ English UI mode, with question and answer content still in Japanese (see [Featur
 
 </details>
 
-### Manage questions
+### Login page for adimin
+<details><summary>Screen Shot</summary>
+
+![Login page](docs/images/login-en.png)
+
+</details>
+
+### Manage questions (Adimin page)
 <details><summary>Screen Shot</summary>
 
 ![Manage questions page](docs/images/manage-questions-en.png)
 
 </details>
 
-### Edit question
+### Edit question (Admin page)
 <details><summary>Screen Shot</summary>
 
 ![Edit question page](docs/images/edit-question-ja.png)
@@ -70,7 +77,7 @@ English UI mode, with question and answer content still in Japanese (see [Featur
 ## System Architecture
 
 ```mermaid
-flowchart LR
+flowchart TB
     User[User Browser]
 
     User --> Frontend[Next.js Frontend]
@@ -93,7 +100,7 @@ The backend acts as the central application layer, connecting the frontend, know
 The application is designed to minimize unnecessary LLM usage by prioritizing existing educational knowledge.
 
 ```mermaid
-flowchart LR
+flowchart TB
     U[User Question]
 
     DB[(PostgreSQL + pgvector<br/><br/>Questions<br/>Embeddings<br/>Concepts)]

@@ -77,7 +77,7 @@ English UI mode, with question and answer content still in Japanese (see [Featur
 ## System Architecture
 
 ```mermaid
-flowchart LR
+flowchart TB
     User[User Browser]
 
     User --> Frontend[Next.js Frontend]
@@ -100,7 +100,7 @@ The backend acts as the central application layer, connecting the frontend, know
 The application is designed to minimize unnecessary LLM usage by prioritizing existing educational knowledge.
 
 ```mermaid
-flowchart LR
+flowchart TB
     U[User Question]
 
     DB[(PostgreSQL + pgvector<br/><br/>Questions<br/>Embeddings<br/>Concepts)]

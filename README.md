@@ -51,14 +51,21 @@ English UI mode, with question and answer content still in Japanese (see [Featur
 
 </details>
 
-### Manage questions
+### Login page for adimin
+<details><summary>Screen Shot</summary>
+
+![Login page](docs/images/login-en.png)
+
+</details>
+
+### Manage questions (Adimin page)
 <details><summary>Screen Shot</summary>
 
 ![Manage questions page](docs/images/manage-questions-en.png)
 
 </details>
 
-### Edit question
+### Edit question (Admin page)
 <details><summary>Screen Shot</summary>
 
 ![Edit question page](docs/images/edit-question-ja.png)

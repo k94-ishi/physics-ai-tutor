@@ -1,121 +1,182 @@
 # Physics AI Tutor
 
+![CI](https://github.com/k94-ishi/physics-ai-tutor/actions/workflows/ci.yml/badge.svg)
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+
 Physics AI Tutor is an AI-assisted learning platform for high school physics students.
 
-I worked as a high school physics teacher in Japan for three years. During that time, I realized that many students struggled not only with understanding physics concepts but also with formulating the questions they wanted to ask.
+I previously worked as a high school physics teacher in Japan for three years. Through teaching experience, I noticed that many students struggled not only with understanding physics concepts but also with formulating the right questions.
 
-This project aims to support students by organizing physics knowledge, helping them find relevant explanations, and eventually providing AI-powered tutoring through Retrieval-Augmented Generation (RAG).
+This project aims to help students learn physics by combining:
 
-The application is currently under active development as a full-stack AI tutoring system.
+- Structured educational knowledge management
+- Semantic search using vector embeddings
+- Retrieval-Augmented Generation (RAG)
+- Human review workflows for AI-generated content
+
+The goal is to build a reliable AI tutor that explains physics based on verified educational knowledge.
 
 ---
 
-## Demo
+## Live Application
 
-https://physics-ai-tutor-blue.vercel.app/
+https://ai-tutor.pencil-net.com
 
-----
+---
+
+## Getting Started
+
+To run the project locally, see [docs/development.md](docs/development.md).
+
+---
+
+## Screenshots
+
+English UI mode, with question and answer content still in Japanese (see [Features](#features)).
+
+### Home / question list
+![Home page in English UI mode](docs/images/home-en.png)
+
+### AI similarity search results
+<details><summary>Screen Shot</summary>
+
+![AI search results with relevance scores](docs/images/search-en.png)
+
+</details>
+
+### Question detail page
+<details><summary>Screen Shot</summary>
+
+![Question detail page with related questions](docs/images/detail-en.png)
+
+</details>
+
+### Manage questions
+<details><summary>Screen Shot</summary>
+
+![Manage questions page](docs/images/manage-questions-en.png)
+
+</details>
+
+### Edit question
+<details><summary>Screen Shot</summary>
+
+![Edit question page](docs/images/edit-question-ja.png)
+
+</details>
+
+---
+
+## System Architecture
+
+```mermaid
+flowchart LR
+    User[User Browser]
+
+    User --> Frontend[Next.js Frontend]
+
+    Frontend --> Backend[FastAPI Backend]
+
+    Backend --> DB[(Supabase PostgreSQL<br/>+ pgvector)]
+
+    Backend --> Embedding[OpenAI Embedding API<br/>text-embedding-3-small]
+
+    Backend --> LLM[DeepSeek API]
+```
+
+The backend acts as the central application layer, connecting the frontend, knowledge database, embedding service, and LLM generation service.
+
+---
+
+## AI/RAG Architecture
+
+The application is designed to minimize unnecessary LLM usage by prioritizing existing educational knowledge.
+
+```mermaid
+flowchart LR
+    U[User Question]
+
+    DB[(PostgreSQL + pgvector<br/><br/>Questions<br/>Embeddings<br/>Concepts)]
+
+    U --> EXACT{Exact Match Search}
+
+    EXACT -->|Found| EXIST[Reuse Existing QA]
+
+    EXACT -->|Not Found| EMB[Generate Embedding]
+
+    EMB --> SEARCH[Vector Similarity Search]
+
+    SEARCH <--> DB
+
+    SEARCH --> SIM{High Similarity QA?}
+
+    SIM -->|Yes| EXIST
+
+    SIM -->|No| CONTEXT[Build RAG Context]
+
+    CONTEXT --> LLM[DeepSeek<br/>LLM Generation]
+
+    LLM --> ANSWER[AI Tutor Answer]
+
+    ANSWER --> SAVE[Save AI-generated QA<br/>Status: UNREVIEWED]
+
+    SAVE --> DB
+
+    DB --> REVIEW[Admin Review]
+
+    REVIEW -->|Approved| DB
+
+    EXIST --> NEXT[Suggest Next Questions<br/>Concept-based Recommendation]
+
+    ANSWER --> NEXT
+
+    NEXT --> USER_ACTION[User selects next question]
+
+    USER_ACTION --> U
+```
+
+### Design Principles
+
+- Prefer existing verified knowledge over generating new answers
+- Reduce unnecessary LLM API calls
+- Ground AI responses with retrieved educational content
+- Improve knowledge quality through human review
+
+---
 
 ## Features
 
-### Question Management
+### AI-assisted Physics Question Answering
 
-- Create, read, update, and delete physics questions and answers
-- Admin dashboard for managing educational content
-- Pagination and keyword-based search
+- Search existing physics explanations using semantic similarity
+- Retrieve relevant educational content before generation
+- Generate AI answers using Retrieval-Augmented Generation (RAG)
+- Store generated answers for future knowledge reuse
+
+### Semantic Question Search
+
+- Generate embeddings for physics questions
+- Store vectors using PostgreSQL + pgvector
+- Search similar questions using cosine similarity
+- Reuse existing knowledge before calling LLMs
+
+### Knowledge Management
+
+- Admin dashboard for educational content management
+- Review workflow for AI-generated answers
+- Separate approved content from unreviewed AI outputs
 
 ### Authentication and Authorization
 
 - JWT-based authentication with HttpOnly cookies
 - Role-based access control
-- Admin-only content management operations
-- User management API
+- Admin-only management operations
 
-### Semantic Search
+### Responsive Web Application
 
-- Generate question embeddings using OpenAI embedding models
-- Store embeddings in PostgreSQL with pgvector
-- Search similar questions using cosine similarity
-
-### Backend
-
-- RESTful API with FastAPI
-- SQLAlchemy ORM
-- Repository / Service / Router architecture
-- Database migration with Alembic
-- Automated tests with pytest
-
-### Frontend
-
-- Next.js (App Router)
-- React + TypeScript
-- Responsive UI for question browsing and administration
-
----
-
-## Architecture
-
-```text
-                 Next.js
-                    |
-                    |
-                 FastAPI
-                    |
-          ---------------------
-          |                   |
-     PostgreSQL          OpenAI API
-          |
-       pgvector
-```
-
-Current AI pipeline:
-
-```text
-User Question
-
-      |
-      v
-
-Embedding Generation
-(OpenAI text-embedding-3-small)
-
-      |
-      v
-
-Vector Similarity Search
-(PostgreSQL + pgvector)
-
-      |
-      v
-
-Relevant Questions
-```
-
-Future RAG pipeline:
-
-```text
-User Question
-
-      |
-      v
-
-Vector Search
-
-      |
-      v
-
-Context Retrieval
-
-      |
-      v
-
-LLM Generation
-
-      |
-      v
-
-AI Tutor Response
-```
+- Next.js-based frontend
+- Responsive UI for desktop and mobile browsers
+- Japanese / English UI switching support
 
 ---
 
@@ -133,7 +194,7 @@ AI Tutor Response
 
 ### Frontend
 
-- Next.js
+- Next.js (App Router)
 - React
 - TypeScript
 - Tailwind CSS
@@ -141,116 +202,60 @@ AI Tutor Response
 ### Infrastructure
 
 - Docker Compose
-- Vercel (Frontend)
-- Render (Backend)
-- Supabase PostgreSQL (Production Database)
+- Vercel
+- Render
+- Supabase PostgreSQL
 
 ### AI
 
 - OpenAI Embedding API (`text-embedding-3-small`)
-- DeepSeek API (planned for LLM response generation)
+- DeepSeek API for LLM generation
 
 ---
 
-## Local Development
+## Project Structure
 
-### Start containers
-
-```bash
-docker compose up --build
 ```
-
-### Initialize database
-
-```bash
-docker compose exec backend uv run alembic upgrade head
-docker compose exec backend uv run python -m physics_ai_tutor.database.seed
+physics-ai-tutor
+├── backend
+│   ├── physics_ai_tutor     # FastAPI application
+│   ├── tests                # Backend tests
+│   ├── alembic              # Database migrations
+│   └── pyproject.toml
+│
+├── frontend
+│   ├── src                  # Next.js application
+│   ├── public
+│   └── package.json
+│
+├── docs
+│   └── development.md       # Development guide
+│
+├── docker-compose.yml
+├── README.md
+└── LICENSE
 ```
-
-### Access
-
-- Frontend:
-  http://localhost:3000
-
-- API Documentation:
-  http://localhost:8000/docs
-
----
-
-## Testing
-
-Backend tests:
-
-```bash
-uv run pytest
-```
-
-Current status:
-
-- Backend: 100+ tests passing
-- Frontend: build, typecheck, and lint passing
 
 ---
 
 ## Deployment
 
-Production deployment is planned with:
+Production environment:
 
-```text
-Frontend
-  |
-  v
-Vercel
-
-Backend
-  |
-  v
-Render
-
-Database
-  |
-  v
-Supabase PostgreSQL
-```
-
-The production demo will be available at:
-
-```
-https://ai-tutor.pencil-net.com
-```
-
-## Redister first admin
-
-```bash
-uv run python -m physics_ai_tutor.cli.create_user \
-  --email admin@example.com \
-  --role admin
-
-# Enter password interactively
-```
+- Frontend: Vercel
+- Backend: Render
+- Database: Supabase PostgreSQL
 
 ---
 
-## Roadmap
+## Future Improvements
 
-- [x] Question management API
-- [x] Admin dashboard
-- [x] Pagination and keyword search
-- [x] JWT authentication
-- [x] Role-based authorization
-- [x] Embedding generation
-- [x] Similar question search using pgvector
-- [x] Production deployment
-- [ ] RAG-based AI answer generation
-- [ ] DeepSeek LLM integration
-- [ ] AI-generated answer review workflow
-- [ ] Student-facing question submission flow
+- Expand English language support
+- Support more physics domains
+- Improve AI answer evaluation workflow
+- Add more educational content generation features
 
-### Future
-
-- [ ] English version
-- [ ] Human-in-the-loop knowledge management
-- [ ] AI-generated educational content pipeline
+---
 
 ## License
 

@@ -212,3 +212,19 @@ def test_sliding_refresh_rejects_deleted_user(client, db):
     response = client.get(ME_PATH)
 
     assert response.status_code == 401
+
+
+def test_login_rate_limit_exceeded_returns_429(client, db):
+    _create_test_user(db)
+
+    for _ in range(5):
+        response = client.post(
+            LOGIN_PATH, json={"email": EMAIL, "password": "wrongpassword"}
+        )
+        assert response.status_code == 401
+
+    limited_response = client.post(
+        LOGIN_PATH, json={"email": EMAIL, "password": "wrongpassword"}
+    )
+
+    assert limited_response.status_code == 429

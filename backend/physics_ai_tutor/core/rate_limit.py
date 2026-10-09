@@ -49,3 +49,4 @@ class SlidingWindowRateLimiter:
 
 
 ai_ask_rate_limiter = SlidingWindowRateLimiter()
+login_rate_limiter = SlidingWindowRateLimiter()

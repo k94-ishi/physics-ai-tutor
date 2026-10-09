@@ -77,18 +77,29 @@ English UI mode, with question and answer content still in Japanese (see [Featur
 ## System Architecture
 
 ```mermaid
-flowchart TB
+flowchart LR
     User[User Browser]
 
-    User --> Frontend[Next.js Frontend]
+    Frontend[Next.js Frontend]
 
-    Frontend --> Backend[FastAPI Backend]
+    Backend[FastAPI Backend]
 
-    Backend --> DB[(Supabase PostgreSQL<br/>+ pgvector)]
+    DB[(Supabase PostgreSQL)]
 
-    Backend --> Embedding[OpenAI Embedding API<br/>text-embedding-3-small]
+    Embedding[OpenAI Embedding API]
 
-    Backend --> LLM[DeepSeek API]
+    LLM[DeepSeek API]
+
+
+    User --> Frontend
+
+    Frontend --> Backend
+
+    Backend --> DB
+
+    Backend --> Embedding
+
+    Backend --> LLM
 ```
 
 The backend acts as the central application layer, connecting the frontend, knowledge database, embedding service, and LLM generation service.
@@ -103,43 +114,55 @@ The application is designed to minimize unnecessary LLM usage by prioritizing ex
 flowchart TB
     U[User Question]
 
-    DB[(PostgreSQL + pgvector<br/><br/>Questions<br/>Embeddings<br/>Concepts)]
+    EXACT{Exact Match Search}
 
-    U --> EXACT{Exact Match Search}
+    EXIST[Reuse Existing QA]
 
-    EXACT -->|Found| EXIST[Reuse Existing QA]
+    EMB[Generate Embedding]
 
-    EXACT -->|Not Found| EMB[Generate Embedding]
+    SEARCH[Vector Similarity Search]
 
-    EMB --> SEARCH[Vector Similarity Search]
+    DB[(PostgreSQL + pgvector)]
 
+    SIM{High Similarity QA?}
+
+    CONTEXT[Build RAG Context]
+
+    LLM[DeepSeek LLM Generation]
+
+    ANSWER[AI Tutor Answer]
+
+    SAVE[Store Generated QA - UNREVIEWED]
+
+    REVIEW[Admin Review]
+
+    NEXT[Suggest Next Questions - Concept-based Recommendation]
+
+
+    U --> EXACT
+
+    EXACT -->|Found| EXIST
+    EXACT -->|Not Found| EMB
+
+    EMB --> SEARCH
     SEARCH <--> DB
 
-    SEARCH --> SIM{High Similarity QA?}
+    SEARCH --> SIM
 
     SIM -->|Yes| EXIST
+    SIM -->|No| CONTEXT
 
-    SIM -->|No| CONTEXT[Build RAG Context]
+    CONTEXT --> LLM
+    LLM --> ANSWER
 
-    CONTEXT --> LLM[DeepSeek<br/>LLM Generation]
-
-    LLM --> ANSWER[AI Tutor Answer]
-
-    ANSWER --> SAVE[Save AI-generated QA<br/>Status: UNREVIEWED]
-
+    ANSWER --> SAVE
     SAVE --> DB
 
-    DB --> REVIEW[Admin Review]
+    DB --> REVIEW
+    REVIEW --> DB
 
-    REVIEW -->|Approved| DB
-
-    EXIST --> NEXT[Suggest Next Questions<br/>Concept-based Recommendation]
-
+    EXIST --> NEXT
     ANSWER --> NEXT
-
-    NEXT --> USER_ACTION[User selects next question]
-
-    USER_ACTION --> U
 ```
 
 ### Design Principles

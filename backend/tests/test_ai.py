@@ -193,7 +193,7 @@ def test_ask_ai_rate_limit_exceeded_returns_429(client, monkeypatch):
         deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
     )
 
-    for _ in range(10):
+    for _ in range(3):
         ok_response = client.post(ASK_PATH, json={"question": "テスト質問です"})
         assert ok_response.status_code == 200
 
@@ -229,7 +229,7 @@ def test_ask_ai_admin_bypasses_minute_limit(client, admin_client, monkeypatch):
         deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
     )
 
-    for _ in range(10):
+    for _ in range(3):
         client.post(ASK_PATH, json={"question": "テスト質問です"})
 
     admin_response = admin_client.post(ASK_PATH, json={"question": "テスト質問です"})

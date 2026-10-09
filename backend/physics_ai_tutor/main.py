@@ -19,7 +19,14 @@ configure_logging()
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Physics AI Tutor", version="0.1.0")
+is_dev = settings.environment == "development"
+app = FastAPI(
+    title="Physics AI Tutor",
+    version="0.1.0",
+    docs_url="/docs" if is_dev else None,
+    redoc_url="/redoc" if is_dev else None,
+    openapi_url="/openapi.json" if is_dev else None,
+)
 
 
 app.add_middleware(

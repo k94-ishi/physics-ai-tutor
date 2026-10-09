@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from physics_ai_tutor.api.dependencies import (
     ACCESS_TOKEN_COOKIE_NAME,
+    enforce_login_rate_limit,
     set_access_token_cookie,
 )
 from physics_ai_tutor.core.jwt import create_access_token
@@ -13,7 +14,11 @@ from physics_ai_tutor.services.auth_service import authenticate_user
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/login", response_model=CurrentUser)
+@router.post(
+    "/login",
+    response_model=CurrentUser,
+    dependencies=[Depends(enforce_login_rate_limit)],
+)
 def login(
     data: LoginRequest,
     response: Response,

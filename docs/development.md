@@ -96,19 +96,20 @@ database you intend to migrate.
 
 ## Testing
 
-### Backend
+Both halves of the project have automated suites and CI runs them on every
+pull request. Run them locally before pushing.
+
+### Backend (pytest)
 
 Run from the `backend/` directory. Tests need the `postgres-test` container
-(port 5433) started by Docker Compose. The suite wipes and rebuilds its test
-database with Alembic and truncates tables between tests; OpenAI and
-DeepSeek calls are mocked. Each checkout gets its own auto-created test
-database, and an advisory lock prevents concurrent runs from clashing (see
-[docs/database.md](database.md#test-database-behaviour)).
+(port 5433) started by Docker Compose; OpenAI and DeepSeek calls are mocked.
 
 ```bash
 cd backend
 uv sync
-uv run pytest
+uv run pytest                 # whole suite
+uv run pytest tests/test_questions.py -k review   # one file / pattern
+uv run pytest --cov           # with coverage report
 uv run ruff check .
 uv run mypy .
 ```
@@ -119,17 +120,93 @@ Or inside the container:
 docker compose exec backend uv run pytest
 ```
 
-### Frontend
+How the database is handled:
 
-Run from the `frontend/` directory.
+- Each checkout gets its own auto-created test database
+  (`physics_ai_tutor_test_<hash>` derived from the path), so several
+  worktrees can share one `postgres-test` container. Set `TEST_DATABASE_URL`
+  to override.
+- The schema is built once per session with `alembic upgrade head` and
+  tables are truncated between tests, so model/migration drift fails the
+  suite (`tests/test_migrations.py`).
+- A PostgreSQL advisory lock is held for the session; a second concurrent
+  run on the same database aborts immediately instead of corrupting it.
+
+Layout of `backend/tests/`:
+
+| File | Covers |
+| --- | --- |
+| `conftest.py` | Database lifecycle, `client` / `admin_client` / `user_client` fixtures, mocks for embeddings and concept extraction, rate limiter reset |
+| `test_questions.py`, `test_users.py`, `test_auth.py`, `test_ai.py`, `test_health.py` | HTTP API, one file per router: status codes, auth rules, validation |
+| `test_review_workflow.py` | End-to-end review flow: AI answer saved as unreviewed, hidden from students, approved / edited / rejected by an admin, history recorded |
+| `test_*_service.py` | Service layer: RAG context, embeddings, concepts, recommendations, question lifecycle |
+| `test_*_repository.py` | Repository queries against a real PostgreSQL + pgvector |
+| `test_models.py` | Column defaults, cascades |
+| `test_migrations.py` | Single Alembic head, models match migrations |
+| `test_cli.py` | `create_user` CLI and the seed script |
+| `test_logging.py` | Request logging middleware |
+
+Conventions:
+
+- API tests use the `client` fixtures and assert on HTTP responses; service
+  and repository tests take the `db` session directly.
+- Anything that calls OpenAI or DeepSeek must be mocked. `conftest.py`
+  already patches `embedding_service.create_embeddings` and
+  `concept_service.extract_concept_names`; patch `deepseek_service` per test.
+- Admin-only endpoints need a test for `admin_client` (success),
+  `user_client` (403) and `client` (401).
+- Any endpoint that returns question content needs a test proving
+  non-admins only see `APPROVED` rows.
+
+### Frontend (Vitest + Testing Library)
+
+Run from the `frontend/` directory. Tests run in jsdom with no backend;
+`fetch` and `next/navigation` are mocked where needed.
 
 ```bash
 cd frontend
 npm ci
+npm test                      # single run (used in CI)
+npm run test:watch            # watch mode
+npm run test:coverage         # coverage report in coverage/
 npm run lint
 npx tsc --noEmit
 npm run build
 ```
+
+Configuration lives in `frontend/vitest.config.mts` and
+`frontend/vitest.setup.ts` (jest-dom matchers, automatic cleanup, a
+`localStorage` polyfill, and `NEXT_PUBLIC_API_URL=http://api.test`).
+
+Test files sit next to the code in `__tests__/` folders and end in
+`.test.ts` / `.test.tsx`:
+
+| Location | Covers |
+| --- | --- |
+| `src/lib/__tests__/api.test.ts` | Request building (query params, JSON bodies, multipart), cookie inclusion, `ApiError` on non-2xx, 204 handling |
+| `src/lib/__tests__/markdown.test.ts` | LaTeX delimiter normalisation for DeepSeek output |
+| `src/lib/__tests__/concurrency.test.ts` | Concurrency limiter used by bulk admin actions |
+| `src/lib/hooks/__tests__/useQueryState.test.tsx` | URL-backed list state (defaults omitted, `router.replace` without scroll) |
+| `src/lib/i18n/__tests__/` | Translation tables have identical keys and placeholders in `ja` and `en`; language switching, persistence, `<html lang>` |
+| `src/lib/auth/__tests__/AuthContext.test.tsx` | Session bootstrap, 401 treated as logged out, login / logout state |
+| `src/components/ui/__tests__/` | `Pagination`, `StatusMessage`, `ConfirmDialog`: rendering, accessibility roles, callbacks, keyboard handling |
+
+Conventions:
+
+- Wrap components in `LanguageProvider` and query by role and visible text
+  (Japanese, the default language) rather than by CSS class.
+- Mock `@/lib/api` with `vi.mock` for components that load data; mock
+  `fetch` only in `api.test.ts`.
+- Use `@testing-library/user-event` for interactions instead of `fireEvent`.
+- Prefer testing hooks and pure helpers directly; keep component tests for
+  behaviour a user can observe. `async` Server Components are out of scope
+  for Vitest; use a browser check against the local stack for those.
+
+### What is not covered
+
+- No end-to-end browser tests. Pages, routing and the Mermaid / KaTeX
+  renderers are verified manually against the local Docker stack.
+- Real OpenAI and DeepSeek responses are never exercised in tests.
 
 ## CI/CD
 
@@ -177,17 +254,18 @@ Frontend (`frontend/.env.local`):
 
 ## Pull Request Checks
 
-Before creating a pull request:
+Before creating a pull request, run the same checks as CI:
 
 ```bash
-# Backend
+# Backend (from backend/)
 uv run pytest
 uv run ruff check .
 uv run mypy .
 
-# Frontend
+# Frontend (from frontend/)
 npm run lint
 npx tsc --noEmit
+npm test
 npm run build
 ```
 

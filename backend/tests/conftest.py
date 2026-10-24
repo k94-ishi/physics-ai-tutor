@@ -1,10 +1,13 @@
 import os
+from pathlib import Path
 
 import pytest
+from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
+from alembic import command
 from physics_ai_tutor.core.rate_limit import ai_ask_rate_limiter, login_rate_limiter
 from physics_ai_tutor.database.base import Base
 from physics_ai_tutor.database.dependency import get_db
@@ -22,23 +25,47 @@ TEST_DATABASE_URL = os.environ.get(
     "postgresql+psycopg://physics:physics@localhost:5433/physics_ai_tutor_test",
 )
 
+ALEMBIC_INI = Path(__file__).resolve().parents[1] / "alembic.ini"
+
 engine = create_engine(TEST_DATABASE_URL)
 
 
+def _alembic_config() -> Config:
+    config = Config(str(ALEMBIC_INI))
+    # alembic.ini escapes "%" for configparser; mirror that for the URL.
+    config.attributes["sqlalchemy_url"] = TEST_DATABASE_URL.replace("%", "%%")
+    config.attributes["configure_logger"] = False
+    return config
+
+
 @pytest.fixture(scope="session", autouse=True)
-def _enable_pgvector_extension():
+def _migrate_test_database():
+    # Build the schema with the real migrations so drift from the models
+    # shows up in tests, not only in CI's separate upgrade step.
     with engine.begin() as connection:
-        connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        connection.execute(text("DROP SCHEMA public CASCADE"))
+        connection.execute(text("CREATE SCHEMA public"))
+
+    command.upgrade(_alembic_config(), "head")
+
+
+def _truncate_all_tables() -> None:
+    table_names = ", ".join(table.name for table in Base.metadata.sorted_tables)
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(f"TRUNCATE TABLE {table_names} RESTART IDENTITY CASCADE")
+        )
 
 
 @pytest.fixture
 def db():
-    Base.metadata.create_all(bind=engine)
+    _truncate_all_tables()
 
     with Session(engine) as session:
         yield session
 
-    Base.metadata.drop_all(bind=engine)
+    _truncate_all_tables()
 
 
 @pytest.fixture(autouse=True)

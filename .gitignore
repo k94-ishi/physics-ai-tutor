@@ -22,3 +22,5 @@ dev/
 
 # Data
 data/
+# Local compose overrides
+docker-compose.override.yml

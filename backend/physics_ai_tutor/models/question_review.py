@@ -19,9 +19,10 @@ class QuestionReview(Base):
     before_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
     after_question: Mapped[str | None] = mapped_column(Text, nullable=True)
     after_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
-    reviewer_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id"),
-        nullable=False,
+    # Kept after the reviewer account is deleted so the audit trail survives.
+    reviewer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
     )
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

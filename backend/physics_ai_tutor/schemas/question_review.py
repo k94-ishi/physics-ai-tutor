@@ -37,7 +37,7 @@ class QuestionReviewResponse(BaseModel):
     before_answer: str | None
     after_question: str | None
     after_answer: str | None
-    reviewer_id: int
+    reviewer_id: int | None
     comment: str | None
     created_at: datetime
 

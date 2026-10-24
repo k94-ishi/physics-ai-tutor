@@ -222,7 +222,7 @@ def test_get_by_exact_text_excludes_status(db):
     )
 
     found = question_repository.get_by_exact_text(
-        db, "却下済み質問", exclude_status="REJECTED"
+        db, "却下済み質問", exclude_statuses=["REJECTED"]
     )
 
     assert found is None
@@ -234,7 +234,7 @@ def test_get_by_exact_text_includes_unreviewed_by_default(db):
     )
 
     found = question_repository.get_by_exact_text(
-        db, "未レビュー質問", exclude_status="REJECTED"
+        db, "未レビュー質問", exclude_statuses=["REJECTED"]
     )
 
     assert found is not None
@@ -267,7 +267,7 @@ def test_get_questions_excludes_status(db):
         db,
         offset=0,
         limit=10,
-        exclude_status="REJECTED",
+        exclude_statuses=["REJECTED"],
     )
 
     assert rejected.id not in [q.id for q in questions]

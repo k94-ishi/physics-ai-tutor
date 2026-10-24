@@ -88,7 +88,7 @@ def fetch_questions(
     size: int,
     keyword: str | None = None,
     status: str | None = None,
-    exclude_status: str | None = None,
+    exclude_statuses: list[str] | None = None,
     search_question: bool = True,
     search_answer: bool = True,
 ) -> QuestionListResponse:
@@ -101,7 +101,7 @@ def fetch_questions(
         limit=size,
         keyword=keyword,
         status=status,
-        exclude_status=exclude_status,
+        exclude_statuses=exclude_statuses,
         search_question=search_question,
         search_answer=search_answer,
     )
@@ -110,7 +110,7 @@ def fetch_questions(
         db,
         keyword=keyword,
         status=status,
-        exclude_status=exclude_status,
+        exclude_statuses=exclude_statuses,
         search_question=search_question,
         search_answer=search_answer,
     )
@@ -138,12 +138,12 @@ def fetch_questions(
 def fetch_question(
     db: Session,
     question_id: int,
-    exclude_status: str | None = None,
+    exclude_statuses: list[str] | None = None,
 ) -> Question | None:
     question = question_repository.get_question(
         db,
         question_id,
-        exclude_status=exclude_status,
+        exclude_statuses=exclude_statuses,
     )
 
     if question is not None:
@@ -156,12 +156,12 @@ def fetch_question(
 def fetch_question_by_exact_text(
     db: Session,
     question_text: str,
-    exclude_status: str | None = None,
+    exclude_statuses: list[str] | None = None,
 ) -> Question | None:
     question = question_repository.get_by_exact_text(
         db,
         question_text,
-        exclude_status=exclude_status,
+        exclude_statuses=exclude_statuses,
     )
 
     if question is not None:

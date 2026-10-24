@@ -53,8 +53,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/questions", tags=["questions"])
 
 
+# Statuses that must never be shown to non-admin callers.
+PUBLIC_HIDDEN_STATUSES: list[str] = [
+    QuestionStatus.UNREVIEWED,
+    QuestionStatus.REJECTED,
+]
+
+
 def _is_admin(current_user: JWTPayload | None) -> bool:
     return current_user is not None and current_user.role == UserRole.ADMIN
+
+
+def _hidden_statuses_for(current_user: JWTPayload | None) -> list[str] | None:
+    # Admins see everything; everyone else only sees approved content.
+    return None if _is_admin(current_user) else PUBLIC_HIDDEN_STATUSES
 
 
 @router.get(
@@ -71,15 +83,13 @@ def get_questions(
     db: Session = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
-    is_admin = _is_admin(current_user)
-
     return question_service.fetch_questions(
         db,
         page,
         size,
         keyword,
         status=status,
-        exclude_status=None if is_admin else QuestionStatus.REJECTED,
+        exclude_statuses=_hidden_statuses_for(current_user),
         search_question=search_question,
         search_answer=search_answer,
     )
@@ -92,11 +102,12 @@ def get_questions(
 def get_exact_match_question(
     question: str = Query(..., min_length=1, max_length=200),
     db: Session = Depends(get_db),
+    current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
     result = question_service.fetch_question_by_exact_text(
         db,
         question,
-        exclude_status=QuestionStatus.REJECTED,
+        exclude_statuses=_hidden_statuses_for(current_user),
     )
 
     if result is None:
@@ -117,12 +128,10 @@ def get_question(
     db: Session = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
-    is_admin = _is_admin(current_user)
-
     question = question_service.fetch_question(
         db,
         question_id,
-        exclude_status=None if is_admin else QuestionStatus.REJECTED,
+        exclude_statuses=_hidden_statuses_for(current_user),
     )
 
     if question is None:
@@ -149,7 +158,9 @@ def get_related_questions(
         db,
         question_id,
         limit=limit,
-        exclude_statuses=["REJECTED"] if is_admin else ["REJECTED", "UNREVIEWED"],
+        exclude_statuses=(
+            [QuestionStatus.REJECTED] if is_admin else PUBLIC_HIDDEN_STATUSES
+        ),
     )
 
 
@@ -420,10 +431,9 @@ def search_questions(
     db: Session = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
-    is_admin = _is_admin(current_user)
     return search_similar_questions(
         db=db,
         query=request.query,
         limit=request.limit,
-        exclude_statuses=None if is_admin else ["UNREVIEWED", "REJECTED"],
+        exclude_statuses=_hidden_statuses_for(current_user),
     )

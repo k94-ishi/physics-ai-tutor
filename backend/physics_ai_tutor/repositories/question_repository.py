@@ -34,13 +34,13 @@ def _filter_by_keyword(
 def _filter_by_status(
     query: Query,
     status: str | None,
-    exclude_status: str | None,
+    exclude_statuses: list[str] | None,
 ) -> Query:
     if status is not None:
         query = query.filter(Question.status == status)
 
-    if exclude_status is not None:
-        query = query.filter(Question.status != exclude_status)
+    if exclude_statuses:
+        query = query.filter(Question.status.notin_(exclude_statuses))
 
     return query
 
@@ -51,14 +51,14 @@ def get_questions(
     limit: int,
     keyword: str | None = None,
     status: str | None = None,
-    exclude_status: str | None = None,
+    exclude_statuses: list[str] | None = None,
     search_question: bool = True,
     search_answer: bool = True,
 ) -> list[Question]:
     query = _filter_by_keyword(
         db.query(Question), keyword, search_question, search_answer
     )
-    query = _filter_by_status(query, status, exclude_status)
+    query = _filter_by_status(query, status, exclude_statuses)
 
     return query.offset(offset).limit(limit).all()
 
@@ -67,14 +67,14 @@ def count_questions(
     db: Session,
     keyword: str | None = None,
     status: str | None = None,
-    exclude_status: str | None = None,
+    exclude_statuses: list[str] | None = None,
     search_question: bool = True,
     search_answer: bool = True,
 ) -> int:
     query = _filter_by_keyword(
         db.query(Question), keyword, search_question, search_answer
     )
-    query = _filter_by_status(query, status, exclude_status)
+    query = _filter_by_status(query, status, exclude_statuses)
 
     return query.count()
 
@@ -82,10 +82,10 @@ def count_questions(
 def get_question(
     db: Session,
     question_id: int,
-    exclude_status: str | None = None,
+    exclude_statuses: list[str] | None = None,
 ) -> Question | None:
     query = db.query(Question).filter(Question.id == question_id)
-    query = _filter_by_status(query, None, exclude_status)
+    query = _filter_by_status(query, None, exclude_statuses)
 
     return query.first()
 
@@ -100,10 +100,10 @@ def get_questions_by_ids(db: Session, ids: list[int]) -> list[Question]:
 def get_by_exact_text(
     db: Session,
     question_text: str,
-    exclude_status: str | None = None,
+    exclude_statuses: list[str] | None = None,
 ) -> Question | None:
     query = db.query(Question).filter(Question.question == question_text)
-    query = _filter_by_status(query, None, exclude_status)
+    query = _filter_by_status(query, None, exclude_statuses)
 
     return query.first()
 

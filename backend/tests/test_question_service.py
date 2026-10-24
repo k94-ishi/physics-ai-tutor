@@ -90,7 +90,7 @@ def test_fetch_questions_excludes_status(db):
         db,
         page=1,
         size=20,
-        exclude_status=QuestionStatus.REJECTED,
+        exclude_statuses=[QuestionStatus.REJECTED],
     )
 
     remaining_ids = [q.id for q in result.items]

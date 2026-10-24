@@ -29,6 +29,7 @@ jobs:
         working-directory: backend
     env:
       DATABASE_URL: postgresql+psycopg://physics:physics@localhost:5433/physics_ai_tutor_test
+      TEST_DATABASE_URL: postgresql+psycopg://physics:physics@localhost:5433/physics_ai_tutor_test
       OPENAI_API_KEY: ci-test-openai-key
       DEEPSEEK_API_KEY: ci-test-deepseek-key
       JWT_SECRET_KEY: ci-test-jwt-secret-key-for-github-actions-ci

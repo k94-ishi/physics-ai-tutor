@@ -1,10 +1,11 @@
+import hashlib
 import os
 from pathlib import Path
 
 import pytest
 from alembic.config import Config
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, make_url, text
 from sqlalchemy.orm import Session
 
 from alembic import command
@@ -20,14 +21,50 @@ ADMIN_PASSWORD = "adminpass123"
 USER_EMAIL = "user@example.com"
 USER_PASSWORD = "userpass123"
 
-TEST_DATABASE_URL = os.environ.get(
-    "TEST_DATABASE_URL",
-    "postgresql+psycopg://physics:physics@localhost:5433/physics_ai_tutor_test",
-)
+def _default_test_database_url() -> str:
+    # Derive the database name from the checkout path so worktrees sharing
+    # one postgres-test container cannot wipe each other's test schema.
+    repo_root = Path(__file__).resolve().parents[2]
+    suffix = hashlib.sha256(str(repo_root).encode()).hexdigest()[:8]
+
+    return (
+        "postgresql+psycopg://physics:physics@localhost:5433"
+        f"/physics_ai_tutor_test_{suffix}"
+    )
+
+
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL") or _default_test_database_url()
 
 ALEMBIC_INI = Path(__file__).resolve().parents[1] / "alembic.ini"
 
 engine = create_engine(TEST_DATABASE_URL)
+
+
+def _create_database_if_missing() -> None:
+    url = make_url(TEST_DATABASE_URL)
+    admin_engine = create_engine(
+        url.set(database="postgres"), isolation_level="AUTOCOMMIT"
+    )
+
+    with admin_engine.connect() as connection:
+        exists = connection.execute(
+            text("SELECT 1 FROM pg_database WHERE datname = :name"),
+            {"name": url.database},
+        ).scalar()
+
+        if not exists:
+            # Identifier cannot be a bind parameter; the name is trusted
+            # (derived from the path or an env var set by the developer).
+            connection.execute(text(f'CREATE DATABASE "{url.database}"'))
+
+    admin_engine.dispose()
+
+
+def _advisory_lock_key() -> int:
+    # Advisory locks are server-wide, so scope the key to this database.
+    digest = hashlib.sha256(TEST_DATABASE_URL.encode()).digest()
+
+    return int.from_bytes(digest[:8], "big", signed=True)
 
 
 def _alembic_config() -> Config:
@@ -40,6 +77,24 @@ def _alembic_config() -> Config:
 
 @pytest.fixture(scope="session", autouse=True)
 def _migrate_test_database():
+    _create_database_if_missing()
+
+    # Hold a session-scoped advisory lock so two concurrent pytest runs on
+    # the same database fail fast instead of corrupting each other.
+    lock_connection = engine.connect()
+    locked = lock_connection.execute(
+        text("SELECT pg_try_advisory_lock(:key)"),
+        {"key": _advisory_lock_key()},
+    ).scalar()
+
+    if not locked:
+        lock_connection.close()
+        pytest.exit(
+            "Another test run is using this database. "
+            "Set TEST_DATABASE_URL to a different database.",
+            returncode=2,
+        )
+
     # Build the schema with the real migrations so drift from the models
     # shows up in tests, not only in CI's separate upgrade step.
     with engine.begin() as connection:
@@ -47,6 +102,10 @@ def _migrate_test_database():
         connection.execute(text("CREATE SCHEMA public"))
 
     command.upgrade(_alembic_config(), "head")
+
+    yield
+
+    lock_connection.close()
 
 
 def _truncate_all_tables() -> None:

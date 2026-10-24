@@ -99,10 +99,10 @@ database you intend to migrate.
 ### Backend
 
 Run from the `backend/` directory. Tests need the `postgres-test` container
-(port 5433) started by Docker Compose. The suite wipes the test database,
-rebuilds it with Alembic, and truncates tables between tests; OpenAI and
-DeepSeek calls are mocked. Set `TEST_DATABASE_URL` to a database nobody else
-uses if the container is shared (see
+(port 5433) started by Docker Compose. The suite wipes and rebuilds its test
+database with Alembic and truncates tables between tests; OpenAI and
+DeepSeek calls are mocked. Each checkout gets its own auto-created test
+database, and an advisory lock prevents concurrent runs from clashing (see
 [docs/database.md](database.md#test-database-behaviour)).
 
 ```bash

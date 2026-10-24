@@ -470,15 +470,20 @@ the migration chain has more than one head or if the SQLAlchemy models
 drift from what the migrations produce, so a forgotten migration is caught
 locally, not only in CI.
 
-The test database is wiped on every run. Point `TEST_DATABASE_URL` at a
-database nobody else uses. When several checkouts share one
-`postgres-test` container, create a separate database per checkout:
+The test database is wiped on every run, so isolation is handled
+automatically:
 
-```bash
-docker compose exec postgres-test psql -U physics -d postgres \
-  -c "CREATE DATABASE physics_ai_tutor_test_mybranch"
-export TEST_DATABASE_URL=postgresql+psycopg://physics:physics@localhost:5433/physics_ai_tutor_test_mybranch
-```
+- Unless `TEST_DATABASE_URL` is set, the database name is derived from the
+  checkout path (`physics_ai_tutor_test_<hash>`), so several worktrees can
+  share one `postgres-test` container without touching each other's data.
+- The database is created on first use; no manual `CREATE DATABASE` needed.
+- A PostgreSQL advisory lock is held for the whole session. A second pytest
+  run against the same database aborts immediately instead of corrupting
+  the first one.
+
+Set `TEST_DATABASE_URL` explicitly to use a specific database (CI pins it
+to `physics_ai_tutor_test`; `docker compose exec backend uv run pytest`
+uses the in-network URL set in `docker-compose.yml`).
 
 ---
 

@@ -27,6 +27,9 @@ services:
     container_name: physics-ai-tutor-backend
     env_file:
       - ./backend/.env
+    environment:
+      # In-container pytest reaches the test database by service name.
+      TEST_DATABASE_URL: postgresql+psycopg://physics:physics@postgres-test:5432/physics_ai_tutor_test
     volumes:
       - ./backend:/app
       - backend_venv:/app/.venv
@@ -34,6 +37,7 @@ services:
       - "8000:8000"
     depends_on:
       - postgres
+      - postgres-test
     command:
       - uv
       - run

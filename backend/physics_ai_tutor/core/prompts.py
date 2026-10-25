@@ -85,9 +85,53 @@ LANGUAGE_NAMES: dict[Language, str] = {
     Language.EN: "English",
 }
 
-# Preferred English renderings of Japanese physics terms. Fill in from the
-# project glossary; used by translation and concept extraction prompts.
-GLOSSARY: dict[str, str] = {}
+# Preferred English renderings of Japanese physics terms, used by the
+# translation and concept extraction prompts so generated text matches the
+# vocabulary of the hand-translated content.
+GLOSSARY: dict[str, str] = {
+    "速さ": "speed",
+    "速度": "velocity",
+    "加速度": "acceleration",
+    "等速直線運動": "uniform linear motion",
+    "等加速度直線運動": "uniformly accelerated linear motion",
+    "自由落下": "free fall",
+    "鉛直投げ上げ": "vertical upward throw",
+    "変位": "displacement",
+    "移動距離": "distance travelled",
+    "位置": "position",
+    "基準点": "reference point",
+    "単位時間": "unit time",
+    "瞬間の速さ": "instantaneous speed",
+    "平均の速さ": "average speed",
+    "重力": "gravity",
+    "重力加速度": "gravitational acceleration",
+    "空気抵抗": "air resistance",
+    "摩擦": "friction",
+    "質量": "mass",
+    "力": "force",
+    "ベクトル": "vector",
+    "スカラー": "scalar",
+    "最高点": "highest point",
+    "位置-時間グラフ": "position-time graph",
+    "速度-時間グラフ": "velocity-time graph",
+    "x-tグラフ": "x-t graph",
+    "v-tグラフ": "v-t graph",
+    "傾き": "slope",
+    "接線": "tangent line",
+    "慣性": "inertia",
+    "作用・反作用": "action and reaction",
+    "運動方程式": "equation of motion",
+    "運動量": "momentum",
+    "運動エネルギー": "kinetic energy",
+    "位置エネルギー": "potential energy",
+    "力学的エネルギー": "mechanical energy",
+    "仕事": "work",
+    "仕事率": "power",
+    "周期": "period",
+    "振動数": "frequency",
+    "波長": "wavelength",
+    "振幅": "amplitude",
+}
 
 TRANSLATE_SYSTEM_PROMPT = (
     "You translate high school physics questions and answers between "

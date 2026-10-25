@@ -63,17 +63,22 @@ def test_seed_loads_all_questions_as_approved(db, _bind_cli_sessions):
 
 def test_seed_file_has_no_duplicate_questions():
     # Duplicate texts would make the all-or-nothing seed fail entirely.
-    texts = [entry["question"] for entry in _seed_file_entries()]
+    entries = _seed_file_entries()
 
-    assert len(texts) == len(set(texts))
+    for key in ("question_ja", "question_en"):
+        texts = [entry[key] for entry in entries]
+        assert len(texts) == len(set(texts)), key
 
 
-def test_seed_translates_every_entry(db, _bind_cli_sessions):
+def test_seed_keeps_hand_translations(db, _bind_cli_sessions):
     seed_module.seed()
 
     questions = db.query(Question).all()
     assert all(q.question_en is not None for q in questions)
-    assert all(q.en_provenance == "MACHINE" for q in questions)
+    # The seed file ships hand translations; they must stay HUMAN, and the
+    # Japanese side is the original.
+    assert all(q.en_provenance == "HUMAN" for q in questions)
+    assert all(q.ja_provenance == "ORIGINAL" for q in questions)
 
 
 def test_translate_missing_cli_fills_legacy_rows(db, _bind_cli_sessions, capsys):

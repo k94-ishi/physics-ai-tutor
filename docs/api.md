@@ -29,6 +29,21 @@ Access levels used below:
 
 ---
 
+## Language
+
+Every question has text in Japanese and English on the same row. Read
+endpoints take `lang` (`ja` default, or `en`) and return the text in that
+language; the response also carries `language` (the language actually
+served), `provenance` (`ORIGINAL`, `HUMAN`, `MACHINE`), `original_language`,
+`available_languages`, and `texts` with both language blocks. For non-admin
+callers, list results only include rows that have text in `lang`; detail
+requests for a row that lacks `lang` are translated on the fly.
+
+Write endpoints accept either `{"question", "answer", "language"}`
+(language defaults to `ja`) or the explicit
+`{"question_ja", "answer_ja", "question_en", "answer_en"}` shape. A
+missing language is machine translated at creation.
+
 ## Health
 
 | Method | Path | Access | Purpose |
@@ -58,39 +73,47 @@ Access levels used below:
 
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
-| GET | `/api/v1/questions` | Public | Paginated list with optional keyword and status filter. Non-admins only see `APPROVED` rows. |
-| GET | `/api/v1/questions/exact-match?question=` | Public | Look up a question by exact text; used before calling the AI. Non-admins only match `APPROVED` rows. |
-| GET | `/api/v1/questions/{id}` | Public | Question detail with concepts and referenced questions. 404 for non-admins unless `APPROVED`. |
-| GET | `/api/v1/questions/{id}/related` | Public | Concept- and embedding-based recommendations |
-| POST | `/api/v1/questions/search` | Public | Semantic similarity search. Body: `{"query": str, "limit": int}`. Returns rows with cosine `distance`. |
+| GET | `/api/v1/questions?lang=` | Public | Paginated list with optional keyword (matches any language) and status filter. Non-admins only see `APPROVED` rows that have text in `lang`. |
+| GET | `/api/v1/questions/exact-match?question=&lang=` | Public | Look up a question by exact text in the `lang` column. Non-admins only match `APPROVED` rows. |
+| GET | `/api/v1/questions/{id}?lang=` | Public | Question detail with concepts and referenced questions in `lang`. 404 for non-admins unless `APPROVED`. |
+| GET | `/api/v1/questions/{id}/related?lang=` | Public | Concept- and embedding-based recommendations, compared within `lang` |
+| POST | `/api/v1/questions/search` | Public | Semantic similarity search within one language. Body: `{"query": str, "limit": int, "language": "ja" or "en"}`. Returns rows with cosine `distance`. |
 | GET | `/api/v1/questions/{id}/reviews` | Admin | Review history of a question |
 | POST | `/api/v1/questions` | Admin | Create an `APPROVED` / `MANUAL` question |
 | PUT | `/api/v1/questions/{id}` | Admin | Edit question text and answer; embeddings are regenerated |
 | DELETE | `/api/v1/questions/{id}` | Admin | Delete a question and its embeddings, concept links, and reviews |
-| POST | `/api/v1/questions/{id}/review` | Admin | Apply `APPROVE`, `EDIT_APPROVE`, or `REJECT` and record a review row |
+| POST | `/api/v1/questions/{id}/review` | Admin | Apply `APPROVE`, `EDIT_APPROVE`, or `REJECT` and record a review row. Body may include `language` (which text was reviewed or edited; defaults to the original). Edit-approve regenerates a machine-made counterpart. |
+| POST | `/api/v1/questions/translate` | Admin | Fill missing languages by machine translation. Body: `{"question_ids": [int]}`. |
 | POST | `/api/v1/questions/bulk-review` | Admin | Review many questions with one action |
 | POST | `/api/v1/questions/bulk-delete` | Admin | Delete many questions |
-| POST | `/api/v1/questions/import` | Admin | Upload a JSONL file (`multipart/form-data`, field `file`) with optional `status` and `source` form fields. All-or-nothing on duplicates. |
+| POST | `/api/v1/questions/import` | Admin | Upload a JSONL file (`multipart/form-data`, field `file`) with optional `status`, `source`, and `language` (default for legacy rows) form fields. All-or-nothing on duplicates. |
 | POST | `/api/v1/questions/concepts/extract` | Admin | Re-run concept extraction for the given question ids |
 
-JSONL import format, one object per line:
+JSONL import format, one object per line, in either shape:
 
 ```json
 {"question": "速度ってなに？", "answer": "..."}
+{"question_ja": "速度ってなに？", "answer_ja": "...", "question_en": "What is velocity?", "answer_en": "..."}
 ```
 
 ## AI
 
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
-| POST | `/api/v1/ai/ask` | Public | Generate an answer with DeepSeek. Body: `{"question": str, "mode": "RAG" | null, "retrieved_question_ids": [int] | null}`. The answer is saved as an `UNREVIEWED` question. |
+| POST | `/api/v1/ai/ask` | Public | Answer a question. Body: `{"question": str, "language": "ja" or "en", "mode": "RAG" or null, "retrieved_question_ids": [int] or null}`. Response: `{"answer", "language", "cached", "question_id", "status"}`. |
 
-`mode` controls the pipeline:
+The flow, in order:
 
-- `null`: direct LLM call with the system prompt only; saved with source `AI_GENERATED`.
-- `"RAG"`: retrieves `APPROVED` questions by similarity (or loads the given
-  `retrieved_question_ids`, re-validated server-side), builds a context
-  prompt, then calls the LLM; saved with source `RAG_RESULT` and the ids used.
+1. **Cache**: if a non-rejected row already has this exact question text in
+   `language`, its answer is returned with `cached: true` and the row's
+   `status`. Unreviewed answers are reused this way; the UI must label them.
+2. **Generate** with the system prompt for `language`. `mode` controls the
+   pipeline: `null` is a direct LLM call (source `AI_GENERATED`); `"RAG"`
+   retrieves `APPROVED` questions by similarity within `language` (or loads
+   the given `retrieved_question_ids`, re-validated server-side) and builds a
+   context prompt (source `RAG_RESULT`).
+3. The answer is saved as `UNREVIEWED` in `language`, and the other language
+   is machine translated in a background task after the response is sent.
 
 Rate limits per client IP:
 
@@ -109,9 +132,12 @@ not shared across instances. `TRUST_FORWARDED_FOR` controls whether the
 
 Every public read endpoint applies the same rule: callers without an admin
 session only receive questions whose status is `APPROVED`. `UNREVIEWED` AI
-answers and `REJECTED` rows are visible to admins only. The answer returned
-by `POST /api/v1/ai/ask` is shown to the asker inline and is not reachable by
-id until an admin approves it.
+answers and `REJECTED` rows are visible to admins only. The one exception is
+the ask-flow cache: an unreviewed answer is returned again to anyone who asks
+the identical question, carrying `status: "UNREVIEWED"` so the UI shows the
+same "not yet reviewed" label as for a fresh answer. Machine-translated text
+carries `provenance: "MACHINE"` so the UI can label it as translated from
+reviewed content.
 
 ## Error responses
 

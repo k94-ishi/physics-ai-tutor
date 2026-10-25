@@ -19,6 +19,8 @@ import Button from "@/components/ui/Button";
 import LoadingState from "@/components/ui/LoadingState";
 import StatusMessage from "@/components/ui/StatusMessage";
 import { showToast } from "@/components/ui/Toast";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { TranslationKey } from "@/lib/i18n/translations";
 
 const LANGUAGES: ContentLanguage[] = ["ja", "en"];
 
@@ -48,24 +50,28 @@ function textsFromQuestion(data: Question): FormTexts {
     };
 }
 
-function provenanceLabel(data: Question | null, lang: ContentLanguage): string {
+function provenanceLabelKey(
+    data: Question | null,
+    lang: ContentLanguage
+): TranslationKey {
     const provenance = data?.texts[lang]?.provenance;
 
     if (provenance === "MACHINE") {
-        return "自動翻訳";
+        return "admin.machineProvenance";
     }
     if (provenance === "HUMAN") {
-        return "人による翻訳";
+        return "provenance.human";
     }
     if (provenance === "ORIGINAL") {
-        return "原文";
+        return "provenance.original";
     }
-    return "未翻訳";
+    return "provenance.missing";
 }
 
 export default function EditQuestionPage() {
     const router = useRouter();
     const params = useParams();
+    const { t } = useLanguage();
     const id = Number(params.id);
     const [loaded, setLoaded] = useState<Question | null>(null);
     const [texts, setTexts] = useState<FormTexts>(EMPTY_TEXTS);
@@ -150,7 +156,7 @@ export default function EditQuestionPage() {
             const hasAnswer = pair.answer.trim() !== "";
 
             if (hasQuestion !== hasAnswer) {
-                nextErrors[lang] = "質問と回答は両方入力してください。";
+                nextErrors[lang] = t("editQuestion.pairRequired");
             }
         }
 
@@ -161,7 +167,7 @@ export default function EditQuestionPage() {
                     texts[lang].answer.trim() !== ""
             )
         ) {
-            nextErrors.ja = "少なくとも1つの言語で質問と回答を入力してください。";
+            nextErrors.ja = t("editQuestion.oneLanguageRequired");
         }
 
         return nextErrors;
@@ -190,13 +196,13 @@ export default function EditQuestionPage() {
 
         try {
             if (await saveChanges()) {
-                showToast("更新しました。");
+                showToast(t("editQuestion.updated"));
                 router.push("/admin/questions");
                 return;
             }
         } catch (error) {
             console.error(error);
-            showToast("更新に失敗しました。", "error");
+            showToast(t("editQuestion.updateFailed"), "error");
         }
         setSubmitting(false);
     };
@@ -207,13 +213,13 @@ export default function EditQuestionPage() {
         try {
             if (await saveChanges()) {
                 await reviewQuestion(id, { action: "APPROVE" });
-                showToast("保存して承認しました。");
+                showToast(t("editQuestion.savedAndApproved"));
                 router.push("/admin/questions");
                 return;
             }
         } catch (error) {
             console.error(error);
-            showToast("処理に失敗しました。", "error");
+            showToast(t("editQuestion.actionFailed"), "error");
         }
         setApproving(false);
     };
@@ -224,10 +230,10 @@ export default function EditQuestionPage() {
         try {
             await translateQuestions([id]);
             await loadQuestion();
-            showToast("不足している言語を翻訳しました。");
+            showToast(t("editQuestion.translated"));
         } catch (error) {
             console.error(error);
-            showToast("翻訳に失敗しました。", "error");
+            showToast(t("editQuestion.translateFailed"), "error");
         } finally {
             setTranslating(false);
         }
@@ -241,7 +247,7 @@ export default function EditQuestionPage() {
         return (
             <StatusMessage
                 variant="error"
-                message="質問を取得できませんでした。"
+                message={t("editQuestion.fetchFailed")}
                 onRetry={loadQuestion}
             />
         );
@@ -254,7 +260,7 @@ export default function EditQuestionPage() {
 
     return (
         <main className="flex flex-col gap-6">
-            <h1 className="text-2xl font-bold text-gray-900">質問編集</h1>
+            <h1 className="text-2xl font-bold text-gray-900">{t("editQuestion.title")}</h1>
 
             <Card>
                 <form
@@ -267,7 +273,7 @@ export default function EditQuestionPage() {
                             <legend className="flex items-center gap-2 text-sm font-semibold text-gray-900">
                                 {LANGUAGE_LABELS[lang]}
                                 <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
-                                    {provenanceLabel(loaded, lang)}
+                                    {t(provenanceLabelKey(loaded, lang))}
                                 </span>
                             </legend>
 
@@ -279,7 +285,7 @@ export default function EditQuestionPage() {
 
                             <FormField
                                 id={`question-${lang}`}
-                                label="質問"
+                                label={t("form.questionLabel")}
                                 value={texts[lang].question}
                                 onChange={(e) =>
                                     setField(lang, "question", e.target.value)
@@ -289,7 +295,7 @@ export default function EditQuestionPage() {
 
                             <FormField
                                 id={`answer-${lang}`}
-                                label="回答"
+                                label={t("form.answerLabel")}
                                 value={texts[lang].answer}
                                 onChange={(e) =>
                                     setField(lang, "answer", e.target.value)
@@ -301,7 +307,7 @@ export default function EditQuestionPage() {
 
                     <div className="flex flex-wrap gap-2">
                         <Button type="submit" disabled={busy}>
-                            {submitting ? "保存中..." : "保存"}
+                            {submitting ? t("common.saving") : t("common.save")}
                         </Button>
 
                         <Button
@@ -310,7 +316,9 @@ export default function EditQuestionPage() {
                             disabled={busy}
                             onClick={handleSaveAndApprove}
                         >
-                            {approving ? "処理中..." : "保存して承認"}
+                            {approving
+                                ? t("common.processing")
+                                : t("editQuestion.saveAndApprove")}
                         </Button>
 
                         {hasMissingLanguage && (
@@ -320,7 +328,9 @@ export default function EditQuestionPage() {
                                 disabled={busy}
                                 onClick={handleTranslate}
                             >
-                                {translating ? "翻訳中..." : "不足言語を自動翻訳"}
+                                {translating
+                                    ? t("editQuestion.translating")
+                                    : t("editQuestion.translateMissing")}
                             </Button>
                         )}
                     </div>

@@ -9,6 +9,7 @@ import TextField from "@/components/ui/TextField";
 import SelectField from "@/components/ui/SelectField";
 import Button from "@/components/ui/Button";
 import { showToast } from "@/components/ui/Toast";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 type FormErrors = {
     email?: string;
@@ -17,6 +18,7 @@ type FormErrors = {
 
 export default function NewUserPage() {
     const router = useRouter();
+    const { t } = useLanguage();
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -28,11 +30,11 @@ export default function NewUserPage() {
         const nextErrors: FormErrors = {};
 
         if (!email.trim()) {
-            nextErrors.email = "メールアドレスを入力してください。";
+            nextErrors.email = t("users.emailRequired");
         }
 
         if (password.length < 8) {
-            nextErrors.password = "8文字以上で入力してください。";
+            nextErrors.password = t("users.passwordTooShort");
         }
 
         return nextErrors;
@@ -52,11 +54,11 @@ export default function NewUserPage() {
         try {
             await createUser({ email, password, role });
 
-            showToast("ユーザーを作成しました。");
+            showToast(t("users.created"));
             router.push("/admin/users");
         } catch (error) {
             console.error(error);
-            showToast("ユーザーの作成に失敗しました。", "error");
+            showToast(t("users.createFailed"), "error");
         } finally {
             setLoading(false);
         }
@@ -65,7 +67,7 @@ export default function NewUserPage() {
     return (
         <main className="flex flex-col gap-6">
             <h1 className="text-2xl font-bold text-gray-900">
-                ユーザー作成
+                {t("users.newTitle")}
             </h1>
 
             <Card>
@@ -76,7 +78,7 @@ export default function NewUserPage() {
                 >
                     <TextField
                         id="email"
-                        label="メールアドレス"
+                        label={t("users.emailLabel")}
                         type="email"
                         required
                         error={errors.email}
@@ -86,7 +88,7 @@ export default function NewUserPage() {
 
                     <TextField
                         id="password"
-                        label="パスワード"
+                        label={t("users.passwordLabel")}
                         type="password"
                         required
                         error={errors.password}
@@ -97,12 +99,12 @@ export default function NewUserPage() {
 
                     <SelectField
                         id="role"
-                        label="権限"
+                        label={t("users.roleLabel")}
                         value={role}
                         onChange={(e) => setRole(e.target.value as UserRole)}
                         options={[
-                            { value: "user", label: "一般ユーザー" },
-                            { value: "admin", label: "管理者" },
+                            { value: "user", label: t("users.roleUser") },
+                            { value: "admin", label: t("users.roleAdmin") },
                         ]}
                     />
 
@@ -111,7 +113,7 @@ export default function NewUserPage() {
                         disabled={loading}
                         className="self-start"
                     >
-                        {loading ? "作成中..." : "作成"}
+                        {loading ? t("common.creating") : t("common.create")}
                     </Button>
                 </form>
             </Card>

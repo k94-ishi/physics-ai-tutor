@@ -131,9 +131,14 @@ Notes:
   Only enable it behind a proxy you control (Render sets this header). If
   the backend is ever exposed directly, set it to `false`, otherwise clients
   can spoof their IP and bypass the limit.
-- Exact-match lookup and semantic search run before any LLM call, and RAG
-  answers are cached as questions, so repeated questions do not cost tokens
-  twice.
+- Exact-match lookup and semantic search run before any LLM call, and every
+  AI answer is cached as a question row. The ask endpoint returns a cached
+  answer (including unreviewed ones, labelled) for an identical question, so
+  repeated questions do not cost tokens twice.
+- Each created row also triggers one translation call and one extra
+  embedding call for the other language. These run at creation (AI answers
+  translate in a background task), so they are bounded by the same ask rate
+  limit and by admin activity.
 
 ---
 
@@ -219,7 +224,10 @@ will be published before details are disclosed.
 
 ## Checklist for pull requests touching security-relevant code
 
-- [ ] New public endpoint filters out non-`APPROVED` questions.
+- [ ] New public endpoint filters out non-`APPROVED` questions and resolves
+      text with the `lang` parameter (never leaks a language the row lacks).
+- [ ] Any new DeepSeek call site is listed in `docs/api.md` and bounded by a
+      rate limit or admin action.
 - [ ] New admin endpoint depends on `require_admin`.
 - [ ] New request model has length limits on every string field.
 - [ ] No secret, token, or raw user text is written to logs.

@@ -90,13 +90,18 @@ def test_edit_approve_records_before_and_after_and_reembeds(
     assert history[0]["after_answer"] == "修正された回答"
     assert history[0]["reviewer_id"] is not None
 
-    # Exactly one question and one answer embedding must remain.
+    # One question and one answer embedding per language must remain.
     embeddings = (
         db.query(QuestionEmbedding)
         .filter(QuestionEmbedding.question_id == question_id)
         .all()
     )
-    assert sorted(e.type for e in embeddings) == ["answer", "question"]
+    assert sorted((e.language, e.type) for e in embeddings) == [
+        ("en", "answer"),
+        ("en", "question"),
+        ("ja", "answer"),
+        ("ja", "question"),
+    ]
 
 
 def test_bulk_review_publishes_each_question_with_history(

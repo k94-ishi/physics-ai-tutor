@@ -6,6 +6,7 @@ import Card from "@/components/ui/Card";
 import FormField from "@/components/ui/FormField";
 import Button from "@/components/ui/Button";
 import { showToast } from "@/components/ui/Toast";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 type FormErrors = {
     question?: string;
@@ -13,6 +14,7 @@ type FormErrors = {
 };
 
 export default function NewQuestionPage() {
+    const { t } = useLanguage();
     const [question, setQuestion] = useState("");
     const [answer, setAnswer] = useState("");
     const [loading, setLoading] = useState(false);
@@ -22,11 +24,11 @@ export default function NewQuestionPage() {
         const nextErrors: FormErrors = {};
 
         if (!question.trim()) {
-            nextErrors.question = "質問を入力してください。";
+            nextErrors.question = t("form.questionRequired");
         }
 
         if (!answer.trim()) {
-            nextErrors.answer = "回答を入力してください。";
+            nextErrors.answer = t("form.answerRequired");
         }
 
         return nextErrors;
@@ -51,14 +53,14 @@ export default function NewQuestionPage() {
                 answer,
             });
 
-            showToast("登録しました。");
+            showToast(t("questionForm.registered"));
 
             // フォームを初期化
             setQuestion("");
             setAnswer("");
         } catch (error) {
             console.error(error);
-            showToast("登録に失敗しました。", "error");
+            showToast(t("questionForm.registerFailed"), "error");
         } finally {
             setLoading(false);
         }
@@ -67,7 +69,7 @@ export default function NewQuestionPage() {
     return (
         <main className="flex flex-col gap-6">
             <h1 className="text-2xl font-bold text-gray-900">
-                質問登録
+                {t("questionForm.newTitle")}
             </h1>
 
             <Card>
@@ -78,7 +80,7 @@ export default function NewQuestionPage() {
                 >
                     <FormField
                         id="question"
-                        label="質問"
+                        label={t("form.questionLabel")}
                         required
                         error={errors.question}
                         value={question}
@@ -92,7 +94,7 @@ export default function NewQuestionPage() {
 
                     <FormField
                         id="answer"
-                        label="回答"
+                        label={t("form.answerLabel")}
                         required
                         error={errors.answer}
                         value={answer}
@@ -110,8 +112,8 @@ export default function NewQuestionPage() {
                         className="self-start"
                     >
                         {loading
-                            ? "登録中..."
-                            : "登録"}
+                            ? t("common.registering")
+                            : t("common.register")}
                     </Button>
                 </form>
             </Card>

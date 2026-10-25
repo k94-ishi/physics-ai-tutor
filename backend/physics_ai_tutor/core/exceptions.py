@@ -12,3 +12,7 @@ class DeepSeekGenerationError(Exception):
 
 class DuplicateQuestionError(Exception):
     """Raised when a question with identical text already exists."""
+
+
+class TranslationError(Exception):
+    """Raised when translating a question/answer pair fails."""

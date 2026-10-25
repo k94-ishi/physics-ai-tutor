@@ -18,7 +18,11 @@ def test_ask_ai_returns_answer(client, monkeypatch):
     response = client.post(ASK_PATH, json={"question": "加速度って何？"})
 
     assert response.status_code == 200
-    assert response.json() == {"answer": "加速度は単位時間あたりの速度の変化量です。"}
+    body = response.json()
+    assert body["answer"] == "加速度は単位時間あたりの速度の変化量です。"
+    assert body["language"] == "ja"
+    assert body["cached"] is False
+    assert body["status"] == "UNREVIEWED"
 
 
 def test_ask_ai_empty_question_rejected(client):
@@ -62,7 +66,9 @@ def test_ask_ai_saves_question_as_unreviewed_ai_generated(client, monkeypatch, d
 
     assert response.status_code == 200
 
-    saved = db.query(Question).filter(Question.question == "AI保存テスト質問").first()
+    saved = (
+        db.query(Question).filter(Question.question_ja == "AI保存テスト質問").first()
+    )
 
     assert saved is not None
     assert saved.answer == "回答内容"
@@ -84,9 +90,10 @@ def test_ask_ai_save_failure_does_not_affect_response(client, monkeypatch, db):
     response = client.post(ASK_PATH, json={"question": "保存失敗テスト"})
 
     assert response.status_code == 200
-    assert response.json() == {"answer": "回答"}
+    assert response.json()["answer"] == "回答"
+    assert response.json()["question_id"] is None
 
-    saved = db.query(Question).filter(Question.question == "保存失敗テスト").first()
+    saved = db.query(Question).filter(Question.question_ja == "保存失敗テスト").first()
 
     assert saved is None
 
@@ -97,15 +104,18 @@ def test_ask_ai_rag_mode_calls_rag_service_and_saves_as_rag_result(
     monkeypatch.setattr(
         rag_service,
         "generate_rag_answer",
-        lambda db, question, retrieved_question_ids=None: ("RAG回答", [11, 22]),
+        lambda db, question, retrieved_question_ids=None, language="ja": (
+            "RAG回答",
+            [11, 22],
+        ),
     )
 
     response = client.post(ASK_PATH, json={"question": "RAGモード質問", "mode": "RAG"})
 
     assert response.status_code == 200
-    assert response.json() == {"answer": "RAG回答"}
+    assert response.json()["answer"] == "RAG回答"
 
-    saved = db.query(Question).filter(Question.question == "RAGモード質問").first()
+    saved = db.query(Question).filter(Question.question_ja == "RAGモード質問").first()
 
     assert saved is not None
     assert saved.answer == "RAG回答"
@@ -115,7 +125,7 @@ def test_ask_ai_rag_mode_calls_rag_service_and_saves_as_rag_result(
 
 
 def test_ask_ai_default_mode_does_not_call_rag_service(client, monkeypatch):
-    def _fail(db, question):
+    def _fail(*args, **kwargs):
         raise AssertionError("generate_rag_answer should not be called")
 
     monkeypatch.setattr(rag_service, "generate_rag_answer", _fail)
@@ -126,7 +136,7 @@ def test_ask_ai_default_mode_does_not_call_rag_service(client, monkeypatch):
     response = client.post(ASK_PATH, json={"question": "通常モード質問"})
 
     assert response.status_code == 200
-    assert response.json() == {"answer": "回答"}
+    assert response.json()["answer"] == "回答"
 
 
 def test_ask_ai_invalid_mode_rejected(client):
@@ -205,7 +215,9 @@ def test_ask_ai_rate_limit_exceeded_returns_429(client, monkeypatch):
 def test_ask_ai_rag_mode_passes_retrieved_question_ids_to_service(client, monkeypatch):
     captured = {}
 
-    def _fake_generate_rag_answer(db, question, retrieved_question_ids=None):
+    def _fake_generate_rag_answer(
+        db, question, retrieved_question_ids=None, language="ja"
+    ):
         captured["retrieved_question_ids"] = retrieved_question_ids
         return "RAG回答", retrieved_question_ids or []
 

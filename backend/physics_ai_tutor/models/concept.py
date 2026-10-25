@@ -11,7 +11,8 @@ class Concept(Base):
     __tablename__ = "concepts"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    name_ja: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
+    name_en: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     embedding: Mapped[list[float]] = mapped_column(Vector(1536), nullable=False)
     extraction_model: Mapped[str] = mapped_column(String, nullable=False)
     embedding_model: Mapped[str] = mapped_column(String, nullable=False)
@@ -27,3 +28,19 @@ class Concept(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+    def name_in(self, language: str) -> str | None:
+        return self.name_ja if language == "ja" else self.name_en
+
+    def display_name(self, language: str) -> str:
+        # Prefer the requested language, fall back to the other.
+        name = self.name_in(language)
+        if name is None:
+            name = self.name_en if language == "ja" else self.name_ja
+        assert name is not None
+        return name
+
+    @property
+    def name(self) -> str:
+        # Legacy accessor: Japanese name first, English otherwise.
+        return self.display_name("ja")

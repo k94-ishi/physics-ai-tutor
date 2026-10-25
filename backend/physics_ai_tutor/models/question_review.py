@@ -15,6 +15,10 @@ class QuestionReview(Base):
         nullable=False,
     )
     action: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Language of the text the reviewer looked at or edited.
+    language: Mapped[str] = mapped_column(
+        String(10), server_default="ja", nullable=False
+    )
     before_question: Mapped[str | None] = mapped_column(Text, nullable=True)
     before_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
     after_question: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useCallback, useRef, useState } from "react";
 import { ApiError, askAi, fetchQuestionByExactText, searchQuestions } from "@/lib/api";
-import { SimilarQuestion } from "@/types/question";
+import { ContentLanguage, SimilarQuestion } from "@/types/question";
+import { AskAiResponse } from "@/types/ai";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import LoadingState from "@/components/ui/LoadingState";
@@ -89,9 +90,10 @@ export default function QuestionSearchAndAsk({
     const [searchError, setSearchError] = useState(false);
     const searchRequestId = useRef(0);
 
-    const [ragAnswer, setRagAnswer] = useState<string | null>(null);
+    const [ragAnswer, setRagAnswer] = useState<AskAiResponse | null>(null);
     const [ragLoading, setRagLoading] = useState(false);
     const ragRequestId = useRef(0);
+    const contentLanguage = language as ContentLanguage;
 
     const runSearch = useCallback(async (rawQuery: string) => {
         const trimmed = rawQuery.trim();
@@ -107,7 +109,9 @@ export default function QuestionSearchAndAsk({
         // 完全一致するQAが既にあれば、検索結果を経由せずその個別ページへ直接遷移する。
         let exactMatchId: number | null = null;
         try {
-            exactMatchId = (await fetchQuestionByExactText(trimmed)).id;
+            exactMatchId = (
+                await fetchQuestionByExactText(trimmed, contentLanguage)
+            ).id;
         } catch (error) {
             if (!(error instanceof ApiError && error.status === 404)) {
                 console.error(error);
@@ -131,6 +135,7 @@ export default function QuestionSearchAndAsk({
             const data = await searchQuestions({
                 query: trimmed,
                 limit: SIMILARITY_LIMIT,
+                language: contentLanguage,
             });
 
             if (requestId !== searchRequestId.current) {
@@ -150,7 +155,7 @@ export default function QuestionSearchAndAsk({
                 setSearchLoading(false);
             }
         }
-    }, [router]);
+    }, [router, contentLanguage]);
 
     const runRag = useCallback(async (rawQuery: string, searchResults: SimilarQuestion[]) => {
         const trimmed = rawQuery.trim();
@@ -165,17 +170,20 @@ export default function QuestionSearchAndAsk({
 
         try {
             const retrievedQuestionIds = searchResults.map((result) => result.id);
-            const result = await askAi(
-                trimmed,
-                "RAG",
-                retrievedQuestionIds.length > 0 ? retrievedQuestionIds : undefined
-            );
+            const result = await askAi(trimmed, {
+                language: contentLanguage,
+                mode: "RAG",
+                retrievedQuestionIds:
+                    retrievedQuestionIds.length > 0
+                        ? retrievedQuestionIds
+                        : undefined,
+            });
 
             if (requestId !== ragRequestId.current) {
                 return;
             }
 
-            setRagAnswer(result.answer);
+            setRagAnswer(result);
         } catch (error) {
             if (requestId !== ragRequestId.current) {
                 return;
@@ -188,7 +196,7 @@ export default function QuestionSearchAndAsk({
                 setRagLoading(false);
             }
         }
-    }, [t]);
+    }, [t, contentLanguage]);
 
     function handleSubmit(e: FormEvent<HTMLFormElement>) {
         e.preventDefault();
@@ -232,14 +240,6 @@ export default function QuestionSearchAndAsk({
                     </span>
                 </div>
             </form>
-
-            {language === "en" && (
-                <p className="text-xs text-gray-500">
-                    Please write your question in Japanese.
-                    <br />
-                    English questions are not supported yet.
-                </p>
-            )}
 
             {!searched && children}
 
@@ -324,8 +324,23 @@ export default function QuestionSearchAndAsk({
                     {ragLoading && <LoadingState label={t("questionSearch.generating")} />}
 
                     {!ragLoading && ragAnswer && (
-                        <Card>
-                            <MarkdownContent content={ragAnswer} variant="full" />
+                        <Card className="flex flex-col gap-2">
+                            {ragAnswer.cached && (
+                                <p className="text-xs text-gray-500">
+                                    {t("questionSearch.cachedNotice")}
+                                </p>
+                            )}
+
+                            <MarkdownContent
+                                content={ragAnswer.answer}
+                                variant="full"
+                            />
+
+                            {ragAnswer.status === "UNREVIEWED" && (
+                                <p className="rounded-md bg-yellow-50 px-3 py-2 text-xs text-yellow-700">
+                                    {t("questionSearch.answerUnreviewed")}
+                                </p>
+                            )}
                         </Card>
                     )}
                 </>

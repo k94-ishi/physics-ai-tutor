@@ -6,20 +6,26 @@ import pytest
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, make_url, text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from alembic import command
+from physics_ai_tutor.api.v1 import ai as ai_router
 from physics_ai_tutor.core.rate_limit import ai_ask_rate_limiter, login_rate_limiter
 from physics_ai_tutor.database.base import Base
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.main import app
-from physics_ai_tutor.services import concept_service, embedding_service
+from physics_ai_tutor.services import (
+    concept_service,
+    embedding_service,
+    translation_service,
+)
 from physics_ai_tutor.services.user_service import create_user
 
 ADMIN_EMAIL = "admin@example.com"
 ADMIN_PASSWORD = "adminpass123"
 USER_EMAIL = "user@example.com"
 USER_PASSWORD = "userpass123"
+
 
 def _default_test_database_url() -> str:
     # Derive the database name from the checkout path so worktrees sharing
@@ -141,7 +147,25 @@ def _mock_extract_concept_names(monkeypatch):
     monkeypatch.setattr(
         concept_service,
         "extract_concept_names",
-        lambda question, answer: ["概念A", "概念B"],
+        lambda question, answer, language="ja": ["概念A | concept A", "概念B"],
+    )
+
+
+def fake_translate(question, answer, source, target):
+    # Deterministic, reversible marker so tests can assert on translations.
+    return f"[{target}] {question}", f"[{target}] {answer}"
+
+
+@pytest.fixture(autouse=True)
+def _mock_translate(monkeypatch):
+    monkeypatch.setattr(translation_service, "translate_qa", fake_translate)
+
+
+@pytest.fixture(autouse=True)
+def _background_translation_uses_test_db(monkeypatch):
+    # The AI router opens its own session for background translation.
+    monkeypatch.setattr(
+        ai_router, "SessionLocal", sessionmaker(bind=engine, expire_on_commit=False)
     )
 
 

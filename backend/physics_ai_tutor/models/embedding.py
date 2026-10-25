@@ -28,6 +28,13 @@ class QuestionEmbedding(Base):
         nullable=False,
     )
 
+    language: Mapped[str] = mapped_column(
+        String(10),
+        server_default="ja",
+        nullable=False,
+        index=True,
+    )
+
     chunk_index: Mapped[int | None] = mapped_column(
         nullable=True,
     )

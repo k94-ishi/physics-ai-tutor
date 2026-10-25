@@ -32,10 +32,14 @@ def _create(db, question: str = "テスト質問", answer: str = "テスト回�
     )
 
 
-def _embeddings_for(db, question_id: int):
+def _embeddings_for(db, question_id: int, language: str = "ja"):
+    # Rows are embedded per language; tests inspect one language at a time.
     return (
         db.query(QuestionEmbedding)
-        .filter(QuestionEmbedding.question_id == question_id)
+        .filter(
+            QuestionEmbedding.question_id == question_id,
+            QuestionEmbedding.language == language,
+        )
         .all()
     )
 
@@ -146,7 +150,7 @@ def test_create_question_attaches_concepts(db):
 
 
 def test_create_question_concept_extraction_failure_is_non_fatal(db, monkeypatch):
-    def _raise(question, answer):
+    def _raise(question, answer, language="ja"):
         raise ConceptExtractionError("boom")
 
     monkeypatch.setattr(concept_service, "extract_concept_names", _raise)
@@ -421,7 +425,7 @@ def test_review_question_not_found_returns_none(db):
 
 
 def _spy_extract_concept_names(monkeypatch, calls):
-    def _fake(question, answer):
+    def _fake(question, answer, language="ja"):
         calls.append((question, answer))
         return ["概念A", "概念B"]
 
@@ -678,7 +682,7 @@ def test_reextract_concepts_for_questions_replaces_existing_links(db, monkeypatc
     monkeypatch.setattr(
         concept_service,
         "extract_concept_names",
-        lambda question, answer: ["新概念"],
+        lambda question, answer, language="ja": ["新概念"],
     )
 
     results = question_service.reextract_concepts_for_questions(db, [created.id])
@@ -701,7 +705,7 @@ def test_reextract_concepts_for_questions_partial_failure_continues(db, monkeypa
     q1 = _create(db, "質問1", "回答1")
     q2 = _create(db, "質問2", "回答2")
 
-    def _fake(question, answer):
+    def _fake(question, answer, language="ja"):
         if question == "質問1":
             raise ConceptExtractionError("boom")
         return ["概念X"]

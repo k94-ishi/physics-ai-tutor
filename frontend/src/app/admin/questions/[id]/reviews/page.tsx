@@ -7,16 +7,19 @@ import { QuestionReview, QuestionReviewAction } from "@/types/question";
 import Card from "@/components/ui/Card";
 import LoadingState from "@/components/ui/LoadingState";
 import StatusMessage from "@/components/ui/StatusMessage";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { TranslationKey } from "@/lib/i18n/translations";
 
-const ACTION_LABELS: Record<QuestionReviewAction, string> = {
-    APPROVE: "承認",
-    EDIT_APPROVE: "編集して承認",
-    REJECT: "却下",
+const ACTION_LABEL_KEYS: Record<QuestionReviewAction, TranslationKey> = {
+    APPROVE: "common.approve",
+    EDIT_APPROVE: "reviews.actionEditApprove",
+    REJECT: "common.reject",
 };
 
 export default function QuestionReviewsPage() {
     const params = useParams();
     const id = Number(params.id);
+    const { language, t } = useLanguage();
     const [reviews, setReviews] = useState<QuestionReview[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
@@ -48,19 +51,19 @@ export default function QuestionReviewsPage() {
     return (
         <main className="flex flex-col gap-6">
             <h1 className="text-2xl font-bold text-gray-900">
-                レビュー履歴
+                {t("reviews.title")}
             </h1>
 
             {error && (
                 <StatusMessage
                     variant="error"
-                    message="レビュー履歴を取得できませんでした。"
+                    message={t("reviews.fetchFailed")}
                     onRetry={loadReviews}
                 />
             )}
 
             {!error && reviews.length === 0 && (
-                <StatusMessage message="レビュー履歴がありません。" />
+                <StatusMessage message={t("reviews.empty")} />
             )}
 
             {!error && reviews.length > 0 && (
@@ -70,21 +73,23 @@ export default function QuestionReviewsPage() {
                             <Card className="flex flex-col gap-2">
                                 <div className="flex items-center justify-between">
                                     <span className="font-medium text-gray-900">
-                                        {ACTION_LABELS[review.action]}
+                                        {t(ACTION_LABEL_KEYS[review.action])}
                                     </span>
                                     <span className="text-xs text-gray-500">
-                                        {new Date(review.created_at).toLocaleString("ja-JP")}
+                                        {new Date(review.created_at).toLocaleString(
+                                            language === "ja" ? "ja-JP" : "en-US"
+                                        )}
                                     </span>
                                 </div>
 
                                 <span className="text-xs text-gray-500">
-                                    レビュアーID: {review.reviewer_id}
+                                    {t("reviews.reviewerId")}: {review.reviewer_id}
                                 </span>
 
                                 {review.action === "EDIT_APPROVE" && (
                                     <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
                                         <div>
-                                            <p className="text-xs font-medium text-gray-500">変更前</p>
+                                            <p className="text-xs font-medium text-gray-500">{t("reviews.before")}</p>
                                             <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">
                                                 {review.before_question}
                                             </p>
@@ -93,7 +98,7 @@ export default function QuestionReviewsPage() {
                                             </p>
                                         </div>
                                         <div>
-                                            <p className="text-xs font-medium text-gray-500">変更後</p>
+                                            <p className="text-xs font-medium text-gray-500">{t("reviews.after")}</p>
                                             <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">
                                                 {review.after_question}
                                             </p>
@@ -106,7 +111,7 @@ export default function QuestionReviewsPage() {
 
                                 {review.comment && (
                                     <p className="mt-1 text-sm text-gray-600">
-                                        コメント: {review.comment}
+                                        {t("reviews.comment")}: {review.comment}
                                     </p>
                                 )}
                             </Card>

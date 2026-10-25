@@ -46,14 +46,32 @@ docker compose exec backend uv run python -m physics_ai_tutor.database.seed
 ```
 
 The seed script reads `backend/physics_ai_tutor/database/seed.json` and
-inserts every entry as an approved question. It generates embeddings and
-extracts concepts, so `OPENAI_API_KEY` and `DEEPSEEK_API_KEY` must be set.
+inserts every entry as an approved question in both languages. Entries may
+be `{"question", "answer"}` (Japanese, English machine translated) or carry
+explicit `question_ja` / `answer_ja` / `question_en` / `answer_en` columns
+(a supplied English text is kept as a human translation). It generates
+embeddings, extracts concepts and translates, so `OPENAI_API_KEY` and
+`DEEPSEEK_API_KEY` must be set.
 The import is all-or-nothing: if any question text already exists, nothing
 is inserted. Reset the database (see [docs/database.md](database.md)) before
 re-seeding.
 
 `seed.jsonl` in the same directory holds the same data in JSONL form, which
 is the format accepted by the admin "Upload" page.
+
+### Translate existing rows
+
+Rows that only have one language (for example data created before the
+bilingual schema) can be filled by machine translation:
+
+```bash
+docker compose exec backend uv run python -m physics_ai_tutor.cli.translate_missing --dry-run
+docker compose exec backend uv run python -m physics_ai_tutor.cli.translate_missing
+```
+
+Terminology used by the translator and the English prompts comes from
+`GLOSSARY` in `backend/physics_ai_tutor/core/prompts.py`; add project terms
+there (Japanese to English).
 
 ### Create an admin user
 
@@ -143,7 +161,8 @@ Layout of `backend/tests/`:
 | `test_*_repository.py` | Repository queries against a real PostgreSQL + pgvector |
 | `test_models.py` | Column defaults, cascades |
 | `test_migrations.py` | Single Alembic head, models match migrations |
-| `test_cli.py` | `create_user` CLI and the seed script |
+| `test_cli.py` | `create_user` and `translate_missing` CLIs and the seed script |
+| `test_language.py` | Bilingual rows: eager translation, provenance, `lang` resolution, English ask flow, cache tiers, review in either language, translate endpoint, import shapes |
 | `test_logging.py` | Request logging middleware |
 
 Conventions:
@@ -151,8 +170,11 @@ Conventions:
 - API tests use the `client` fixtures and assert on HTTP responses; service
   and repository tests take the `db` session directly.
 - Anything that calls OpenAI or DeepSeek must be mocked. `conftest.py`
-  already patches `embedding_service.create_embeddings` and
-  `concept_service.extract_concept_names`; patch `deepseek_service` per test.
+  already patches `embedding_service.create_embeddings`,
+  `concept_service.extract_concept_names` and
+  `translation_service.translate_qa` (which returns `"[en] <text>"` style
+  markers so tests can assert on translations); patch `deepseek_service`
+  per test.
 - Admin-only endpoints need a test for `admin_client` (success),
   `user_client` (403) and `client` (401).
 - Any endpoint that returns question content needs a test proving

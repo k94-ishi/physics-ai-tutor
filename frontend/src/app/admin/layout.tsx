@@ -3,12 +3,14 @@
 import { ReactNode, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 import LoadingState from "@/components/ui/LoadingState";
 import StatusMessage from "@/components/ui/StatusMessage";
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
     const router = useRouter();
     const { user, loading } = useAuth();
+    const { t } = useLanguage();
 
     useEffect(() => {
         if (!loading && !user) {
@@ -17,14 +19,14 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     }, [loading, user, router]);
 
     if (loading || !user) {
-        return <LoadingState label="確認中..." />;
+        return <LoadingState label={t("adminLayout.checking")} />;
     }
 
     if (user.role !== "admin") {
         return (
             <StatusMessage
                 variant="error"
-                message="このページには管理者権限が必要です。"
+                message={t("adminLayout.adminOnly")}
             />
         );
     }

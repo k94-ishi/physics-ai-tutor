@@ -2,6 +2,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Query, Session
 
 from physics_ai_tutor.models.question import Question
+from physics_ai_tutor.schemas.language import Language, TextProvenance
 from physics_ai_tutor.schemas.question import QuestionCreate, QuestionUpdate
 
 
@@ -14,16 +15,17 @@ def _filter_by_keyword(
     if not keyword:
         return query
 
-    # スペース区切りのAND検索。各語について、質問/回答のうち指定された列を
-    # OR で検索する(シンプルな実装で十分なため、引用符やNOT等は非対応)。
+    # Space-separated AND search; each term may match any language column.
     for term in keyword.split():
         pattern = f"%{term}%"
         conditions = []
 
         if search_question:
-            conditions.append(Question.question.ilike(pattern))
+            conditions.append(Question.question_ja.ilike(pattern))
+            conditions.append(Question.question_en.ilike(pattern))
         if search_answer:
-            conditions.append(Question.answer.ilike(pattern))
+            conditions.append(Question.answer_ja.ilike(pattern))
+            conditions.append(Question.answer_en.ilike(pattern))
 
         if conditions:
             query = query.filter(or_(*conditions))
@@ -45,6 +47,13 @@ def _filter_by_status(
     return query
 
 
+def _filter_by_language(query: Query, language: Language | str | None) -> Query:
+    if language is None:
+        return query
+
+    return query.filter(getattr(Question, f"question_{Language(language)}").isnot(None))
+
+
 def get_questions(
     db: Session,
     offset: int,
@@ -54,13 +63,15 @@ def get_questions(
     exclude_statuses: list[str] | None = None,
     search_question: bool = True,
     search_answer: bool = True,
+    language: Language | str | None = None,
 ) -> list[Question]:
     query = _filter_by_keyword(
         db.query(Question), keyword, search_question, search_answer
     )
     query = _filter_by_status(query, status, exclude_statuses)
+    query = _filter_by_language(query, language)
 
-    return query.offset(offset).limit(limit).all()
+    return query.order_by(Question.id).offset(offset).limit(limit).all()
 
 
 def count_questions(
@@ -70,11 +81,13 @@ def count_questions(
     exclude_statuses: list[str] | None = None,
     search_question: bool = True,
     search_answer: bool = True,
+    language: Language | str | None = None,
 ) -> int:
     query = _filter_by_keyword(
         db.query(Question), keyword, search_question, search_answer
     )
     query = _filter_by_status(query, status, exclude_statuses)
+    query = _filter_by_language(query, language)
 
     return query.count()
 
@@ -100,28 +113,78 @@ def get_questions_by_ids(db: Session, ids: list[int]) -> list[Question]:
 def get_by_exact_text(
     db: Session,
     question_text: str,
+    language: Language | str = Language.JA,
     exclude_statuses: list[str] | None = None,
 ) -> Question | None:
-    query = db.query(Question).filter(Question.question == question_text)
+    column = getattr(Question, f"question_{Language(language)}")
+    query = db.query(Question).filter(column == question_text)
     query = _filter_by_status(query, None, exclude_statuses)
 
     return query.first()
 
 
-def create_question(
-    db: Session,
-    question: str,
-    answer: str,
-    status: str = "APPROVED",
-    source: str = "MANUAL",
-    retrieved_question_ids: list[int] | None = None,
-):
-    db_question = Question(
-        question=question,
-        answer=answer,
+def get_missing_language(
+    db: Session, language: Language | str, limit: int | None = None
+) -> list[Question]:
+    """Questions that have no text in `language` (candidates for translation)."""
+    column = getattr(Question, f"question_{Language(language)}")
+    query = db.query(Question).filter(column.is_(None)).order_by(Question.id)
+
+    if limit is not None:
+        query = query.limit(limit)
+
+    return query.all()
+
+
+def _new_question(
+    texts: dict[Language, tuple[str, str]],
+    original_language: Language | str,
+    status: str,
+    source: str,
+    retrieved_question_ids: list[int] | None,
+    provenances: dict[Language, str] | None,
+) -> Question:
+    original = Language(original_language)
+    question = Question(
+        original_language=original.value,
         status=status,
         source=source,
         retrieved_question_ids=retrieved_question_ids or [],
+    )
+
+    for lang, (q, a) in texts.items():
+        if provenances and lang in provenances:
+            provenance = provenances[lang]
+        elif lang == original:
+            provenance = TextProvenance.ORIGINAL
+        else:
+            provenance = TextProvenance.HUMAN
+        question.set_text(lang, q, a, provenance)
+
+    return question
+
+
+def create_question(
+    db: Session,
+    texts: dict[Language, tuple[str, str]] | None = None,
+    original_language: Language | str = Language.JA,
+    status: str = "APPROVED",
+    source: str = "MANUAL",
+    retrieved_question_ids: list[int] | None = None,
+    provenances: dict[Language, str] | None = None,
+    question: str | None = None,
+    answer: str | None = None,
+    language: Language | str = Language.JA,
+) -> Question:
+    # Legacy single-language form: question=/answer=/language=.
+    if texts is None:
+        if question is None or answer is None:
+            raise ValueError("Either texts or question and answer are required")
+        texts = {Language(language): (question, answer)}
+        original_language = language
+
+    db_question = _new_question(
+        texts, original_language, status, source, retrieved_question_ids, provenances
     )
 
     db.add(db_question)
@@ -132,18 +195,19 @@ def create_question(
 
 def create_questions(
     db: Session,
-    questions: list[QuestionCreate],
+    rows: list[tuple[dict[Language, tuple[str, str]], Language] | QuestionCreate],
     status: str = "APPROVED",
     source: str = "MANUAL",
-):
+) -> list[Question]:
+    normalised = [
+        (row.texts(), row.original_language())
+        if isinstance(row, QuestionCreate)
+        else row
+        for row in rows
+    ]
     db_questions = [
-        Question(
-            question=q.question,
-            answer=q.answer,
-            status=status,
-            source=source,
-        )
-        for q in questions
+        _new_question(texts, original, status, source, None, None)
+        for texts, original in normalised
     ]
 
     db.add_all(db_questions)
@@ -164,22 +228,59 @@ def delete(db: Session, question_id: int) -> bool:
     return True
 
 
+def set_text(
+    db: Session,
+    question_id: int,
+    language: Language | str,
+    question: str,
+    answer: str,
+    provenance: str,
+) -> Question | None:
+    db_question = db.query(Question).filter(Question.id == question_id).first()
+
+    if not db_question:
+        return None
+
+    db_question.set_text(language, question, answer, provenance)
+    db.flush()
+
+    return db_question
+
+
+def update_status(db: Session, question_id: int, status: str) -> Question | None:
+    db_question = db.query(Question).filter(Question.id == question_id).first()
+
+    if not db_question:
+        return None
+
+    db_question.status = status
+    db.flush()
+
+    return db_question
+
+
 def update(
     db: Session,
     question_id: int,
     question_data: QuestionUpdate,
 ) -> Question | None:
-    question = db.query(Question).filter(Question.id == question_id).first()
+    """Replace the given languages' text (human-provided)."""
+    db_question = db.query(Question).filter(Question.id == question_id).first()
 
-    if not question:
+    if not db_question:
         return None
 
-    question.question = question_data.question
-    question.answer = question_data.answer
+    for lang, (q, a) in question_data.texts().items():
+        provenance = (
+            TextProvenance.ORIGINAL
+            if lang == db_question.original_language
+            else TextProvenance.HUMAN
+        )
+        db_question.set_text(lang, q, a, provenance)
 
     db.flush()
 
-    return question
+    return db_question
 
 
 def update_content_and_status(
@@ -188,18 +289,26 @@ def update_content_and_status(
     status: str,
     question: str | None = None,
     answer: str | None = None,
+    language: Language | str | None = None,
 ) -> Question | None:
+    """Set status and optionally replace one language's text."""
     db_question = db.query(Question).filter(Question.id == question_id).first()
 
     if not db_question:
         return None
 
-    if question is not None:
-        db_question.question = question
-    if answer is not None:
-        db_question.answer = answer
-    db_question.status = status
+    if question is not None and answer is not None:
+        lang = (
+            Language(language) if language else Language(db_question.original_language)
+        )
+        provenance = (
+            TextProvenance.ORIGINAL
+            if lang == db_question.original_language
+            else TextProvenance.HUMAN
+        )
+        db_question.set_text(lang, question, answer, provenance)
 
+    db_question.status = status
     db.flush()
 
     return db_question

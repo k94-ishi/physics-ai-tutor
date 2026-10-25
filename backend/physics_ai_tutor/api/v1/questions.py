@@ -29,6 +29,7 @@ from physics_ai_tutor.schemas.embedding import (
     SimilarQuestionRequest,
     SimilarQuestionResponse,
 )
+from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.question import (
     QuestionCreate,
     QuestionImportResponse,
@@ -37,6 +38,8 @@ from physics_ai_tutor.schemas.question import (
     QuestionSource,
     QuestionStatus,
     QuestionUpdate,
+    TranslationBatchResponse,
+    TranslationResult,
 )
 from physics_ai_tutor.schemas.question_review import (
     QuestionReviewCreate,
@@ -80,9 +83,12 @@ def get_questions(
     status: QuestionStatus | None = Query(default=None),
     search_question: bool = Query(default=True),
     search_answer: bool = Query(default=True),
+    lang: Language = Query(default=Language.JA),
     db: Session = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
+    # Students only see rows that have text in their language; admins see
+    # every row, with the text falling back to the original language.
     return question_service.fetch_questions(
         db,
         page,
@@ -92,6 +98,8 @@ def get_questions(
         exclude_statuses=_hidden_statuses_for(current_user),
         search_question=search_question,
         search_answer=search_answer,
+        language=lang,
+        only_with_language=not _is_admin(current_user),
     )
 
 
@@ -101,6 +109,7 @@ def get_questions(
 )
 def get_exact_match_question(
     question: str = Query(..., min_length=1, max_length=200),
+    lang: Language = Query(default=Language.JA),
     db: Session = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
@@ -108,6 +117,7 @@ def get_exact_match_question(
         db,
         question,
         exclude_statuses=_hidden_statuses_for(current_user),
+        language=lang,
     )
 
     if result is None:
@@ -125,6 +135,7 @@ def get_exact_match_question(
 )
 def get_question(
     question_id: int,
+    lang: Language = Query(default=Language.JA),
     db: Session = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
@@ -132,6 +143,9 @@ def get_question(
         db,
         question_id,
         exclude_statuses=_hidden_statuses_for(current_user),
+        language=lang,
+        # Rows approved before translation existed are filled on first view.
+        translate_if_missing=not _is_admin(current_user),
     )
 
     if question is None:
@@ -150,6 +164,7 @@ def get_question(
 def get_related_questions(
     question_id: int,
     limit: int = Query(default=5, ge=1, le=20),
+    lang: Language = Query(default=Language.JA),
     db: Session = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
@@ -161,6 +176,7 @@ def get_related_questions(
         exclude_statuses=(
             [QuestionStatus.REJECTED] if is_admin else PUBLIC_HIDDEN_STATUSES
         ),
+        language=lang,
     )
 
 
@@ -183,6 +199,7 @@ def get_question_reviews(
 )
 def create_question(
     question: QuestionCreate,
+    lang: Language = Query(default=Language.JA),
     db: Session = Depends(get_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
@@ -191,6 +208,7 @@ def create_question(
         question,
         status=QuestionStatus.APPROVED,
         source=QuestionSource.MANUAL,
+        language=lang,
     )
     logger.info(
         "Admin action: user_id=%s action=create_question question_id=%s",
@@ -230,6 +248,7 @@ def bulk_delete_questions(
 )
 def bulk_review_questions(
     data: BulkReviewRequest,
+    lang: Language = Query(default=Language.JA),
     db: Session = Depends(get_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
@@ -239,6 +258,7 @@ def bulk_review_questions(
         action=data.action,
         reviewer_id=int(current_user.sub),
         comment=data.comment,
+        response_language=lang,
     )
 
     logger.info(
@@ -276,6 +296,45 @@ def extract_concepts(
 
 
 @router.post(
+    "/translate",
+    response_model=TranslationBatchResponse,
+)
+def translate_questions(
+    data: BulkDeleteRequest,
+    db: Session = Depends(get_db),
+    current_user: JWTPayload = Depends(require_admin),
+):
+    """Fill missing languages of the given questions by machine translation."""
+    results = []
+    for question_id in data.question_ids:
+        try:
+            filled = question_service.translate_missing_languages(db, question_id)
+        except Exception:
+            logger.warning(
+                "Translation failed: question_id=%d", question_id, exc_info=True
+            )
+            results.append(TranslationResult(question_id=question_id, success=False))
+            continue
+
+        for language in filled:
+            results.append(
+                TranslationResult(
+                    question_id=question_id, success=True, language=language
+                )
+            )
+        if not filled:
+            results.append(TranslationResult(question_id=question_id, success=False))
+
+    logger.info(
+        "Admin action: user_id=%s action=translate_questions requested_count=%d",
+        current_user.sub,
+        len(data.question_ids),
+    )
+
+    return TranslationBatchResponse(results=results)
+
+
+@router.post(
     "/import",
     response_model=QuestionImportResponse,
     status_code=201,
@@ -284,6 +343,7 @@ def import_questions(
     file: UploadFile = File(...),
     source: QuestionSource = Form(default=QuestionSource.AI_GENERATED),
     status: QuestionStatus = Form(default=QuestionStatus.UNREVIEWED),
+    language: Language = Form(default=Language.JA),
     db: Session = Depends(get_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
@@ -300,6 +360,8 @@ def import_questions(
 
         try:
             data = json.loads(line)
+            # Legacy rows carry no language; use the form's default.
+            data.setdefault("language", language.value)
             rows.append(QuestionCreate(**data))
         except Exception as exc:
             errors.append(f"line {line_number}: {exc}")
@@ -318,6 +380,7 @@ def import_questions(
         rows,
         status=status,
         source=source,
+        language=language,
     )
 
     logger.info(
@@ -338,6 +401,7 @@ def import_questions(
 def review_question(
     question_id: int,
     data: QuestionReviewCreate,
+    lang: Language = Query(default=Language.JA),
     db: Session = Depends(get_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
@@ -349,6 +413,8 @@ def review_question(
         question=data.question,
         answer=data.answer,
         comment=data.comment,
+        language=data.language,
+        response_language=lang,
     )
 
     if result is None:
@@ -398,6 +464,7 @@ def delete_question(
 def update_question(
     question_id: int,
     question: QuestionUpdate,
+    lang: Language = Query(default=Language.JA),
     db: Session = Depends(get_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
@@ -405,6 +472,7 @@ def update_question(
         db,
         question_id,
         question,
+        language=lang,
     )
 
     if question is None:
@@ -436,4 +504,5 @@ def search_questions(
         query=request.query,
         limit=request.limit,
         exclude_statuses=_hidden_statuses_for(current_user),
+        language=request.language,
     )

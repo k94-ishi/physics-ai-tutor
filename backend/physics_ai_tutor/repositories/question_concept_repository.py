@@ -30,21 +30,22 @@ def get_concepts_for_question(db: Session, question_id: int) -> list[Concept]:
 
 
 def get_concepts_for_questions(
-    db: Session, question_ids: list[int]
+    db: Session, question_ids: list[int], language: str = "ja"
 ) -> dict[int, list[str]]:
+    """Concept display names per question, in `language` with fallback."""
     if not question_ids:
         return {}
 
     rows = (
-        db.query(QuestionConcept.question_id, Concept.name)
+        db.query(QuestionConcept.question_id, Concept)
         .join(Concept, Concept.id == QuestionConcept.concept_id)
         .filter(QuestionConcept.question_id.in_(question_ids))
         .all()
     )
 
     result: dict[int, list[str]] = {question_id: [] for question_id in question_ids}
-    for question_id, name in rows:
-        result[question_id].append(name)
+    for question_id, concept in rows:
+        result[question_id].append(concept.display_name(language))
 
     return result
 

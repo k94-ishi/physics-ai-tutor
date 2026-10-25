@@ -10,6 +10,7 @@ from physics_ai_tutor.repositories.embedding_repository import (
     search_similar_embeddings,
 )
 from physics_ai_tutor.schemas.embedding import SimilarQuestionResponse
+from physics_ai_tutor.schemas.language import Language
 
 logger = logging.getLogger(__name__)
 
@@ -40,15 +41,20 @@ def search_similar_questions(
     query: str,
     limit: int = 10,
     exclude_statuses: list[str] | None = None,
+    language: Language | str = Language.JA,
 ) -> list[SimilarQuestionResponse]:
+    lang = Language(language)
     query_embedding = create_embeddings([query])[0]
 
+    # Same-language search only: every row is embedded in each language it
+    # has text for, so cross-language scoring is not needed.
     results = search_similar_embeddings(
         db=db,
         embedding=query_embedding,
         embedding_type="question",
         limit=limit,
         exclude_statuses=exclude_statuses,
+        language=lang.value,
     )
 
     logger.info(
@@ -58,12 +64,18 @@ def search_similar_questions(
         len(results),
     )
 
-    return [
-        SimilarQuestionResponse(
-            id=question.id,
-            question=question.question,
-            answer=question.answer,
-            distance=distance,
+    responses = []
+    for _, question, distance in results:
+        text = question.text(lang)
+        assert text is not None
+        responses.append(
+            SimilarQuestionResponse(
+                id=question.id,
+                question=text[0],
+                answer=text[1],
+                language=lang,
+                distance=distance,
+            )
         )
-        for _, question, distance in results
-    ]
+
+    return responses

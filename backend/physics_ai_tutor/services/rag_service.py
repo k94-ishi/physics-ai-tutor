@@ -8,6 +8,7 @@ from physics_ai_tutor.repositories import (
     question_concept_repository,
     question_repository,
 )
+from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.question import QuestionStatus
 from physics_ai_tutor.services import deepseek_service, embedding_service
 
@@ -26,7 +27,9 @@ class RetrievedQuestion:
     score: float
 
 
-def retrieve_context(db: Session, query: str) -> list[RetrievedQuestion]:
+def retrieve_context(
+    db: Session, query: str, language: Language = Language.JA
+) -> list[RetrievedQuestion]:
     """Reuse the existing similarity search + concept lookup to gather
     grounding context for a RAG answer. Only APPROVED questions are used
     as grounding, and only those above RAG_MIN_SCORE similarity.
@@ -36,6 +39,7 @@ def retrieve_context(db: Session, query: str) -> list[RetrievedQuestion]:
         query=query,
         limit=RAG_TOP_K,
         exclude_statuses=["UNREVIEWED", "REJECTED"],
+        language=language,
     )
 
     scored = [
@@ -45,7 +49,7 @@ def retrieve_context(db: Session, query: str) -> list[RetrievedQuestion]:
     ]
 
     concepts_by_id = question_concept_repository.get_concepts_for_questions(
-        db, [result.id for result, _ in scored]
+        db, [result.id for result, _ in scored], language=language.value
     )
 
     return [
@@ -60,7 +64,9 @@ def retrieve_context(db: Session, query: str) -> list[RetrievedQuestion]:
     ]
 
 
-def load_context_by_ids(db: Session, ids: list[int]) -> list[RetrievedQuestion]:
+def load_context_by_ids(
+    db: Session, ids: list[int], language: Language = Language.JA
+) -> list[RetrievedQuestion]:
     """Build grounding context from client-selected question IDs (e.g. the
     results the user already saw from a prior similarity search), skipping
     a fresh embedding search. IDs are capped to RAG_TOP_K and filtered down
@@ -80,52 +86,67 @@ def load_context_by_ids(db: Session, ids: list[int]) -> list[RetrievedQuestion]:
     ]
 
     concepts_by_id = question_concept_repository.get_concepts_for_questions(
-        db, [question.id for question in ordered_questions]
+        db, [question.id for question in ordered_questions], language=language.value
     )
 
-    return [
-        RetrievedQuestion(
-            id=question.id,
-            question=question.question,
-            answer=question.answer,
-            concepts=concepts_by_id.get(question.id, []),
-            score=1.0,
+    context = []
+    for question in ordered_questions:
+        # Prefer the student's language; the LLM copes with mixed context.
+        text = question.text(language) or question.original_text()
+        context.append(
+            RetrievedQuestion(
+                id=question.id,
+                question=text[0],
+                answer=text[1],
+                concepts=concepts_by_id.get(question.id, []),
+                score=1.0,
+            )
         )
-        for question in ordered_questions
-    ]
+
+    return context
 
 
-def build_context_prompt(question: str, context: list[RetrievedQuestion]) -> str:
+def build_context_prompt(
+    question: str, context: list[RetrievedQuestion], language: Language = Language.JA
+) -> str:
     if not context:
         return question
 
+    labels = prompts.RAG_CONTEXT_LABELS[language]
     context_blocks = "\n\n".join(
-        f"[参考QA{i}]\n"
-        f"質問: {item.question}\n"
-        f"回答: {item.answer}\n"
-        f"関連概念: {', '.join(item.concepts) if item.concepts else 'なし'}"
+        f"[{labels['block'].format(index=i)}]\n"
+        f"{labels['question']}: {item.question}\n"
+        f"{labels['answer']}: {item.answer}\n"
+        f"{labels['concepts']}: "
+        f"{', '.join(item.concepts) if item.concepts else labels['none']}"
         for i, item in enumerate(context, start=1)
     )
 
     return (
         f"{context_blocks}\n\n"
-        "上記は参考になる可能性のある既存の質問と回答です。"
-        "これらを踏まえて、以下の生徒の質問に答えてください。\n\n"
-        f"質問:\n{question}"
+        f"{labels['instruction']}\n\n"
+        f"{labels['question']}:\n{question}"
     )
 
 
 def generate_rag_answer(
-    db: Session, question: str, retrieved_question_ids: list[int] | None = None
+    db: Session,
+    question: str,
+    retrieved_question_ids: list[int] | None = None,
+    language: Language | str = Language.JA,
 ) -> tuple[str, list[int]]:
+    lang = Language(language)
+
     if retrieved_question_ids:
-        context = load_context_by_ids(db, retrieved_question_ids)
+        context = load_context_by_ids(db, retrieved_question_ids, lang)
     else:
-        context = retrieve_context(db, question)
+        context = retrieve_context(db, question, lang)
 
-    user_prompt = build_context_prompt(question, context)
+    user_prompt = build_context_prompt(question, context, lang)
 
-    answer = deepseek_service.chat_completion(prompts.RAG_SYSTEM_PROMPT, user_prompt)
+    answer = deepseek_service.chat_completion(
+        prompts.RAG_SYSTEM_PROMPTS[lang], user_prompt
+    )
 
     logger.info(
         "RAG answer generated: question_length=%d context_count=%d",

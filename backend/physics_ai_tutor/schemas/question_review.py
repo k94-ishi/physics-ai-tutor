@@ -3,6 +3,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, model_validator
 
+from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.question import AnswerText, QuestionText
 
 
@@ -14,6 +15,8 @@ class QuestionReviewAction(StrEnum):
 
 class QuestionReviewCreate(BaseModel):
     action: QuestionReviewAction
+    # Language the reviewer read or edited; defaults to the original.
+    language: Language | None = None
     question: QuestionText | None = None
     answer: AnswerText | None = None
     comment: str | None = None
@@ -33,6 +36,7 @@ class QuestionReviewResponse(BaseModel):
     id: int
     question_id: int
     action: QuestionReviewAction
+    language: Language
     before_question: str | None
     before_answer: str | None
     after_question: str | None

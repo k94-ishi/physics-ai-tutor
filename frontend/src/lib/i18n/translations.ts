@@ -61,11 +61,16 @@ const ja = {
     "questionSearch.relevance": "関連度",
     "questionSearch.generating": "回答を生成中...",
     "questionSearch.askFailed": "AIへの質問に失敗しました。",
+    "questionSearch.answerUnreviewed":
+        "このAI回答はまだ先生のチェックを受けていません。",
+    "questionSearch.cachedNotice": "同じ質問への以前の回答を表示しています。",
 
     // questionDetail
     "questionDetail.alreadyAnswered": "この質問に対する回答はすでに生成済みです",
     "questionDetail.unreviewedBadge": "管理者未チェック",
     "questionDetail.relatedQuestions": "関連する質問",
+    "questionDetail.autoTranslated": "自動翻訳",
+    "questionDetail.autoTranslatedReviewed": "レビュー済みの内容を自動翻訳",
 
     // askAiBox
     "askAiBox.heading": "AIに質問する",
@@ -88,6 +93,10 @@ const ja = {
     "admin.confirmBulkReject": "選択した質問を却下しますか？",
     "admin.confirmBulkExtract": "選択した質問のConceptを抽出しますか？",
     "admin.extractLabel": "抽出",
+    "admin.confirmBulkTranslate": "選択した質問の不足している言語を自動翻訳しますか？",
+    "admin.translateLabel": "翻訳",
+    "admin.bulkTranslatedCount": "{count}件を翻訳しました。",
+    "admin.machineProvenance": "自動翻訳",
     "admin.questionDeleted": "質問を削除しました。",
     "admin.questionDeleteFailed": "質問の削除に失敗しました。",
     "admin.questionApproved": "質問を承認しました。",
@@ -184,12 +193,19 @@ const en: Record<keyof typeof ja, string> = {
     "questionSearch.relevance": "Relevance",
     "questionSearch.generating": "Generating answer...",
     "questionSearch.askFailed": "Failed to ask AI.",
+    "questionSearch.answerUnreviewed":
+        "This AI answer has not been checked by a teacher yet.",
+    "questionSearch.cachedNotice":
+        "Showing a previous answer to the same question.",
 
     // questionDetail
     "questionDetail.alreadyAnswered":
         "An answer to this question has already been generated",
     "questionDetail.unreviewedBadge": "Not reviewed by admin",
     "questionDetail.relatedQuestions": "Related Questions",
+    "questionDetail.autoTranslated": "Auto-translated",
+    "questionDetail.autoTranslatedReviewed":
+        "Auto-translated from reviewed content",
 
     // askAiBox
     "askAiBox.heading": "Ask AI",
@@ -212,6 +228,11 @@ const en: Record<keyof typeof ja, string> = {
     "admin.confirmBulkReject": "Reject the selected questions?",
     "admin.confirmBulkExtract": "Extract concepts for the selected questions?",
     "admin.extractLabel": "Extract",
+    "admin.confirmBulkTranslate":
+        "Machine translate the missing languages of the selected questions?",
+    "admin.translateLabel": "Translate",
+    "admin.bulkTranslatedCount": "Translated {count} questions.",
+    "admin.machineProvenance": "Auto-translated",
     "admin.questionDeleted": "Question deleted.",
     "admin.questionDeleteFailed": "Failed to delete question.",
     "admin.questionApproved": "Question approved.",

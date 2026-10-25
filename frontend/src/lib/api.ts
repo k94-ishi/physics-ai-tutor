@@ -17,6 +17,7 @@ import {
     UpdateQuestionRequest,
 } from "@/types/question";
 import { AdminUser, CreateUserRequest, LoginRequest, User } from "@/types/auth";
+import { ContentLanguage, TranslationBatchResponse } from "@/types/question";
 import { AskAiResponse } from "@/types/ai";
 
 function getApiUrl(): string {
@@ -105,6 +106,9 @@ export async function fetchQuestions(
     if (params.searchAnswer !== undefined) {
         searchParams.set("search_answer", String(params.searchAnswer));
     }
+    if (params.lang) {
+        searchParams.set("lang", params.lang);
+    }
 
     const query = searchParams.toString();
 
@@ -125,14 +129,21 @@ export async function searchQuestions(
     });
 }
 
-export async function fetchQuestion(id: number): Promise<Question> {
-    return apiFetch<Question>(`${getQuestionsUrl()}/${id}`);
+export async function fetchQuestion(
+    id: number,
+    lang?: ContentLanguage
+): Promise<Question> {
+    const query = lang ? `?${new URLSearchParams({ lang })}` : "";
+    return apiFetch<Question>(`${getQuestionsUrl()}/${id}${query}`);
 }
 
 export async function fetchQuestionByExactText(
-    question: string
+    question: string,
+    lang?: ContentLanguage
 ): Promise<Question> {
-    const query = new URLSearchParams({ question }).toString();
+    const query = new URLSearchParams(
+        lang ? { question, lang } : { question }
+    ).toString();
     return apiFetch<Question>(`${getQuestionsUrl()}/exact-match?${query}`);
 }
 
@@ -208,11 +219,25 @@ export async function deleteUser(id: number): Promise<void> {
 
 export async function fetchRelatedQuestions(
     id: number,
-    limit = 5
+    limit = 5,
+    lang?: ContentLanguage
 ): Promise<Question[]> {
+    const langParam = lang ? `&lang=${lang}` : "";
     return apiFetch<Question[]>(
-        `${getQuestionsUrl()}/${id}/related?limit=${limit}`
+        `${getQuestionsUrl()}/${id}/related?limit=${limit}${langParam}`
     );
+}
+
+export async function translateQuestions(
+    questionIds: number[]
+): Promise<TranslationBatchResponse> {
+    return apiFetch<TranslationBatchResponse>(`${getQuestionsUrl()}/translate`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ question_ids: questionIds }),
+    });
 }
 
 export async function reviewQuestion(
@@ -250,8 +275,11 @@ export async function importQuestions(
 
 export async function askAi(
     question: string,
-    mode?: "RAG",
-    retrievedQuestionIds?: number[]
+    options: {
+        language?: ContentLanguage;
+        mode?: "RAG";
+        retrievedQuestionIds?: number[];
+    } = {}
 ): Promise<AskAiResponse> {
     return apiFetch<AskAiResponse>(`${getAiUrl()}/ask`, {
         method: "POST",
@@ -260,8 +288,9 @@ export async function askAi(
         },
         body: JSON.stringify({
             question,
-            mode,
-            retrieved_question_ids: retrievedQuestionIds,
+            language: options.language,
+            mode: options.mode,
+            retrieved_question_ids: options.retrievedQuestionIds,
         }),
     });
 }

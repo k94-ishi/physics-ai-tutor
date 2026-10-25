@@ -10,19 +10,20 @@ from physics_ai_tutor.schemas.question import (
 from physics_ai_tutor.services.question_service import import_questions_from_jsonl
 
 
-def seed():
-    BASE_DIR = Path(__file__).resolve().parent
-    seed_file = BASE_DIR / "seed.json"
+def load_seed_entries(seed_file: Path) -> list[QuestionCreate]:
+    """Read seed.json. Entries may use `question`/`answer` (Japanese) or the
+    explicit `question_ja`/`answer_ja`/`question_en`/`answer_en` columns;
+    missing languages are machine translated on import.
+    """
     with open(seed_file, encoding="utf-8") as f:
         data = json.load(f)
 
-    questions = [
-        QuestionCreate(
-            question=d["question"],
-            answer=d["answer"],
-        )
-        for d in data
-    ]
+    return [QuestionCreate(**entry) for entry in data]
+
+
+def seed():
+    seed_file = Path(__file__).resolve().parent / "seed.json"
+    questions = load_seed_entries(seed_file)
 
     db = SessionLocal()
 

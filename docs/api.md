@@ -12,7 +12,9 @@ response bodies are defined by the Pydantic models in
 
 ## Authentication
 
-- Login sets an HttpOnly JWT cookie. The browser sends it automatically; no
+- Two login methods issue the same HttpOnly JWT cookie: email + password
+  (admins, and users created by an admin) and Google Sign-In (students,
+  self-service). The browser sends the cookie automatically; no
   `Authorization` header is used.
 - Access tokens expire after `JWT_ACCESS_TOKEN_EXPIRE_MINUTES`. Tokens close
   to expiry (within `JWT_REFRESH_THRESHOLD_MINUTES`) are transparently
@@ -55,7 +57,10 @@ missing language is machine translated at creation.
 
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
-| POST | `/api/v1/auth/login` | Public | Email + password login; sets the access cookie. Rate limited per IP (5/min, 20/hour). |
+| GET | `/api/v1/auth/providers` | Public | Which login methods are available (`{"password": true, "google": bool}`) |
+| POST | `/api/v1/auth/login` | Public | Email + password login; sets the access cookie. Rate limited per IP (5/min, 20/hour). Rejects Google-only accounts. |
+| GET | `/api/v1/auth/google/login` | Public | Redirects the browser to Google with an anti-CSRF `state` cookie. 503 when Google Sign-In is not configured. |
+| GET | `/api/v1/auth/google/callback` | Public | Exchanges the code, creates the account on first sign-in (role `user`), sets the access cookie, and redirects to `FRONTEND_URL`. On failure redirects to `FRONTEND_URL/login?error=google_failed` or `?error=account_exists`. |
 | POST | `/api/v1/auth/logout` | Public | Clears the access cookie |
 
 ## Users

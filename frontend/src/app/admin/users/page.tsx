@@ -104,6 +104,10 @@ export default function AdminUsersPage() {
                                         {user.role === "admin"
                                             ? t("users.roleAdmin")
                                             : t("users.roleUser")}
+                                        {" ・ "}
+                                        {user.auth_provider === "google"
+                                            ? t("users.providerGoogle")
+                                            : t("users.providerPassword")}
                                         {` ・ ${t("users.registeredOn")}: `}
                                         {new Date(user.created_at).toLocaleDateString(
                                             language === "ja" ? "ja-JP" : "en-US"

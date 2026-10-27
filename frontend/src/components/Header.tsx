@@ -68,7 +68,7 @@ export default function Header() {
                             href="/login"
                             className="text-gray-600 hover:text-gray-900"
                         >
-                            {t("header.adminLogin")}
+                            {t("header.login")}
                         </Link>
                     )}
 

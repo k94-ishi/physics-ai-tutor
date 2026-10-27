@@ -16,7 +16,13 @@ import {
     SimilarQuestion,
     UpdateQuestionRequest,
 } from "@/types/question";
-import { AdminUser, CreateUserRequest, LoginRequest, User } from "@/types/auth";
+import {
+    AdminUser,
+    AuthProviders,
+    CreateUserRequest,
+    LoginRequest,
+    User,
+} from "@/types/auth";
 import { ContentLanguage, TranslationBatchResponse } from "@/types/question";
 import { AskAiResponse } from "@/types/ai";
 
@@ -185,6 +191,15 @@ export async function login(data: LoginRequest): Promise<User> {
         },
         body: JSON.stringify(data),
     });
+}
+
+export async function fetchAuthProviders(): Promise<AuthProviders> {
+    return apiFetch<AuthProviders>(`${getAuthUrl()}/providers`);
+}
+
+// A plain navigation: the backend redirects the browser to Google.
+export function getGoogleLoginUrl(): string {
+    return `${getAuthUrl()}/google/login`;
 }
 
 export async function logout(): Promise<void> {

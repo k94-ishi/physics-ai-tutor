@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     same_site: Literal["lax", "strict", "none"] | None = None
     # CORS
     backend_cors_origins: list[str] = ["http://loaclhost:8000"]
+    # Google Sign-In (students); disabled unless all three are set
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    google_redirect_uri: str | None = None
+    # Where the browser is sent after the Google callback
+    frontend_url: str = "http://localhost:3000"
 
     model_config = SettingsConfigDict(
         env_file=".env",

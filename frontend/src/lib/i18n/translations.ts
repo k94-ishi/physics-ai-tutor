@@ -35,6 +35,7 @@ const ja = {
     "header.questionManagement": "質問管理",
     "header.userManagement": "ユーザー管理",
     "header.logout": "ログアウト",
+    "header.login": "ログイン",
     "header.adminLogin": "管理者ログイン",
     "header.logoutSuccess": "ログアウトしました。",
     "header.logoutFailed": "ログアウトに失敗しました。",
@@ -83,6 +84,15 @@ const ja = {
     "login.password": "パスワード",
     "login.invalidCredentials": "メールアドレスまたはパスワードが正しくありません。",
     "login.loggingIn": "ログイン中...",
+    "login.title": "ログイン",
+    "login.studentHeading": "生徒の方",
+    "login.studentHint":
+        "Googleアカウントでログインすると、AIに質問できる回数が増えます。学校のGoogleアカウントで「アクセスがブロックされました」と表示される場合は、個人のGoogleアカウントをお使いください。",
+    "login.withGoogle": "Googleでログイン",
+    "login.adminHeading": "管理者の方",
+    "login.googleFailed": "Googleログインに失敗しました。もう一度お試しください。",
+    "login.accountExists":
+        "このメールアドレスはパスワードで登録されています。管理者ログインをお使いください。",
 
     // admin (admin/questions/page.tsx only)
     "admin.status.unreviewed": "未レビュー",
@@ -168,6 +178,8 @@ const ja = {
     "users.fetchFailed": "ユーザー一覧を取得できませんでした。",
     "users.empty": "登録されているユーザーがいません。",
     "users.registeredOn": "登録日",
+    "users.providerGoogle": "Google",
+    "users.providerPassword": "パスワード",
     "users.confirmDelete": "ユーザーを削除しますか？",
 
     // admin question forms
@@ -267,6 +279,7 @@ const en: Record<keyof typeof ja, string> = {
     "header.questionManagement": "Manage Questions",
     "header.userManagement": "Manage Users",
     "header.logout": "Logout",
+    "header.login": "Login",
     "header.adminLogin": "Admin Login",
     "header.logoutSuccess": "Logged out.",
     "header.logoutFailed": "Failed to log out.",
@@ -318,6 +331,15 @@ const en: Record<keyof typeof ja, string> = {
     "login.password": "Password",
     "login.invalidCredentials": "Invalid email or password.",
     "login.loggingIn": "Logging in...",
+    "login.title": "Login",
+    "login.studentHeading": "Students",
+    "login.studentHint":
+        "Signing in with Google raises your AI question allowance. If your school Google account shows \"Access blocked\", use a personal Google account instead.",
+    "login.withGoogle": "Sign in with Google",
+    "login.adminHeading": "Administrators",
+    "login.googleFailed": "Google sign-in failed. Please try again.",
+    "login.accountExists":
+        "This email is registered with a password. Please use the admin login.",
 
     // admin (admin/questions/page.tsx only)
     "admin.status.unreviewed": "Unreviewed",
@@ -404,6 +426,8 @@ const en: Record<keyof typeof ja, string> = {
     "users.fetchFailed": "Failed to load users.",
     "users.empty": "No users found.",
     "users.registeredOn": "Registered",
+    "users.providerGoogle": "Google",
+    "users.providerPassword": "Password",
     "users.confirmDelete": "Delete this user?",
 
     // admin question forms

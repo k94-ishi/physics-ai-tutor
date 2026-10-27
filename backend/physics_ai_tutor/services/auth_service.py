@@ -22,6 +22,11 @@ def authenticate_user(
         logger.warning("Login failed: reason=user_not_found")
         return None
 
+    # Google accounts have no password and cannot use this flow.
+    if user.hashed_password is None:
+        logger.warning("Login failed: user_id=%s reason=no_password", user.id)
+        return None
+
     if not verify_password(
         password,
         user.hashed_password,

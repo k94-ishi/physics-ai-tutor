@@ -254,19 +254,42 @@ Rows are never updated. Query them with `GET /api/v1/questions/{id}/reviews`
 
 ### `users`
 
-Admin and regular user accounts for the management UI.
+Admin accounts (password) and student accounts (Google Sign-In).
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
 | `id` | `integer` | no | serial | Primary key |
 | `email` | `varchar` | no | | Unique, indexed (`ix_users_email`). |
-| `hashed_password` | `varchar` | no | | Argon2 hash via `pwdlib`. |
+| `hashed_password` | `varchar` | yes | | Argon2 hash via `pwdlib`; `NULL` for Google accounts. |
+| `auth_provider` | `varchar` | no | `'password'` | `password` or `google`. |
+| `google_sub` | `varchar` | yes | | Google's stable subject id; unique (`ix_users_google_sub`), `NULL` for password accounts. |
 | `role` | `varchar` | no | `'user'` (ORM default) | `admin` or `user`. Default is applied by SQLAlchemy, not the database. |
 | `created_at` | `timestamp` | no | `now()` | Note: timezone-naive, unlike other tables. |
 
-There is no public sign-up. Create the first admin with the CLI (see
-[Creating an admin user](#creating-an-admin-user)); further users can be
-created by an admin through `POST /api/v1/users`.
+Two check constraints tie the provider to its credential:
+`users_password_provider` (`auth_provider = 'password'` iff
+`hashed_password IS NOT NULL`) and `users_google_provider`
+(`auth_provider = 'google'` iff `google_sub IS NOT NULL`).
+
+Students self-register through Google Sign-In and always get role `user`.
+Create the first admin with the CLI (see
+[Creating an admin user](#creating-an-admin-user)); further password
+accounts can be created by an admin through `POST /api/v1/users`.
+
+### `rate_limit_hits`
+
+One row per counted request for the sliding-window rate limiter (see
+[docs/security.md](security.md#abuse-and-cost-control)).
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | `integer` | no | serial | Primary key |
+| `action` | `varchar` | no | | `ai_ask` or `login`. |
+| `bucket_key` | `varchar` | no | | `ip:<address>` for anonymous callers, `user:<id>` for signed-in callers. |
+| `created_at` | `timestamp` | no | `now()` | Compared against the database clock. |
+
+Rows older than one day are pruned opportunistically on about 1% of
+record calls, so the table stays small without a scheduled job.
 
 ---
 
@@ -285,6 +308,11 @@ created by an admin through `POST /api/v1/users`.
 | `question_reviews_pkey` | `question_reviews` | PK (`id`) |
 | `users_pkey` | `users` | PK (`id`) |
 | `ix_users_email` | `users` | UNIQUE btree (`email`) |
+| `ix_users_google_sub` | `users` | UNIQUE btree (`google_sub`) |
+| `users_password_provider` | `users` | CHECK provider/password pairing |
+| `users_google_provider` | `users` | CHECK provider/google_sub pairing |
+| `rate_limit_hits_pkey` | `rate_limit_hits` | PK (`id`) |
+| `ix_rate_limit_hits_window` | `rate_limit_hits` | btree (`action`, `bucket_key`, `created_at`) |
 
 Foreign keys:
 
@@ -348,7 +376,9 @@ Revisions in order from the first to the current head:
 | `2c62a31a9031` | 2026-08-14 | Add `language` to `questions` |
 | `7f3b1c9d4e21` | 2026-08-16 | Add `retrieved_question_ids` to `questions` |
 | `a1d2e3f4b5c6` | 2026-10-24 | Make `question_reviews.reviewer_id` nullable with `ON DELETE SET NULL` |
-| `b2c3d4e5f6a7` | 2026-10-25 | Bilingual rows: `question`/`answer` become `question_ja`/`answer_ja` (`text`), add `*_en` and provenance columns, `original_language`, `question_embeddings.language`, `concepts.name_ja`/`name_en`, `question_reviews.language` (**head**). Downgrade deletes English-only rows. |
+| `b2c3d4e5f6a7` | 2026-10-25 | Bilingual rows: `question`/`answer` become `question_ja`/`answer_ja` (`text`), add `*_en` and provenance columns, `original_language`, `question_embeddings.language`, `concepts.name_ja`/`name_en`, `question_reviews.language`. Downgrade deletes English-only rows. |
+| `c8d9e0f1a2b3` | 2026-10-27 | Create `rate_limit_hits` for the Postgres-backed rate limiter |
+| `d9e0f1a2b3c4` | 2026-10-27 | Google Sign-In: `users.hashed_password` nullable, add `auth_provider` and unique `google_sub`, provider check constraints (**head**). Downgrade deletes Google accounts. |
 
 The chain is linear with a single head. Verify with:
 

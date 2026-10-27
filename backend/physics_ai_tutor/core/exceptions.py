@@ -20,3 +20,11 @@ class TranslationError(Exception):
 
 class RateLimitExceeded(Exception):
     """Raised when a caller has exhausted a sliding-window rate limit."""
+
+
+class GoogleAuthError(Exception):
+    """Raised when the Google OAuth code exchange or ID token is invalid."""
+
+
+class GoogleAccountConflictError(Exception):
+    """Raised when a Google sign-in matches an e-mail owned by a password account."""

@@ -267,6 +267,8 @@ Backend (`backend/.env`):
 | `SAME_SITE` | no | `lax`, `strict`, or `none` |
 | `EMBEDDING_MODEL`, `DEEPSEEK_CHAT_MODEL`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MAX_TOKENS` | no | Model overrides, see `core/config.py` |
 | `TRUST_FORWARDED_FOR` | no | Use `X-Forwarded-For` for rate limiting (default `true`) |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | no | Enable Google Sign-In for students; all three must be set (see below) |
+| `FRONTEND_URL` | no | Where the Google callback redirects the browser (default `http://localhost:3000`) |
 
 Frontend (`frontend/.env.local`):
 
@@ -274,6 +276,26 @@ Frontend (`frontend/.env.local`):
 | --- | --- |
 | `NEXT_PUBLIC_API_URL` | Backend URL used by the browser, e.g. `http://localhost:8000` |
 | `INTERNAL_API_URL` | Backend URL used by server-side rendering inside Docker, e.g. `http://backend:8000` |
+
+### Google Sign-In setup
+
+Students sign in with Google; admins keep email + password. The Google
+button only appears when the backend reports it as configured
+(`GET /api/v1/auth/providers`).
+
+1. In the Google Cloud console create a project, configure the OAuth
+   consent screen (external, scopes `openid` and `email` only, privacy
+   policy URL required for publishing), and create an OAuth client of type
+   "Web application".
+2. Add the backend callback as an authorized redirect URI, e.g.
+   `http://localhost:8000/api/v1/auth/google/callback` locally and the
+   Render URL in production. It must match `GOOGLE_REDIRECT_URI` exactly.
+3. Put the client ID and secret in `backend/.env` together with
+   `GOOGLE_REDIRECT_URI` and `FRONTEND_URL`.
+
+Students on under-18 Google Workspace for Education accounts may see
+"Access blocked" until their school's admin allows the app; the login page
+tells them to use a personal Google account instead.
 
 ## Pull Request Checks
 

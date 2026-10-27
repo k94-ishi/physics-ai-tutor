@@ -9,10 +9,10 @@ practices contributors are expected to follow. It complements
 
 ## Threat model in brief
 
-- Students use the site anonymously. They can read approved content, run
-  semantic search, and ask the AI. They must never see unreviewed or
-  rejected content, and they must not be able to make the project pay for
-  unbounded LLM usage.
+- Students use the site anonymously or sign in with Google for a larger
+  AI allowance. They can read approved content, run semantic search, and
+  ask the AI. They must never see unreviewed or rejected content, and they
+  must not be able to make the project pay for unbounded LLM usage.
 - Admins (teachers) log in to manage content and users. Their sessions must
   be protected against theft and cross-site abuse.
 - The backend holds third-party API keys and the database credentials.
@@ -22,8 +22,19 @@ practices contributors are expected to follow. It complements
 
 ## Authentication and sessions
 
-- Login is email + password. Passwords are hashed with Argon2id via
-  `pwdlib`; plaintext is never stored or logged.
+- Admins log in with email + password. Passwords are hashed with Argon2id
+  via `pwdlib`; plaintext is never stored or logged.
+- Students log in with Google (OAuth 2.0 authorization code flow, scopes
+  `openid email` only). The backend redirects to Google with a random
+  `state` stored in a short-lived HttpOnly cookie, verifies it on the
+  callback, exchanges the code server-side with the client secret, and
+  checks the ID token's issuer, audience, expiry, and `email_verified`
+  before trusting it. The token comes straight from Google's token
+  endpoint over TLS, so its signature is not re-verified.
+- Password accounts and Google accounts are strictly separate. A Google
+  sign-in whose e-mail belongs to a password account is rejected rather
+  than linked, and Google accounts cannot use the password endpoints.
+  Linking by e-mail match alone is a known account-takeover path.
 - A successful login sets a JWT in an **HttpOnly** cookie. JavaScript cannot
   read it, which removes the token from XSS reach.
 - Cookie flags come from settings: `COOKIE_SECURE=true` in production
@@ -38,9 +49,10 @@ practices contributors are expected to follow. It complements
 - Tokens carry `iss`, `iat`, `exp`, `jti`, `sub`, and `role`. Signature
   algorithm is fixed to `JWT_ALGORITHM` (HS256); the verifier does not
   accept `alg` from the token.
-- There is no self sign-up. The first admin is created with the CLI; further
-  accounts are created by admins through the API. An admin cannot delete
-  their own account, which prevents locking everyone out by accident.
+- Google sign-in is the only self sign-up and always yields role `user`.
+  The first admin is created with the CLI; further password accounts are
+  created by admins through the API. An admin cannot delete their own
+  account, which prevents locking everyone out by accident.
 
 Secrets:
 

@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from alembic import command
 from physics_ai_tutor.api.v1 import ai as ai_router
-from physics_ai_tutor.core.rate_limit import ai_ask_rate_limiter, login_rate_limiter
 from physics_ai_tutor.database.base import Base
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.main import app
@@ -169,18 +168,8 @@ def _background_translation_uses_test_db(monkeypatch):
     )
 
 
-@pytest.fixture(autouse=True)
-def _reset_ai_ask_rate_limiter():
-    ai_ask_rate_limiter.reset()
-    yield
-    ai_ask_rate_limiter.reset()
-
-
-@pytest.fixture(autouse=True)
-def _reset_login_rate_limiter():
-    login_rate_limiter.reset()
-    yield
-    login_rate_limiter.reset()
+# Rate-limit counters live in the rate_limit_hits table, which is
+# truncated by the `db` fixture like every other table.
 
 
 @pytest.fixture

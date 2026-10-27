@@ -154,8 +154,9 @@ Layout of `backend/tests/`:
 
 | File | Covers |
 | --- | --- |
-| `conftest.py` | Database lifecycle, `client` / `admin_client` / `user_client` fixtures, mocks for embeddings and concept extraction, rate limiter reset |
+| `conftest.py` | Database lifecycle, `client` / `admin_client` / `user_client` fixtures, mocks for embeddings and concept extraction |
 | `test_questions.py`, `test_users.py`, `test_auth.py`, `test_ai.py`, `test_health.py` | HTTP API, one file per router: status codes, auth rules, validation |
+| `test_rate_limit.py` | Postgres-backed rate limiter: window counting, pruning, check/record split |
 | `test_review_workflow.py` | End-to-end review flow: AI answer saved as unreviewed, hidden from students, approved / edited / rejected by an admin, history recorded |
 | `test_*_service.py` | Service layer: RAG context, embeddings, concepts, recommendations, question lifecycle |
 | `test_*_repository.py` | Repository queries against a real PostgreSQL + pgvector |

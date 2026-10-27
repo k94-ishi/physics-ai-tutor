@@ -112,21 +112,30 @@ acceptable.
 
 ## Abuse and cost control
 
-The AI endpoint calls a paid LLM, so it is rate limited per client IP:
+The AI endpoint calls a paid LLM, so it is rate limited. Anonymous callers
+are bucketed by client IP; signed-in callers by account, so a signed-in
+session is not throttled by other students behind the same school IP:
 
-| Caller | Limits |
-| --- | --- |
-| Anonymous or `user` | 3 per minute, 10 per hour, 30 per day |
-| `admin` | 3000 per day |
+| Caller | Bucket | Limits |
+| --- | --- | --- |
+| Anonymous | IP | 3 per hour, 10 per day |
+| `user` | account | 10 per hour, 30 per day |
+| `admin` | account | 3000 per day |
 
 Login attempts are limited to 5 per minute and 20 per hour per IP to slow
 credential stuffing.
 
 Notes:
 
-- The limiter is in-process memory. It resets on restart and is per
-  instance. If the backend is ever scaled horizontally, move it to a shared
-  store such as Redis.
+- Counters are rows in the `rate_limit_hits` table, so they survive
+  restarts and are shared across instances. Expired rows are pruned
+  opportunistically on a small fraction of requests.
+- Only requests that trigger a generation consume quota: the dependency
+  rejects callers already over the limit, and the hit is recorded on a
+  cache miss just before the LLM call. A cache hit is free. Two concurrent
+  requests can both pass the check before either records, so a caller may
+  occasionally get one extra generation; at these limits that is accepted
+  rather than locking.
 - `TRUST_FORWARDED_FOR=true` reads the client IP from `X-Forwarded-For`.
   Only enable it behind a proxy you control (Render sets this header). If
   the backend is ever exposed directly, set it to `false`, otherwise clients

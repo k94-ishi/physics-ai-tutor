@@ -16,3 +16,7 @@ class DuplicateQuestionError(Exception):
 
 class TranslationError(Exception):
     """Raised when translating a question/answer pair fails."""
+
+
+class RateLimitExceeded(Exception):
+    """Raised when a caller has exhausted a sliding-window rate limit."""

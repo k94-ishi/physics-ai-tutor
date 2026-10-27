@@ -56,7 +56,7 @@ def ask_ai(
         )
 
     # Only a cache miss costs quota; it is about to trigger a generation.
-    rate_limit.record()
+    rate_limit.record(db)
 
     if request.mode == "RAG":
         answer, retrieved_ids = rag_service.generate_rag_answer(

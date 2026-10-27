@@ -115,16 +115,19 @@ The flow, in order:
 3. The answer is saved as `UNREVIEWED` in `language`, and the other language
    is machine translated in a background task after the response is sent.
 
-Rate limits per client IP:
+Rate limits (anonymous callers are bucketed by IP, signed-in callers by
+account):
 
-| Caller | Limits |
-| --- | --- |
-| Anonymous or `user` | 3 per minute, 10 per hour, 30 per day |
-| `admin` | 3000 per day |
+| Caller | Bucket | Limits |
+| --- | --- | --- |
+| Anonymous | IP | 3 per hour, 10 per day |
+| `user` | account | 10 per hour, 30 per day |
+| `admin` | account | 3000 per day |
 
-The limiter is in-process memory, so limits reset on backend restart and are
-not shared across instances. `TRUST_FORWARDED_FOR` controls whether the
-`X-Forwarded-For` header is used to identify the client.
+Counters are stored in the `rate_limit_hits` table, so they survive backend
+restarts. Cached answers do not consume quota; only requests that trigger a
+generation are counted. `TRUST_FORWARDED_FOR` controls whether the
+`X-Forwarded-For` header is used to identify anonymous clients.
 
 ---
 

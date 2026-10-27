@@ -262,14 +262,54 @@ def test_ask_ai_cache_hit_does_not_consume_quota(client, monkeypatch):
     assert limited.status_code == 429
 
 
-def test_ask_ai_admin_bypasses_minute_limit(client, admin_client, monkeypatch):
+def _exhaust_anonymous_quota(client):
+    # Distinct questions so each request is a generation, not a cache hit.
+    for index in range(3):
+        response = client.post(ASK_PATH, json={"question": f"匿名の質問その{index}"})
+        assert response.status_code == 200
+
+    limited = client.post(ASK_PATH, json={"question": "匿名の質問その3"})
+    assert limited.status_code == 429
+
+
+def test_ask_ai_admin_not_limited_by_anonymous_bucket(
+    client, admin_client, monkeypatch
+):
     monkeypatch.setattr(
         deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
     )
 
-    for _ in range(3):
-        client.post(ASK_PATH, json={"question": "テスト質問です"})
+    _exhaust_anonymous_quota(client)
 
-    admin_response = admin_client.post(ASK_PATH, json={"question": "テスト質問です"})
+    admin_response = admin_client.post(ASK_PATH, json={"question": "管理者の質問です"})
 
     assert admin_response.status_code == 200
+
+
+def test_ask_ai_signed_in_user_not_limited_by_anonymous_bucket(
+    client, user_client, monkeypatch
+):
+    monkeypatch.setattr(
+        deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
+    )
+
+    _exhaust_anonymous_quota(client)
+
+    # The signed-in user is counted per account, not per IP.
+    user_response = user_client.post(ASK_PATH, json={"question": "会員の質問です"})
+
+    assert user_response.status_code == 200
+
+
+def test_ask_ai_signed_in_user_limited_to_ten_per_hour(user_client, monkeypatch):
+    monkeypatch.setattr(
+        deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
+    )
+
+    for index in range(10):
+        payload = {"question": f"会員の質問その{index}"}
+        assert user_client.post(ASK_PATH, json=payload).status_code == 200
+
+    limited = user_client.post(ASK_PATH, json={"question": "会員の質問その10"})
+
+    assert limited.status_code == 429

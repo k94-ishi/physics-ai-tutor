@@ -203,11 +203,12 @@ def test_ask_ai_rate_limit_exceeded_returns_429(client, monkeypatch):
         deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
     )
 
-    for _ in range(3):
-        ok_response = client.post(ASK_PATH, json={"question": "テスト質問です"})
+    # Distinct questions so every request is a cache miss that costs quota.
+    for index in range(3):
+        ok_response = client.post(ASK_PATH, json={"question": f"テスト質問その{index}"})
         assert ok_response.status_code == 200
 
-    limited_response = client.post(ASK_PATH, json={"question": "テスト質問です"})
+    limited_response = client.post(ASK_PATH, json={"question": "テスト質問その3"})
 
     assert limited_response.status_code == 429
 
@@ -234,6 +235,31 @@ def test_ask_ai_rag_mode_passes_retrieved_question_ids_to_service(client, monkey
 
     assert response.status_code == 200
     assert captured["retrieved_question_ids"] == [3, 7]
+
+
+def test_ask_ai_cache_hit_does_not_consume_quota(client, monkeypatch):
+    monkeypatch.setattr(
+        deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
+    )
+
+    first = client.post(ASK_PATH, json={"question": "キャッシュされる質問"})
+    assert first.status_code == 200
+    assert first.json()["cached"] is False
+
+    # Identical questions are served from cache and stay free.
+    for _ in range(5):
+        hit = client.post(ASK_PATH, json={"question": "キャッシュされる質問"})
+        assert hit.status_code == 200
+        assert hit.json()["cached"] is True
+
+    # The five cache hits left the remaining generation quota untouched.
+    second = client.post(ASK_PATH, json={"question": "新しい質問その2"})
+    third = client.post(ASK_PATH, json={"question": "新しい質問その3"})
+    limited = client.post(ASK_PATH, json={"question": "新しい質問その4"})
+
+    assert second.status_code == 200
+    assert third.status_code == 200
+    assert limited.status_code == 429
 
 
 def test_ask_ai_admin_bypasses_minute_limit(client, admin_client, monkeypatch):

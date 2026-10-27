@@ -22,8 +22,9 @@ class SlidingWindowRateLimiter:
     def check(self, key: str, limits: list[tuple[int, int]]) -> None:
         """limits: [(max_requests, window_seconds), ...].
 
-        Raises RateLimitExceeded if any window's limit would be exceeded by
-        this request; otherwise records the hit in all windows.
+        Raises RateLimitExceeded if any window's limit is already reached.
+        Records nothing, so callers can reject early but only consume quota
+        via record() once the request actually costs something.
         """
         now = time.monotonic()
 
@@ -40,8 +41,15 @@ class SlidingWindowRateLimiter:
                 if len(timestamps) >= max_requests:
                     raise RateLimitExceeded(key)
 
+    def record(self, key: str, limits: list[tuple[int, int]]) -> None:
+        """Count one request against every window of the given limits."""
+        now = time.monotonic()
+
+        with self._lock:
+            windows = self._hits[key]
+
             for _, window_seconds in limits:
-                windows[window_seconds].append(now)
+                windows.setdefault(window_seconds, deque()).append(now)
 
     def reset(self) -> None:
         with self._lock:

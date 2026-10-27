@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import jwt
@@ -173,29 +174,55 @@ def get_client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+@dataclass
+class AiAskRateLimit:
+    """Deferred rate-limit hit for one ask request.
+
+    The dependency only checks the limit; the route records the hit via
+    this handle when the request actually triggers a generation, so cache
+    hits stay free.
+    """
+
+    key: str
+    limits: list[tuple[int, int]]
+
+    def record(self) -> None:
+        ai_ask_rate_limiter.record(self.key, self.limits)
+
+
 def enforce_ai_ask_rate_limit(
     request: Request,
     user: JWTPayload | None = Depends(get_current_user_optional),
-) -> None:
+) -> AiAskRateLimit:
     if user is not None and user.role == UserRole.ADMIN:
         limits = [(3000, 86400)]
     else:
         limits = [(3, 60), (10, 3600), (30, 86400)]
 
+    key = get_client_ip(request)
+
     try:
-        ai_ask_rate_limiter.check(get_client_ip(request), limits)
+        ai_ask_rate_limiter.check(key, limits)
     except RateLimitExceeded:
         raise HTTPException(
             status_code=429,
             detail="Too many requests. Please try again later.",
         ) from None
 
+    return AiAskRateLimit(key=key, limits=limits)
+
 
 def enforce_login_rate_limit(request: Request) -> None:
+    key = get_client_ip(request)
+    limits = [(5, 60), (20, 3600)]
+
     try:
-        login_rate_limiter.check(get_client_ip(request), [(5, 60), (20, 3600)])
+        login_rate_limiter.check(key, limits)
     except RateLimitExceeded:
         raise HTTPException(
             status_code=429,
             detail="Too many login attempts. Please try again later.",
         ) from None
+
+    # Every login attempt counts, successful or not.
+    login_rate_limiter.record(key, limits)

@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.orm import Session
 
-from physics_ai_tutor.api.dependencies import enforce_ai_ask_rate_limit
+from physics_ai_tutor.api.dependencies import AiAskRateLimit, enforce_ai_ask_rate_limit
 from physics_ai_tutor.core import prompts
 from physics_ai_tutor.database.database import SessionLocal
 from physics_ai_tutor.database.dependency import get_db
@@ -29,15 +29,12 @@ def translate_in_background(question_id: int) -> None:
         db.close()
 
 
-@router.post(
-    "/ask",
-    response_model=AskAiResponse,
-    dependencies=[Depends(enforce_ai_ask_rate_limit)],
-)
+@router.post("/ask", response_model=AskAiResponse)
 def ask_ai(
     request: AskAiRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
+    rate_limit: AiAskRateLimit = Depends(enforce_ai_ask_rate_limit),
 ):
     # Cache tier 0: an identical question was already answered (any status
     # except rejected), so reuse it instead of paying for generation again.
@@ -57,6 +54,9 @@ def ask_ai(
             question_id=cached.id,
             status=QuestionStatus(cached.status),
         )
+
+    # Only a cache miss costs quota; it is about to trigger a generation.
+    rate_limit.record()
 
     if request.mode == "RAG":
         answer, retrieved_ids = rag_service.generate_rag_answer(

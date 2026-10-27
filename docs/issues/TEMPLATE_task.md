@@ -1,11 +1,5 @@
----
-name: Task
-about: A feature, improvement, or operational task
-title: ""
-labels: []
-assignees: ""
----
-
+<!-- Copy this file, fill it in, then: git bug bug new -t "<title>" -F <copy>.md -->
+<!-- Labels are added afterwards: git bug bug label new <id> P1 M2 feature backend -->
 <!--
 Keep every section; write "None" rather than deleting one.
 Priority: P0 = blocks deployment, P1 = next, P2 = planned, P3 = later.

@@ -1,9 +1,13 @@
-# Roadmap
+---
+title: "Roadmap: from Google Sign-In to AI-assisted review"
+labels: [epic, roadmap]
+milestone: M0 Deploy Google Sign-In
+priority: P0
+---
 
-Last revised 2026-10-27. Issue drafts live in [`docs/issues/`](issues/) and
-follow [`.github/ISSUE_TEMPLATE/task.md`](../.github/ISSUE_TEMPLATE/task.md);
-`scripts/create_issues.py` pushes them to GitHub. Numbers below (`#NN`) are
-the draft file numbers; the script rewrites them to real issue numbers.
+Last revised 2026-10-28. Issues are tracked locally with git-bug; this epic
+links every issue and records the priority order and the findings behind it.
+Update this issue (edit the first comment) when the order changes.
 
 ---
 
@@ -34,17 +38,17 @@ audited policies.
 
 | # | Issue | Priority |
 | --- | --- | --- |
-| 01 | Privacy policy page `/privacy` | P0 |
-| 02 | Google Cloud OAuth client and consent screen | P0 |
-| 03 | Production rollout: migrations, env vars, cross-domain cookie check | P0 |
-| 04 | Student account self-deletion | P1 |
+| #01 | Privacy policy page `/privacy` | P0 |
+| #02 | Google Cloud OAuth client and consent screen | P0 |
+| #03 | Production rollout: migrations, env vars, cross-domain cookie check | P0 |
+| #04 | Student account self-deletion | P1 |
 
 ### M1 — Student value
 
 | # | Issue | Priority |
 | --- | --- | --- |
-| 05 | Student question history tied to the review loop | P1 |
-| 06 | Admin usage dashboard from `rate_limit_hits` | P2 |
+| #05 | Student question history tied to the review loop | P1 |
+| #06 | Admin usage dashboard from `rate_limit_hits` | P2 |
 
 ### M2 — Review data foundation
 
@@ -53,30 +57,30 @@ a week of reviews that cannot be used later.
 
 | # | Issue | Priority |
 | --- | --- | --- |
-| 07 | Bug: "Save and approve" loses the correction diff | P1 |
-| 08 | Structured review reasons on reject and edit | P1 |
-| 09 | Generation metadata on AI questions (model, prompt version, tokens) | P1 |
-| 10 | Answer prompt v2: scope guardrail, uncertainty, curriculum, versioning | P1 |
-| 11 | Review dataset export (JSONL) | P2 |
-| 12 | Schema for AI reviews (`ai_reviews`, `reviewer_kind`) | P2 |
+| #07 | Bug: "Save and approve" loses the correction diff | P1 |
+| #08 | Structured review reasons on reject and edit | P1 |
+| #09 | Generation metadata on AI questions (model, prompt version, tokens) | P1 |
+| #10 | Answer prompt v2: scope guardrail, uncertainty, curriculum, versioning | P1 |
+| #11 | Review dataset export (JSONL) | P2 |
+| #12 | Schema for AI reviews (`ai_reviews`, `reviewer_kind`) | P2 |
 
 ### M3 — AI-assisted review (advisory only)
 
 | # | Issue | Priority |
 | --- | --- | --- |
-| 13 | AI pre-review: rubric prompt and background job | P2 |
-| 14 | Show the AI suggestion in the admin queue; sort and prefill | P2 |
-| 15 | Agreement metrics: AI verdict vs human verdict, calibration | P2 |
-| 16 | Few-shot grounding from similar past human reviews | P3 |
+| #13 | AI pre-review: rubric prompt and background job | P2 |
+| #14 | Show the AI suggestion in the admin queue; sort and prefill | P2 |
+| #15 | Agreement metrics: AI verdict vs human verdict, calibration | P2 |
+| #16 | Few-shot grounding from similar past human reviews | P3 |
 
 ### M4 — Partial automation and regression safety
 
 | # | Issue | Priority |
 | --- | --- | --- |
-| 17 | Golden evaluation set and offline prompt regression check | P2 |
-| 18 | Policy: auto-reject off-topic with audit sample and kill switch | P3 |
-| 19 | Policy: auto-approve grounded, high-confidence answers | P3 |
-| 20 | Versioned prompt rollouts with A/B comparison | P3 |
+| #17 | Golden evaluation set and offline prompt regression check | P2 |
+| #18 | Policy: auto-reject off-topic with audit sample and kill switch | P3 |
+| #19 | Policy: auto-approve grounded, high-confidence answers | P3 |
+| #20 | Versioned prompt rollouts with A/B comparison | P3 |
 
 ---
 

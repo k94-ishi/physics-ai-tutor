@@ -319,19 +319,59 @@ npm run build
 - [docs/database.md](database.md): schema, Alembic migrations, seed data
 - [docs/api.md](api.md): endpoint reference and access rules
 - [docs/security.md](security.md): security model and dependency policy
-- [docs/roadmap.md](roadmap.md): phases, priorities, and issue drafts
 
-## Filing Issues
+## Issues and Roadmap
 
-Issue drafts live in `docs/issues/` and follow `.github/ISSUE_TEMPLATE/task.md`.
-To push them to GitHub once:
+Issues live in the repository itself via [git-bug](https://github.com/git-bug/git-bug)
+(`brew install git-bug`). They are stored as git objects under `refs/bugs`,
+separate from the file history, and are **not** pushed unless you run
+`git bug push` explicitly. Work locally; do not push bug refs to the remote
+unless that is intended.
+
+The store sits in the repository's common `.git`, so **all worktrees share
+the same bugs and identities**. Never run `git bug wipe`: it deletes every
+bug and identity for every worktree. Use `git bug bug rm <id>` for a single
+mistaken bug.
+
+One-time setup on a new machine:
 
 ```bash
-brew install gh && gh auth login
-python3 scripts/create_issues.py          # dry run, prints what it would do
-python3 scripts/create_issues.py --apply  # creates labels, milestones, issues
+git bug user new --name "<name>" --email "<email>" --non-interactive
 ```
 
-The script skips issues whose title already exists and rewrites draft
-cross-references (`#07`) to the real issue numbers.
+Everyday use:
+
+```bash
+git bug termui                 # browse, comment, label, close
+git bug bug                    # list open issues
+git bug bug -l P0              # by priority label
+git bug bug -l M2              # by milestone label
+git bug bug -l epic            # the roadmap issue
+git bug bug show <id>          # one issue
+```
+
+Creating an issue: copy `docs/issues/TEMPLATE_task.md` (or
+`TEMPLATE_bug.md`), fill it in, then
+
+```bash
+git bug bug new -t "<title>" -F <your-copy>.md
+git bug bug label new <id> P1 M2 feature backend
+```
+
+Label conventions:
+
+| Label | Meaning |
+| --- | --- |
+| `P0` … `P3` | P0 blocks deployment, P1 next, P2 planned, P3 later |
+| `M0` … `M4` | Milestone: M0 Deploy Google Sign-In, M1 Student value, M2 Review data foundation, M3 AI-assisted review (advisory), M4 Partial automation and regression safety |
+| `epic` | A tracking issue that links others (the roadmap) |
+| topical | `backend`, `frontend`, `cli`, `prompt`, `review`, `ai-review`, `data-quality`, `observability`, `security`, `privacy`, `deploy`, `ops`, `testing`, `bug`, `feature` |
+
+Cross-references inside an issue body are git-bug short ids (`#a1b2c3d`).
+
+`docs/issues/NN-*.md` are the seed drafts (the roadmap is `00-roadmap.md`,
+imported as the `epic`). `scripts/import_issues.py [dir] [--apply]` imports
+them, skips titles that already exist, and rewrites `#NN` draft references
+to real ids. After the import, git-bug is the source of truth; the drafts
+are kept only so the tracker can be re-seeded in a fresh clone.
 - [AGENTS.md](../AGENTS.md): project rules for contributors and coding agents

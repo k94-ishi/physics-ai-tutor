@@ -1,11 +1,5 @@
----
-name: Bug report
-about: Something behaves differently from the docs or from what a user expects
-title: "Bug: "
-labels: [bug]
-assignees: ""
----
-
+<!-- Copy this file, fill it in, then: git bug bug new -t "Bug: <title>" -F <copy>.md -->
+<!-- Then: git bug bug label new <id> bug <P?> <M?> -->
 ## What happened
 
 ## What should have happened

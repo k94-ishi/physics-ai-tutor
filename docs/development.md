@@ -319,4 +319,19 @@ npm run build
 - [docs/database.md](database.md): schema, Alembic migrations, seed data
 - [docs/api.md](api.md): endpoint reference and access rules
 - [docs/security.md](security.md): security model and dependency policy
+- [docs/roadmap.md](roadmap.md): phases, priorities, and issue drafts
+
+## Filing Issues
+
+Issue drafts live in `docs/issues/` and follow `.github/ISSUE_TEMPLATE/task.md`.
+To push them to GitHub once:
+
+```bash
+brew install gh && gh auth login
+python3 scripts/create_issues.py          # dry run, prints what it would do
+python3 scripts/create_issues.py --apply  # creates labels, milestones, issues
+```
+
+The script skips issues whose title already exists and rewrites draft
+cross-references (`#07`) to the real issue numbers.
 - [AGENTS.md](../AGENTS.md): project rules for contributors and coding agents

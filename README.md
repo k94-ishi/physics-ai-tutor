@@ -290,12 +290,13 @@ Production environment:
 
 ---
 
-## Future Improvements
+## Roadmap
 
-- Expand English language support
-- Support more physics domains
-- Improve AI answer evaluation workflow
-- Add more educational content generation features
+See [docs/roadmap.md](docs/roadmap.md) for the phased plan: deploy Google
+Sign-In, student question history, a review-data foundation, an advisory AI
+reviewer measured against teachers' decisions, and finally narrow, audited
+automation of the review queue. Issue drafts are in
+[docs/issues/](docs/issues/).
 
 ---
 

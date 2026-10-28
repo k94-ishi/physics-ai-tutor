@@ -34,7 +34,9 @@ practices contributors are expected to follow. It complements
 - What is stored about a signed-in student, why, and how to request
   deletion is published at [`/privacy`](https://ai-tutor.pencil-net.com/privacy)
   (source: `frontend/src/app/privacy/page.tsx`); the Google consent screen
-  links to it. Keep that page in sync with schema changes.
+  links to it. Keep that page in sync with schema changes. It is the one
+  route `robots.txt` allows (`frontend/src/app/robots.ts`); the rest of the
+  site stays disallowed.
 - Password accounts and Google accounts are strictly separate. A Google
   sign-in whose e-mail belongs to a password account is rejected rather
   than linked, and Google accounts cannot use the password endpoints.

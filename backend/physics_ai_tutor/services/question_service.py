@@ -19,6 +19,7 @@ from physics_ai_tutor.repositories import (
 from physics_ai_tutor.schemas.concept import ConceptExtractionResult
 from physics_ai_tutor.schemas.language import Language, TextProvenance
 from physics_ai_tutor.schemas.question import (
+    GenerationMeta,
     QuestionCreate,
     QuestionListResponse,
     QuestionSource,
@@ -102,6 +103,18 @@ def prepare_for_response(
 # --- reads --------------------------------------------------------------------
 
 
+def attach_generation_meta(questions: list[Question]) -> None:
+    """Expose generation metadata to the response; call for admins only."""
+    for question in questions:
+        question.generation = GenerationMeta(
+            model=question.generation_model,
+            prompt_version=question.prompt_version,
+            mode=question.generation_mode,
+            prompt_tokens=question.prompt_tokens,
+            completion_tokens=question.completion_tokens,
+        )
+
+
 def fetch_questions(
     db: Session,
     page: int,
@@ -113,6 +126,7 @@ def fetch_questions(
     search_answer: bool = True,
     language: Language | str = Language.JA,
     only_with_language: bool = False,
+    include_generation: bool = False,
 ) -> QuestionListResponse:
     offset = (page - 1) * size
     language_filter = Language(language) if only_with_language else None
@@ -140,6 +154,11 @@ def fetch_questions(
     )
 
     prepare_for_response(db, questions, language)
+
+    # Generation metadata is admin-only; attach it while the ORM objects are
+    # still in hand (the response models are built from them next).
+    if include_generation:
+        attach_generation_meta(questions)
 
     logger.info(
         "Questions fetched: page=%d size=%d keyword_present=%s results=%d total=%d",
@@ -674,6 +693,7 @@ def save_ai_question(
     language: Language | str = Language.JA,
     source: str = QuestionSource.AI_GENERATED,
     retrieved_question_ids: list[int] | None = None,
+    generation: GenerationMeta | None = None,
 ) -> Question | None:
     """Best-effort save of an AI answer as a new UNREVIEWED question.
 
@@ -696,6 +716,14 @@ def save_ai_question(
             source=source,
             retrieved_question_ids=retrieved_question_ids,
         )
+
+        if generation is not None:
+            db_question.generation_model = generation.model
+            db_question.prompt_version = generation.prompt_version
+            db_question.generation_mode = generation.mode
+            db_question.prompt_tokens = generation.prompt_tokens
+            db_question.completion_tokens = generation.completion_tokens
+            db.flush()
 
         _embed_language(db, db_question, lang)
 

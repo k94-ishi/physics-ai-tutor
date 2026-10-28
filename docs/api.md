@@ -126,6 +126,10 @@ The flow, in order:
 4. For a signed-in caller, the ask is recorded in `question_asks` (on cache
    hits too) so `GET /users/me/questions` can show their history. Anonymous
    asks are not recorded.
+5. The saved row records how it was generated: model, answer prompt version,
+   mode (`DIRECT`/`RAG`), and token usage. Admin question responses include
+   this as a `generation` object; public responses always return
+   `generation: null`.
 
 Rate limits (anonymous callers are bucketed by IP, signed-in callers by
 account):

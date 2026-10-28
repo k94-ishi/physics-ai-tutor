@@ -129,6 +129,11 @@ with its text in each language.
 | `status` | `varchar(20)` | no | `'APPROVED'` | Review state of the physics content. Indexed. Applies to every language. |
 | `source` | `varchar(20)` | no | `'MANUAL'` | How the row was produced. |
 | `retrieved_question_ids` | `integer[]` | no | `'{}'` | IDs of approved questions used as RAG context. Language independent. |
+| `generation_model` | `varchar` | yes | | LLM that generated the answer; `NULL` for manual/imported rows. |
+| `prompt_version` | `varchar(20)` | yes | | `prompts.ANSWER_PROMPT_VERSION` at generation time. |
+| `generation_mode` | `varchar(10)` | yes | | `DIRECT` or `RAG`. |
+| `prompt_tokens` | `integer` | yes | | Usage reported by the API. |
+| `completion_tokens` | `integer` | yes | | Usage reported by the API. |
 | `created_at`, `updated_at` | `timestamptz` | no | `now()` | `updated_at` refreshed by the ORM. |
 
 Constraints: `questions_has_text` (at least one language present),
@@ -410,7 +415,8 @@ Revisions in order from the first to the current head:
 | `d9e0f1a2b3c4` | 2026-10-27 | Google Sign-In: `users.hashed_password` nullable, add `auth_provider` and unique `google_sub`, provider check constraints. Downgrade deletes Google accounts. |
 | `e0f1a2b3c4d5` | 2026-10-28 | Create `question_asks`: per-user ask history for signed-in callers |
 | `f1a2b3c4d5e6` | 2026-10-28 | Add `question_asks.cache_hit` for the usage dashboard |
-| `a2b3c4d5e6f7` | 2026-10-28 | Add `question_reviews.reason`: labelled reject/edit codes (**head**) |
+| `a2b3c4d5e6f7` | 2026-10-28 | Add `question_reviews.reason`: labelled reject/edit codes |
+| `b3c4d5e6f7a8` | 2026-10-28 | Add generation metadata to `questions` (model, prompt version, mode, token usage) (**head**) |
 
 The chain is linear with a single head. Verify with:
 

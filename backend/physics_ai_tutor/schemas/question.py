@@ -100,6 +100,16 @@ class QuestionRefSummary(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class GenerationMeta(BaseModel):
+    """How an AI answer was produced; admins only, NULL for manual rows."""
+
+    model: str | None = None
+    prompt_version: str | None = None
+    mode: str | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+
+
 class QuestionResponse(BaseModel):
     id: int
     # Text resolved to the requested language (falls back to the original).
@@ -114,6 +124,8 @@ class QuestionResponse(BaseModel):
     source: QuestionSource
     concepts: list[str] = Field(default_factory=list)
     retrieved_questions: list[QuestionRefSummary] = Field(default_factory=list)
+    # Populated only for admin callers; see attach_generation_meta.
+    generation: GenerationMeta | None = None
 
     model_config = {"from_attributes": True}
 

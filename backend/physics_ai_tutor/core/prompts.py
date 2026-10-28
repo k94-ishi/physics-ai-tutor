@@ -1,5 +1,10 @@
 from physics_ai_tutor.schemas.language import Language
 
+# Version of the answer-generation prompts below (SYSTEM_PROMPTS and the RAG
+# suffix). Bump it whenever any of those texts change - tests/test_prompts.py
+# pins a hash of the texts to this constant and fails if they drift apart.
+ANSWER_PROMPT_VERSION = "v1"
+
 _SYSTEM_PROMPT_JA = (
     "あなたは日本の高校物理を教える先生です。"
     "生徒からの質問に、丁寧、簡潔かつ正確な日本語で答えること"

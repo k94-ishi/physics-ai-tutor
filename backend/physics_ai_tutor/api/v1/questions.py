@@ -100,6 +100,7 @@ def get_questions(
         search_answer=search_answer,
         language=lang,
         only_with_language=not _is_admin(current_user),
+        include_generation=_is_admin(current_user),
     )
 
 
@@ -153,6 +154,9 @@ def get_question(
             status_code=404,
             detail="Question not found",
         )
+
+    if _is_admin(current_user):
+        question_service.attach_generation_meta([question])
 
     return question
 

@@ -28,6 +28,7 @@ export type Question = {
     source: QuestionSource;
     concepts: string[];
     retrieved_questions: RetrievedQuestionRef[];
+    generation?: GenerationMeta | null;
 };
 
 export type QuestionListResponse = {
@@ -151,6 +152,15 @@ export type ConceptExtractionResult = {
 
 export type ConceptExtractionBatchResponse = {
     results: ConceptExtractionResult[];
+};
+
+// Present only in admin responses; null fields for manual rows.
+export type GenerationMeta = {
+    model: string | null;
+    prompt_version: string | null;
+    mode: "DIRECT" | "RAG" | null;
+    prompt_tokens: number | null;
+    completion_tokens: number | null;
 };
 
 export type MyQuestionEntry = {

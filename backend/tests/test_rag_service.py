@@ -8,6 +8,7 @@ from physics_ai_tutor.repositories import (
     question_repository,
 )
 from physics_ai_tutor.services import deepseek_service, embedding_service, rag_service
+from tests.conftest import fake_generation
 
 DIM = 1536
 
@@ -131,15 +132,16 @@ def test_generate_rag_answer_uses_rag_system_prompt_and_returns_ids(db, monkeypa
 
     calls = []
 
-    def fake_chat_completion(system_prompt, user_prompt):
+    def fake_generate_answer(system_prompt, user_prompt):
         calls.append((system_prompt, user_prompt))
-        return "生成された回答"
+        return fake_generation("生成された回答")(system_prompt, user_prompt)
 
-    monkeypatch.setattr(deepseek_service, "chat_completion", fake_chat_completion)
+    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generate_answer)
 
-    answer, ids = rag_service.generate_rag_answer(db, "力の説明をして")
+    result, ids = rag_service.generate_rag_answer(db, "力の説明をして")
 
-    assert answer == "生成された回答"
+    assert result.content == "生成された回答"
+    assert result.model == "mock-model"
     assert ids == [question.id]
     assert calls[0][0] == prompts.RAG_SYSTEM_PROMPT
     assert "力とは何ですか" in calls[0][1]
@@ -147,13 +149,11 @@ def test_generate_rag_answer_uses_rag_system_prompt_and_returns_ids(db, monkeypa
 
 def test_generate_rag_answer_without_context_still_answers(db, monkeypatch):
     _stub_query_embedding(monkeypatch, _vector(0))
-    monkeypatch.setattr(
-        deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
-    )
+    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
 
-    answer, ids = rag_service.generate_rag_answer(db, "誰も答えたことのない質問")
+    result, ids = rag_service.generate_rag_answer(db, "誰も答えたことのない質問")
 
-    assert answer == "回答"
+    assert result.content == "回答"
     assert ids == []
 
 
@@ -213,15 +213,13 @@ def test_generate_rag_answer_with_ids_skips_embedding_search(db, monkeypatch):
         raise AssertionError("create_embeddings should not be called")
 
     monkeypatch.setattr(embedding_service, "create_embeddings", _fail_create_embeddings)
-    monkeypatch.setattr(
-        deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
-    )
+    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
 
-    answer, ids = rag_service.generate_rag_answer(
+    result, ids = rag_service.generate_rag_answer(
         db, "力の説明をして", retrieved_question_ids=[question.id]
     )
 
-    assert answer == "回答"
+    assert result.content == "回答"
     assert ids == [question.id]
 
 
@@ -229,13 +227,11 @@ def test_generate_rag_answer_falls_back_to_search_when_no_approved_ids(db, monke
     question = _create_question(db, "力とは何ですか", "力は説明です")
     _embed_question(db, question, _vector(0))
     _stub_query_embedding(monkeypatch, _vector(0))
-    monkeypatch.setattr(
-        deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
-    )
+    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
 
-    answer, ids = rag_service.generate_rag_answer(
+    result, ids = rag_service.generate_rag_answer(
         db, "力の説明をして", retrieved_question_ids=None
     )
 
-    assert answer == "回答"
+    assert result.content == "回答"
     assert ids == [question.id]

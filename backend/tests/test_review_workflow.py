@@ -6,15 +6,14 @@ hidden from students, reviewed by an admin, then published or rejected.
 
 from physics_ai_tutor.models import QuestionEmbedding
 from physics_ai_tutor.services import deepseek_service
+from tests.conftest import fake_generation
 
 QUESTIONS = "/api/v1/questions"
 ASK = "/api/v1/ai/ask"
 
 
 def _ask(client, monkeypatch, question: str, answer: str = "AIの回答") -> None:
-    monkeypatch.setattr(
-        deepseek_service, "chat_completion", lambda system, user: answer
-    )
+    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation(answer))
     assert client.post(ASK, json={"question": question}).status_code == 200
 
 

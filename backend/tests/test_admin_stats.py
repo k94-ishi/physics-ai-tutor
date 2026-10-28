@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 from physics_ai_tutor.models import Question, QuestionAsk
 from physics_ai_tutor.services import deepseek_service
+from tests.conftest import fake_generation
 
 STATS_PATH = "/api/v1/admin/stats"
 ASK_PATH = "/api/v1/ai/ask"
@@ -10,8 +11,8 @@ ASK_PATH = "/api/v1/ai/ask"
 def _mock_answer(monkeypatch):
     monkeypatch.setattr(
         deepseek_service,
-        "chat_completion",
-        lambda system_prompt, user_prompt: "回答",
+        "generate_answer",
+        fake_generation("回答"),
     )
 
 

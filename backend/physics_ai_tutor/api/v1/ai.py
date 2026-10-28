@@ -12,7 +12,11 @@ from physics_ai_tutor.core import prompts
 from physics_ai_tutor.database.database import SessionLocal
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.schemas.ai import AskAiRequest, AskAiResponse
-from physics_ai_tutor.schemas.question import QuestionSource, QuestionStatus
+from physics_ai_tutor.schemas.question import (
+    GenerationMeta,
+    QuestionSource,
+    QuestionStatus,
+)
 from physics_ai_tutor.schemas.token import JWTPayload
 from physics_ai_tutor.services import (
     ask_history_service,
@@ -74,16 +78,20 @@ def ask_ai(
     rate_limit.record(db)
 
     if request.mode == "RAG":
-        answer, retrieved_ids = rag_service.generate_rag_answer(
+        result, retrieved_ids = rag_service.generate_rag_answer(
             db, request.question, request.retrieved_question_ids, request.language
         )
         source = QuestionSource.RAG_RESULT
+        generation_mode = "RAG"
     else:
-        answer = deepseek_service.chat_completion(
+        result = deepseek_service.generate_answer(
             prompts.SYSTEM_PROMPTS[request.language], request.question
         )
         retrieved_ids = []
         source = QuestionSource.AI_GENERATED
+        generation_mode = "DIRECT"
+
+    answer = result.content
 
     logger.info(
         "Ask AI request answered: question_length=%d mode=%s language=%s",
@@ -99,6 +107,13 @@ def ask_ai(
         language=request.language,
         source=source,
         retrieved_question_ids=retrieved_ids,
+        generation=GenerationMeta(
+            model=result.model,
+            prompt_version=prompts.ANSWER_PROMPT_VERSION,
+            mode=generation_mode,
+            prompt_tokens=result.prompt_tokens,
+            completion_tokens=result.completion_tokens,
+        ),
     )
 
     if saved is not None:

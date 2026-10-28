@@ -4,6 +4,7 @@ from physics_ai_tutor.core.exceptions import (
 )
 from physics_ai_tutor.models import Question
 from physics_ai_tutor.services import deepseek_service, embedding_service, rag_service
+from tests.conftest import fake_generation
 
 ASK_PATH = "/api/v1/ai/ask"
 
@@ -11,8 +12,8 @@ ASK_PATH = "/api/v1/ai/ask"
 def test_ask_ai_returns_answer(client, monkeypatch):
     monkeypatch.setattr(
         deepseek_service,
-        "chat_completion",
-        lambda system_prompt, user_prompt: "加速度は単位時間あたりの速度の変化量です。",
+        "generate_answer",
+        fake_generation("加速度は単位時間あたりの速度の変化量です。"),
     )
 
     response = client.post(ASK_PATH, json={"question": "加速度って何？"})
@@ -32,9 +33,7 @@ def test_ask_ai_empty_question_rejected(client):
 
 
 def test_ask_ai_does_not_require_authentication(client, monkeypatch):
-    monkeypatch.setattr(
-        deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
-    )
+    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
 
     response = client.post(ASK_PATH, json={"question": "テスト質問です"})
 
@@ -45,7 +44,7 @@ def test_ask_ai_failure_returns_503(client, monkeypatch):
     def _raise(system_prompt, user_prompt):
         raise DeepSeekGenerationError("boom")
 
-    monkeypatch.setattr(deepseek_service, "chat_completion", _raise)
+    monkeypatch.setattr(deepseek_service, "generate_answer", _raise)
 
     response = client.post(ASK_PATH, json={"question": "テスト質問です"})
 
@@ -58,8 +57,8 @@ def test_ask_ai_failure_returns_503(client, monkeypatch):
 def test_ask_ai_saves_question_as_unreviewed_ai_generated(client, monkeypatch, db):
     monkeypatch.setattr(
         deepseek_service,
-        "chat_completion",
-        lambda system_prompt, user_prompt: "回答内容",
+        "generate_answer",
+        fake_generation("回答内容"),
     )
 
     response = client.post(ASK_PATH, json={"question": "AI保存テスト質問"})
@@ -82,9 +81,7 @@ def test_ask_ai_save_failure_does_not_affect_response(client, monkeypatch, db):
     def _raise_embedding_error(texts):
         raise EmbeddingGenerationError("boom")
 
-    monkeypatch.setattr(
-        deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
-    )
+    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
     monkeypatch.setattr(embedding_service, "create_embeddings", _raise_embedding_error)
 
     response = client.post(ASK_PATH, json={"question": "保存失敗テスト"})
@@ -105,7 +102,7 @@ def test_ask_ai_rag_mode_calls_rag_service_and_saves_as_rag_result(
         rag_service,
         "generate_rag_answer",
         lambda db, question, retrieved_question_ids=None, language="ja": (
-            "RAG回答",
+            fake_generation("RAG回答")(None, None),
             [11, 22],
         ),
     )
@@ -129,9 +126,7 @@ def test_ask_ai_default_mode_does_not_call_rag_service(client, monkeypatch):
         raise AssertionError("generate_rag_answer should not be called")
 
     monkeypatch.setattr(rag_service, "generate_rag_answer", _fail)
-    monkeypatch.setattr(
-        deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
-    )
+    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
 
     response = client.post(ASK_PATH, json={"question": "通常モード質問"})
 
@@ -158,9 +153,7 @@ def test_ask_ai_question_too_long_rejected(client):
 
 
 def test_ask_ai_question_at_length_boundaries_accepted(client, monkeypatch):
-    monkeypatch.setattr(
-        deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
-    )
+    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
 
     short_response = client.post(ASK_PATH, json={"question": "12345"})
     long_response = client.post(ASK_PATH, json={"question": "あ" * 200})
@@ -199,9 +192,7 @@ def test_ask_ai_passes_max_tokens_to_deepseek(client, monkeypatch):
 
 
 def test_ask_ai_rate_limit_exceeded_returns_429(client, monkeypatch):
-    monkeypatch.setattr(
-        deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
-    )
+    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
 
     # Distinct questions so every request is a cache miss that costs quota.
     for index in range(3):
@@ -220,7 +211,7 @@ def test_ask_ai_rag_mode_passes_retrieved_question_ids_to_service(client, monkey
         db, question, retrieved_question_ids=None, language="ja"
     ):
         captured["retrieved_question_ids"] = retrieved_question_ids
-        return "RAG回答", retrieved_question_ids or []
+        return fake_generation("RAG回答")(None, None), retrieved_question_ids or []
 
     monkeypatch.setattr(rag_service, "generate_rag_answer", _fake_generate_rag_answer)
 
@@ -238,9 +229,7 @@ def test_ask_ai_rag_mode_passes_retrieved_question_ids_to_service(client, monkey
 
 
 def test_ask_ai_cache_hit_does_not_consume_quota(client, monkeypatch):
-    monkeypatch.setattr(
-        deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
-    )
+    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
 
     first = client.post(ASK_PATH, json={"question": "キャッシュされる質問"})
     assert first.status_code == 200
@@ -275,9 +264,7 @@ def _exhaust_anonymous_quota(client):
 def test_ask_ai_admin_not_limited_by_anonymous_bucket(
     client, admin_client, monkeypatch
 ):
-    monkeypatch.setattr(
-        deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
-    )
+    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
 
     _exhaust_anonymous_quota(client)
 
@@ -289,9 +276,7 @@ def test_ask_ai_admin_not_limited_by_anonymous_bucket(
 def test_ask_ai_signed_in_user_not_limited_by_anonymous_bucket(
     client, user_client, monkeypatch
 ):
-    monkeypatch.setattr(
-        deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
-    )
+    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
 
     _exhaust_anonymous_quota(client)
 
@@ -302,9 +287,7 @@ def test_ask_ai_signed_in_user_not_limited_by_anonymous_bucket(
 
 
 def test_ask_ai_signed_in_user_limited_to_ten_per_hour(user_client, monkeypatch):
-    monkeypatch.setattr(
-        deepseek_service, "chat_completion", lambda system_prompt, user_prompt: "回答"
-    )
+    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
 
     for index in range(10):
         payload = {"question": f"会員の質問その{index}"}
@@ -313,3 +296,78 @@ def test_ask_ai_signed_in_user_limited_to_ten_per_hour(user_client, monkeypatch)
     limited = user_client.post(ASK_PATH, json={"question": "会員の質問その10"})
 
     assert limited.status_code == 429
+
+
+def test_ask_ai_stores_generation_metadata(client, monkeypatch, db):
+    from physics_ai_tutor.core import prompts
+
+    monkeypatch.setattr(
+        deepseek_service, "generate_answer", fake_generation("メタデータ回答")
+    )
+
+    response = client.post(ASK_PATH, json={"question": "メタデータの質問です"})
+    assert response.status_code == 200
+
+    saved = db.query(Question).filter_by(id=response.json()["question_id"]).one()
+
+    assert saved.generation_model == "mock-model"
+    assert saved.prompt_version == prompts.ANSWER_PROMPT_VERSION
+    assert saved.generation_mode == "DIRECT"
+    assert saved.prompt_tokens == 11
+    assert saved.completion_tokens == 22
+
+
+def test_ask_ai_rag_mode_stores_rag_generation_mode(client, monkeypatch, db):
+    monkeypatch.setattr(
+        rag_service,
+        "generate_rag_answer",
+        lambda db, question, retrieved_question_ids=None, language="ja": (
+            fake_generation("RAG回答")(None, None),
+            [],
+        ),
+    )
+
+    response = client.post(
+        ASK_PATH, json={"question": "RAGメタデータの質問", "mode": "RAG"}
+    )
+
+    saved = db.query(Question).filter_by(id=response.json()["question_id"]).one()
+
+    assert saved.generation_mode == "RAG"
+    assert saved.generation_model == "mock-model"
+
+
+def test_generation_metadata_admin_only_in_responses(
+    client, admin_client, monkeypatch, db
+):
+    monkeypatch.setattr(
+        deepseek_service, "generate_answer", fake_generation("公開範囲の回答")
+    )
+
+    asked = client.post(ASK_PATH, json={"question": "公開範囲テスト質問"})
+    question_id = asked.json()["question_id"]
+    admin_client.post(
+        f"/api/v1/questions/{question_id}/review", json={"action": "APPROVE"}
+    )
+
+    public = client.get(f"/api/v1/questions/{question_id}").json()
+    admin = admin_client.get(f"/api/v1/questions/{question_id}").json()
+
+    assert public["generation"] is None
+    assert admin["generation"]["model"] == "mock-model"
+    assert admin["generation"]["mode"] == "DIRECT"
+
+
+def test_manual_question_has_no_generation_metadata(admin_client, db):
+    created = admin_client.post(
+        "/api/v1/questions",
+        json={"question": "手動登録の質問", "answer": "手動の回答"},
+    )
+    question_id = created.json()["id"]
+
+    saved = db.query(Question).filter_by(id=question_id).one()
+    assert saved.generation_model is None
+    assert saved.prompt_version is None
+
+    admin = admin_client.get(f"/api/v1/questions/{question_id}").json()
+    assert admin["generation"]["model"] is None

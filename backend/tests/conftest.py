@@ -215,3 +215,15 @@ def user_client(client, db):
     assert response.status_code == 200
 
     return user
+
+
+def fake_generation(answer: str):
+    """A stand-in for deepseek_service.generate_answer in ask-flow tests."""
+    from physics_ai_tutor.services.deepseek_service import GenerationResult
+
+    return lambda system_prompt, user_prompt: GenerationResult(
+        content=answer,
+        model="mock-model",
+        prompt_tokens=11,
+        completion_tokens=22,
+    )

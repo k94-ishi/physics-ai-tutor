@@ -36,6 +36,7 @@ const ja = {
     "header.userManagement": "ユーザー管理",
     "header.logout": "ログアウト",
     "header.login": "ログイン",
+    "header.myQuestions": "自分の質問",
     "header.account": "アカウント",
     "header.adminLogin": "管理者ログイン",
     "header.logoutSuccess": "ログアウトしました。",
@@ -247,7 +248,7 @@ const ja = {
     "privacy.collect.account":
         "アカウント情報(Googleログイン時): メールアドレス、Googleアカウントの識別子、権限(生徒/管理者)、登録日時。",
     "privacy.collect.questions":
-        "質問内容: AIに送信した質問文と生成された回答は、学習データベースの一部として保存されます。現在、質問文はアカウントと紐付けられていません。",
+        "質問内容: AIに送信した質問文と生成された回答は、学習データベースの一部として保存されます。ログインして質問した場合は、「自分の質問」ページを表示するために、どの質問をいつ尋ねたかがアカウントに紐付けて記録されます。",
     "privacy.collect.usage":
         "利用記録: 利用回数制限のため、リクエストの日時をIPアドレスまたはアカウント単位で記録します。この記録は約1日で自動削除されます。",
     "privacy.collect.cookies":
@@ -273,7 +274,7 @@ const ja = {
         "Vercel・Render・Supabase: サービスの運用とデータの保管のため。",
     "privacy.retention.heading": "保存期間",
     "privacy.retention.body":
-        "アカウント情報は、削除の申し出があるまで保存します。利用記録は約1日で削除されます。質問と回答は教育コンテンツとして保存され、アカウントとは紐付けられません。",
+        "アカウント情報は、削除の申し出があるまで保存します。利用記録は約1日で削除されます。質問と回答は教育コンテンツとして保存されます。アカウントを削除すると、質問履歴とアカウントの紐付けは解除されます。",
     "privacy.deletion.heading": "アカウントの削除",
     "privacy.deletion.body":
         "ログイン中は、アカウントページからいつでも自分でアカウントを削除できます。ログインできない場合は、下記の連絡先にご依頼ください。",
@@ -287,6 +288,17 @@ const ja = {
         "保存する情報や利用目的が変わる場合は、本ページを更新します。重要な変更はログインページでお知らせします。",
 
 
+
+    // myQuestions
+    "myQuestions.title": "自分の質問",
+    "myQuestions.fetchFailed": "質問履歴を取得できませんでした。",
+    "myQuestions.empty":
+        "まだ質問の履歴がありません。ログインした状態でAIに質問すると、ここに記録されます。",
+    "myQuestions.askedOn": "質問日",
+    "myQuestions.rejectedNotice":
+        "この回答は先生の確認により取り下げられました。もう一度質問し直してみてください。",
+    "myQuestions.viewDetail": "詳細を見る",
+
     // account
     "account.title": "アカウント",
     "account.emailLabel": "メールアドレス",
@@ -295,7 +307,7 @@ const ja = {
     "account.fetchFailed": "アカウント情報を取得できませんでした。",
     "account.deleteHeading": "アカウントの削除",
     "account.deleteDescription":
-        "アカウント情報(メールアドレスなど)を削除します。これまでに保存された質問と回答は、アカウントと紐付いていないため残ります。この操作は取り消せません。",
+        "アカウント情報(メールアドレスなど)を削除し、質問履歴との紐付けも解除します。保存された質問と回答自体は学習データベースに残ります。この操作は取り消せません。",
     "account.deleteButton": "アカウントを削除",
     "account.confirmDelete": "本当にアカウントを削除しますか？",
     "account.deleted": "アカウントを削除しました。",
@@ -349,6 +361,7 @@ const en: Record<keyof typeof ja, string> = {
     "header.userManagement": "Manage Users",
     "header.logout": "Logout",
     "header.login": "Login",
+    "header.myQuestions": "My questions",
     "header.account": "Account",
     "header.adminLogin": "Admin Login",
     "header.logoutSuccess": "Logged out.",
@@ -565,7 +578,7 @@ const en: Record<keyof typeof ja, string> = {
     "privacy.collect.account":
         "Account information (when you sign in with Google): your email address, your Google account identifier, your role (student/administrator), and the registration date.",
     "privacy.collect.questions":
-        "Questions: the questions you send to the AI and the generated answers are stored as part of the learning database. Questions are currently not linked to your account.",
+        "Questions: the questions you send to the AI and the generated answers are stored as part of the learning database. When you ask while signed in, which question you asked and when is linked to your account so the \"My questions\" page can show your history.",
     "privacy.collect.usage":
         "Usage records: to enforce ask limits, we record request timestamps per IP address or per account. These records are deleted automatically after about one day.",
     "privacy.collect.cookies":
@@ -591,7 +604,7 @@ const en: Record<keyof typeof ja, string> = {
         "Vercel, Render, and Supabase: to run the service and store its data.",
     "privacy.retention.heading": "Retention",
     "privacy.retention.body":
-        "Account information is kept until you ask us to delete it. Usage records are deleted after about one day. Questions and answers are kept as educational content and are not linked to accounts.",
+        "Account information is kept until you ask us to delete it. Usage records are deleted after about one day. Questions and answers are kept as educational content. Deleting your account removes the link between your account and your question history.",
     "privacy.deletion.heading": "Deleting your account",
     "privacy.deletion.body":
         "While signed in, you can delete your account yourself at any time from the account page. If you can no longer sign in, send a request to the contact below.",
@@ -605,6 +618,17 @@ const en: Record<keyof typeof ja, string> = {
         "If what we store or why changes, this page will be updated. Important changes will be announced on the login page.",
 
 
+
+    // myQuestions
+    "myQuestions.title": "My questions",
+    "myQuestions.fetchFailed": "Failed to load your question history.",
+    "myQuestions.empty":
+        "No question history yet. Questions you ask the AI while signed in are recorded here.",
+    "myQuestions.askedOn": "Asked",
+    "myQuestions.rejectedNotice":
+        "This answer was withdrawn after a teacher's check. Please try asking again.",
+    "myQuestions.viewDetail": "View details",
+
     // account
     "account.title": "Account",
     "account.emailLabel": "Email",
@@ -613,7 +637,7 @@ const en: Record<keyof typeof ja, string> = {
     "account.fetchFailed": "Failed to load your account.",
     "account.deleteHeading": "Delete account",
     "account.deleteDescription":
-        "This removes your account information (such as your email address). Questions and answers already saved remain, because they are not linked to your account. This cannot be undone.",
+        "This removes your account information (such as your email address) and unlinks your question history. The saved questions and answers themselves remain in the learning database. This cannot be undone.",
     "account.deleteButton": "Delete my account",
     "account.confirmDelete": "Really delete your account?",
     "account.deleted": "Your account has been deleted.",

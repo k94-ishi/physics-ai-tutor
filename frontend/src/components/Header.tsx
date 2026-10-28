@@ -57,6 +57,15 @@ export default function Header() {
 
                     {user && (
                         <Link
+                            href="/me/questions"
+                            className="text-gray-600 hover:text-gray-900"
+                        >
+                            {t("header.myQuestions")}
+                        </Link>
+                    )}
+
+                    {user && (
+                        <Link
                             href="/account"
                             className="text-gray-600 hover:text-gray-900"
                         >

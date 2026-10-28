@@ -135,3 +135,20 @@ export type ConceptExtractionResult = {
 export type ConceptExtractionBatchResponse = {
     results: ConceptExtractionResult[];
 };
+
+export type MyQuestionEntry = {
+    question_id: number;
+    question: string;
+    answer: string | null;
+    language: ContentLanguage;
+    provenance: string | null;
+    status: QuestionStatus;
+    asked_at: string;
+};
+
+export type MyQuestionsResponse = {
+    items: MyQuestionEntry[];
+    total: number;
+    page: number;
+    size: number;
+};

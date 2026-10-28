@@ -70,7 +70,8 @@ missing language is machine translated at creation.
 | GET | `/api/v1/users/me` | User | Current user's id, email, role |
 | PUT | `/api/v1/users/me/password` | User | Change own password |
 | GET | `/api/v1/users/me/profile` | Authenticated | Own account details (email, role, `auth_provider`, registration date) for the account page |
-| DELETE | `/api/v1/users/me` | Authenticated | Self-service account deletion; clears the session cookie. Refused (400) for admins, who must be removed by another admin. Review history survives with `reviewer_id` set to `null`. |
+| DELETE | `/api/v1/users/me` | Authenticated | Self-service account deletion; clears the session cookie. Refused (400) for admins, who must be removed by another admin. Review history survives with `reviewer_id` set to `null`; ask history is unlinked the same way. |
+| GET | `/api/v1/users/me/questions` | Authenticated | The caller's ask history (`page`, `size`, `lang`), newest first: question text in `lang` (falling back to the original), current `status`, `provenance`, and `asked_at`. Rejected questions come back with `answer: null`. |
 | GET | `/api/v1/users` | Admin | List users |
 | POST | `/api/v1/users` | Admin | Create a user or admin |
 | GET | `/api/v1/users/{user_id}` | Admin | Get one user |
@@ -121,6 +122,9 @@ The flow, in order:
    context prompt (source `RAG_RESULT`).
 3. The answer is saved as `UNREVIEWED` in `language`, and the other language
    is machine translated in a background task after the response is sent.
+4. For a signed-in caller, the ask is recorded in `question_asks` (on cache
+   hits too) so `GET /users/me/questions` can show their history. Anonymous
+   asks are not recorded.
 
 Rate limits (anonymous callers are bucketed by IP, signed-in callers by
 account):

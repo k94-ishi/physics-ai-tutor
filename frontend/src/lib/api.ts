@@ -25,6 +25,7 @@ import {
 } from "@/types/auth";
 import { ContentLanguage, TranslationBatchResponse } from "@/types/question";
 import { AskAiResponse } from "@/types/ai";
+import { MyQuestionsResponse } from "@/types/question";
 
 function getApiUrl(): string {
     const url = typeof window === "undefined"
@@ -210,6 +211,22 @@ export async function logout(): Promise<void> {
 
 export async function fetchCurrentUser(): Promise<User> {
     return apiFetch<User>(`${getUsersUrl()}/me`);
+}
+
+export async function fetchMyQuestions(
+    page: number,
+    size: number,
+    lang: ContentLanguage
+): Promise<MyQuestionsResponse> {
+    const params = new URLSearchParams({
+        page: String(page),
+        size: String(size),
+        lang,
+    });
+
+    return apiFetch<MyQuestionsResponse>(
+        `${getUsersUrl()}/me/questions?${params.toString()}`
+    );
 }
 
 export async function fetchMyProfile(): Promise<AdminUser> {

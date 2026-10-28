@@ -3,13 +3,23 @@ import logging
 from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.orm import Session
 
-from physics_ai_tutor.api.dependencies import AiAskRateLimit, enforce_ai_ask_rate_limit
+from physics_ai_tutor.api.dependencies import (
+    AiAskRateLimit,
+    enforce_ai_ask_rate_limit,
+    get_current_user_optional,
+)
 from physics_ai_tutor.core import prompts
 from physics_ai_tutor.database.database import SessionLocal
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.schemas.ai import AskAiRequest, AskAiResponse
 from physics_ai_tutor.schemas.question import QuestionSource, QuestionStatus
-from physics_ai_tutor.services import deepseek_service, question_service, rag_service
+from physics_ai_tutor.schemas.token import JWTPayload
+from physics_ai_tutor.services import (
+    ask_history_service,
+    deepseek_service,
+    question_service,
+    rag_service,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +45,16 @@ def ask_ai(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     rate_limit: AiAskRateLimit = Depends(enforce_ai_ask_rate_limit),
+    user: JWTPayload | None = Depends(get_current_user_optional),
 ):
     # Cache tier 0: an identical question was already answered (any status
     # except rejected), so reuse it instead of paying for generation again.
     cached = question_service.find_cached_answer(db, request.question, request.language)
     if cached is not None:
+        if user is not None:
+            ask_history_service.record_ask(
+                db, cached.id, int(user.sub), request.language
+            )
         text = cached.text(request.language)
         assert text is not None
         logger.info(
@@ -87,6 +102,10 @@ def ask_ai(
     )
 
     if saved is not None:
+        if user is not None:
+            ask_history_service.record_ask(
+                db, saved.id, int(user.sub), request.language
+            )
         background_tasks.add_task(translate_in_background, saved.id)
 
     return AskAiResponse(

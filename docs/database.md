@@ -276,6 +276,22 @@ Create the first admin with the CLI (see
 [Creating an admin user](#creating-an-admin-user)); further password
 accounts can be created by an admin through `POST /api/v1/users`.
 
+### `question_asks`
+
+One row per signed-in ask, cache hit or fresh generation; anonymous asks are
+not recorded. Powers `GET /users/me/questions` and the planned usage counts.
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | `integer` | no | serial | Primary key |
+| `question_id` | `integer` | no | | FK → `questions.id`, `ON DELETE CASCADE`, indexed. |
+| `user_id` | `integer` | yes | | FK → `users.id`, `ON DELETE SET NULL`: deleting the account unlinks the history but keeps aggregate counts. |
+| `language` | `varchar(10)` | no | `'ja'` | Language the student asked in. |
+| `created_at` | `timestamptz` | no | `now()` | |
+
+Index `ix_question_asks_user_created` on (`user_id`, `created_at`) serves the
+per-user listing.
+
 Note on review history data: rows created before 2026-10-28 by the admin
 UI's "Save and approve" have `action = 'APPROVE'` with `before_* = after_*`
 even when the teacher edited the text first (the edit went through a
@@ -316,6 +332,9 @@ record calls, so the table stays small without a scheduled job.
 | `ix_users_email` | `users` | UNIQUE btree (`email`) |
 | `ix_users_google_sub` | `users` | UNIQUE btree (`google_sub`) |
 | `users_password_provider` | `users` | CHECK provider/password pairing |
+| `question_asks_pkey` | `question_asks` | PK (`id`) |
+| `ix_question_asks_question_id` | `question_asks` | btree (`question_id`) |
+| `ix_question_asks_user_created` | `question_asks` | btree (`user_id`, `created_at`) |
 | `users_google_provider` | `users` | CHECK provider/google_sub pairing |
 | `rate_limit_hits_pkey` | `rate_limit_hits` | PK (`id`) |
 | `ix_rate_limit_hits_window` | `rate_limit_hits` | btree (`action`, `bucket_key`, `created_at`) |
@@ -329,6 +348,8 @@ Foreign keys:
 | `question_concepts.concept_id` | `concepts.id` | CASCADE |
 | `question_reviews.question_id` | `questions.id` | CASCADE |
 | `question_reviews.reviewer_id` | `users.id` | SET NULL |
+| `question_asks.question_id` | `questions.id` | CASCADE |
+| `question_asks.user_id` | `users.id` | SET NULL |
 
 Deleting a question therefore removes its embeddings, concept links, and
 review history. Concepts themselves are never deleted automatically, even if
@@ -384,7 +405,8 @@ Revisions in order from the first to the current head:
 | `a1d2e3f4b5c6` | 2026-10-24 | Make `question_reviews.reviewer_id` nullable with `ON DELETE SET NULL` |
 | `b2c3d4e5f6a7` | 2026-10-25 | Bilingual rows: `question`/`answer` become `question_ja`/`answer_ja` (`text`), add `*_en` and provenance columns, `original_language`, `question_embeddings.language`, `concepts.name_ja`/`name_en`, `question_reviews.language`. Downgrade deletes English-only rows. |
 | `c8d9e0f1a2b3` | 2026-10-27 | Create `rate_limit_hits` for the Postgres-backed rate limiter |
-| `d9e0f1a2b3c4` | 2026-10-27 | Google Sign-In: `users.hashed_password` nullable, add `auth_provider` and unique `google_sub`, provider check constraints (**head**). Downgrade deletes Google accounts. |
+| `d9e0f1a2b3c4` | 2026-10-27 | Google Sign-In: `users.hashed_password` nullable, add `auth_provider` and unique `google_sub`, provider check constraints. Downgrade deletes Google accounts. |
+| `e0f1a2b3c4d5` | 2026-10-28 | Create `question_asks`: per-user ask history for signed-in callers (**head**) |
 
 The chain is linear with a single head. Verify with:
 

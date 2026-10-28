@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from physics_ai_tutor.api.dependencies import (
     ACCESS_TOKEN_COOKIE_NAME,
@@ -11,14 +11,16 @@ from physics_ai_tutor.api.dependencies import (
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.models.user import User
 from physics_ai_tutor.repositories import user_repository
+from physics_ai_tutor.schemas.ask_history import MyQuestionsResponse
 from physics_ai_tutor.schemas.auth import CurrentUser
+from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.token import JWTPayload
 from physics_ai_tutor.schemas.user import (
     PasswordChangeRequest,
     UserCreate,
     UserResponse,
 )
-from physics_ai_tutor.services import user_service
+from physics_ai_tutor.services import ask_history_service, user_service
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,25 @@ def change_my_password(
         )
 
     return Response(status_code=204)
+
+
+@router.get("/me/questions", response_model=MyQuestionsResponse)
+def get_my_questions(
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=20, ge=1, le=100),
+    lang: Language = Query(default=Language.JA),
+    payload: JWTPayload = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """The caller's ask history with each question's current state.
+
+    Unreviewed answers here are ones this user already saw when asking
+    (the cache serves them to the identical question), so returning them
+    does not widen the public visibility rule.
+    """
+    return ask_history_service.fetch_my_questions(
+        db, int(payload.sub), page, size, lang
+    )
 
 
 @router.get("/me/profile", response_model=UserResponse)

@@ -48,6 +48,11 @@ describe("LoginPage", () => {
             "http://api.test/api/v1/auth/google/login"
         );
         expect(screen.getByLabelText(/メールアドレス/)).toBeInTheDocument();
+
+        // The student card links to the privacy policy next to the button.
+        expect(
+            screen.getByRole("link", { name: "プライバシーポリシー" })
+        ).toHaveAttribute("href", "/privacy");
     });
 
     it("hides the Google button when Google Sign-In is not configured", async () => {

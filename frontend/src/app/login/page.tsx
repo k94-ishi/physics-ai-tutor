@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, SyntheticEvent, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { fetchAuthProviders, getGoogleLoginUrl } from "@/lib/api";
@@ -53,7 +54,6 @@ function LoginContent() {
         fetchAuthProviders()
             .then((data) => {
                 if (!cancelled) {
-                    // eslint-disable-next-line react-hooks/set-state-in-effect
                     setProviders(data);
                 }
             })
@@ -110,6 +110,12 @@ function LoginContent() {
                     >
                         {t("login.withGoogle")}
                     </a>
+                    <Link
+                        href="/privacy"
+                        className="text-xs text-gray-500 underline hover:text-gray-700"
+                    >
+                        {t("footer.privacy")}
+                    </Link>
                 </Card>
             )}
 

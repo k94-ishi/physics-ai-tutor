@@ -237,6 +237,56 @@ const ja = {
     "upload.summary":
         "{total}ファイル中{success}ファイルが成功し、計{created}件の質問を登録しました。",
 
+    // privacy
+    "privacy.title": "プライバシーポリシー",
+    "privacy.lastUpdated": "最終更新日: {date}",
+    "privacy.intro":
+        "Physics AI Tutor(以下「本サービス」)は、高校物理の学習を支援する質問・回答サービスです。本ページでは、本サービスが保存する情報と、その扱いを説明します。",
+    "privacy.collect.heading": "保存する情報",
+    "privacy.collect.account":
+        "アカウント情報(Googleログイン時): メールアドレス、Googleアカウントの識別子、権限(生徒/管理者)、登録日時。",
+    "privacy.collect.questions":
+        "質問内容: AIに送信した質問文と生成された回答は、学習データベースの一部として保存されます。現在、質問文はアカウントと紐付けられていません。",
+    "privacy.collect.usage":
+        "利用記録: 利用回数制限のため、リクエストの日時をIPアドレスまたはアカウント単位で記録します。この記録は約1日で自動削除されます。",
+    "privacy.collect.cookies":
+        "Cookie等: ログイン状態を保持するCookie、Googleログイン処理中の一時的なCookie、表示言語の設定(ブラウザ内保存)を使用します。広告や行動追跡には使用しません。",
+    "privacy.notCollect.heading": "収集しない情報",
+    "privacy.notCollect.body":
+        "Googleログインで取得するのはメールアドレスと識別子のみです。氏名、プロフィール画像、連絡先など、その他のGoogleアカウント情報は取得しません。アクセス解析ツールや広告は使用していません。",
+    "privacy.purpose.heading": "利用目的",
+    "privacy.purpose.login":
+        "ログインと権限の管理(生徒・管理者の区別)のため。",
+    "privacy.purpose.abuse":
+        "不正利用の防止と、AI利用回数の管理のため。",
+    "privacy.purpose.content":
+        "質問と回答を教員がレビューし、学習データベースを改善するため。",
+    "privacy.thirdParties.heading": "外部サービスへの提供",
+    "privacy.thirdParties.intro":
+        "本サービスは以下の外部サービスを利用します。法令に基づく場合を除き、これら以外に情報を提供しません。",
+    "privacy.thirdParties.google":
+        "Google: ログイン認証のため。認証はGoogleのプライバシーポリシーに従います。",
+    "privacy.thirdParties.llm":
+        "DeepSeek・OpenAI: 回答の生成と検索のため、質問文を送信します。アカウント情報は送信しません。",
+    "privacy.thirdParties.hosting":
+        "Vercel・Render・Supabase: サービスの運用とデータの保管のため。",
+    "privacy.retention.heading": "保存期間",
+    "privacy.retention.body":
+        "アカウント情報は、削除の申し出があるまで保存します。利用記録は約1日で削除されます。質問と回答は教育コンテンツとして保存され、アカウントとは紐付けられません。",
+    "privacy.deletion.heading": "アカウントの削除",
+    "privacy.deletion.body":
+        "アカウント情報の削除を希望する場合は、下記の連絡先までお知らせください。確認のうえ削除します。アプリ内から自分で削除できる機能も準備中です。",
+    "privacy.contact.heading": "お問い合わせ",
+    "privacy.contact.body":
+        "本ポリシーに関する質問や削除の依頼は、次の窓口までお願いします:",
+    "privacy.contact.linkLabel": "お問い合わせ窓口",
+    "privacy.changes.heading": "本ポリシーの変更",
+    "privacy.changes.body":
+        "保存する情報や利用目的が変わる場合は、本ページを更新します。重要な変更はログインページでお知らせします。",
+
+    // footer
+    "footer.privacy": "プライバシーポリシー",
+
     // error / not found / markdown
     "errorPage.title": "エラーが発生しました",
     "errorPage.description": "しばらくしてから再度お試しください。",
@@ -484,6 +534,57 @@ const en: Record<keyof typeof ja, string> = {
     "upload.resultError": "Failed",
     "upload.summary":
         "{success} of {total} files succeeded; {created} questions were registered.",
+
+
+    // privacy
+    "privacy.title": "Privacy Policy",
+    "privacy.lastUpdated": "Last updated: {date}",
+    "privacy.intro":
+        "Physics AI Tutor (\"this service\") is a Q&A service that supports learning high school physics. This page explains what information the service stores and how it is handled.",
+    "privacy.collect.heading": "Information we store",
+    "privacy.collect.account":
+        "Account information (when you sign in with Google): your email address, your Google account identifier, your role (student/administrator), and the registration date.",
+    "privacy.collect.questions":
+        "Questions: the questions you send to the AI and the generated answers are stored as part of the learning database. Questions are currently not linked to your account.",
+    "privacy.collect.usage":
+        "Usage records: to enforce ask limits, we record request timestamps per IP address or per account. These records are deleted automatically after about one day.",
+    "privacy.collect.cookies":
+        "Cookies and similar: a cookie that keeps you signed in, a temporary cookie during Google sign-in, and your language preference (stored in your browser). None are used for advertising or tracking.",
+    "privacy.notCollect.heading": "Information we do not collect",
+    "privacy.notCollect.body":
+        "Google sign-in provides only your email address and account identifier. We do not receive your name, profile picture, contacts, or any other Google account data. The site uses no analytics tools and no advertising.",
+    "privacy.purpose.heading": "Why we store it",
+    "privacy.purpose.login":
+        "To sign you in and manage roles (student vs. administrator).",
+    "privacy.purpose.abuse":
+        "To prevent abuse and manage the AI ask limits.",
+    "privacy.purpose.content":
+        "So teachers can review questions and answers and improve the learning database.",
+    "privacy.thirdParties.heading": "Third-party services",
+    "privacy.thirdParties.intro":
+        "The service relies on the following providers. Beyond these, information is not shared unless required by law.",
+    "privacy.thirdParties.google":
+        "Google: for sign-in. Authentication is governed by Google's privacy policy.",
+    "privacy.thirdParties.llm":
+        "DeepSeek and OpenAI: question text is sent to generate and search answers. No account information is sent.",
+    "privacy.thirdParties.hosting":
+        "Vercel, Render, and Supabase: to run the service and store its data.",
+    "privacy.retention.heading": "Retention",
+    "privacy.retention.body":
+        "Account information is kept until you ask us to delete it. Usage records are deleted after about one day. Questions and answers are kept as educational content and are not linked to accounts.",
+    "privacy.deletion.heading": "Deleting your account",
+    "privacy.deletion.body":
+        "If you want your account information deleted, contact us below and we will remove it after confirmation. An in-app self-deletion feature is planned.",
+    "privacy.contact.heading": "Contact",
+    "privacy.contact.body":
+        "For questions about this policy or deletion requests, please use:",
+    "privacy.contact.linkLabel": "Contact page",
+    "privacy.changes.heading": "Changes to this policy",
+    "privacy.changes.body":
+        "If what we store or why changes, this page will be updated. Important changes will be announced on the login page.",
+
+    // footer
+    "footer.privacy": "Privacy Policy",
 
     // error / not found / markdown
     "errorPage.title": "Something went wrong",

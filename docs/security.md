@@ -31,6 +31,10 @@ practices contributors are expected to follow. It complements
   checks the ID token's issuer, audience, expiry, and `email_verified`
   before trusting it. The token comes straight from Google's token
   endpoint over TLS, so its signature is not re-verified.
+- What is stored about a signed-in student, why, and how to request
+  deletion is published at [`/privacy`](https://ai-tutor.pencil-net.com/privacy)
+  (source: `frontend/src/app/privacy/page.tsx`); the Google consent screen
+  links to it. Keep that page in sync with schema changes.
 - Password accounts and Google accounts are strictly separate. A Google
   sign-in whose e-mail belongs to a password account is rejected rather
   than linked, and Google accounts cannot use the password endpoints.

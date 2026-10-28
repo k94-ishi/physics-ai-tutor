@@ -74,6 +74,13 @@ describe("Save and approve", () => {
             screen.getByRole("button", { name: "保存して承認" })
         );
 
+        // The edit must be labelled: pick a reason in the dialog first.
+        await user.selectOptions(
+            await screen.findByLabelText("理由"),
+            "INCOMPLETE"
+        );
+        await user.click(screen.getByRole("button", { name: "確定" }));
+
         await waitFor(() => expect(mocked.reviewQuestion).toHaveBeenCalled());
         expect(mocked.reviewQuestion).toHaveBeenCalledTimes(1);
         expect(mocked.reviewQuestion).toHaveBeenCalledWith(7, {
@@ -81,6 +88,8 @@ describe("Save and approve", () => {
             language: "ja",
             question: "元の質問",
             answer: "修正された回答",
+            reason: "INCOMPLETE",
+            comment: undefined,
         });
         // The edit travels inside the review, not as a separate update.
         expect(mocked.updateQuestion).not.toHaveBeenCalled();
@@ -116,11 +125,17 @@ describe("Save and approve", () => {
         await user.click(
             screen.getByRole("button", { name: "保存して承認" })
         );
+        await user.click(
+            await screen.findByRole("button", { name: "確定" })
+        );
 
         await waitFor(() =>
             expect(mocked.reviewQuestion).toHaveBeenCalledTimes(2)
         );
         expect(mocked.reviewQuestion.mock.calls[0][1].language).toBe("en");
         expect(mocked.reviewQuestion.mock.calls[1][1].language).toBe("ja");
+        expect(mocked.reviewQuestion.mock.calls[0][1].reason).toBe(
+            "PHYSICS_ERROR"
+        );
     });
 });

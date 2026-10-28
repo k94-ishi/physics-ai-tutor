@@ -25,7 +25,11 @@ import {
 } from "@/types/auth";
 import { ContentLanguage, TranslationBatchResponse } from "@/types/question";
 import { AskAiResponse } from "@/types/ai";
-import { AdminStatsResponse, MyQuestionsResponse } from "@/types/question";
+import {
+    AdminStatsResponse,
+    MyQuestionsResponse,
+    ReviewReason,
+} from "@/types/question";
 
 function getApiUrl(): string {
     const url = typeof window === "undefined"
@@ -360,6 +364,7 @@ export async function bulkDeleteQuestions(
 export async function bulkReviewQuestions(
     questionIds: number[],
     action: BulkReviewAction,
+    reason?: ReviewReason,
     comment?: string
 ): Promise<BulkReviewResponse> {
     return apiFetch<BulkReviewResponse>(`${getQuestionsUrl()}/bulk-review`, {
@@ -367,7 +372,7 @@ export async function bulkReviewQuestions(
         headers: {
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({ question_ids: questionIds, action, comment }),
+        body: JSON.stringify({ question_ids: questionIds, action, reason, comment }),
     });
 }
 

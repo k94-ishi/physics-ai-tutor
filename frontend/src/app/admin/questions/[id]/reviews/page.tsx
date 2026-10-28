@@ -7,6 +7,7 @@ import { QuestionReview, QuestionReviewAction } from "@/types/question";
 import Card from "@/components/ui/Card";
 import LoadingState from "@/components/ui/LoadingState";
 import StatusMessage from "@/components/ui/StatusMessage";
+import { reasonLabelKey } from "@/components/ui/ReviewReasonDialog";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { TranslationKey } from "@/lib/i18n/translations";
 
@@ -85,6 +86,12 @@ export default function QuestionReviewsPage() {
                                 <span className="text-xs text-gray-500">
                                     {t("reviews.reviewerId")}: {review.reviewer_id}
                                 </span>
+
+                                {review.reason && (
+                                    <span className="self-start rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
+                                        {t(reasonLabelKey(review.reason))}
+                                    </span>
+                                )}
 
                                 {review.action === "EDIT_APPROVE" && (
                                     <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">

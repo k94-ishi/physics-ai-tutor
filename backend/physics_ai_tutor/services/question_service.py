@@ -473,6 +473,7 @@ def review_question(
     reviewer_id: int,
     question: str | None = None,
     answer: str | None = None,
+    reason: str | None = None,
     comment: str | None = None,
     language: Language | str | None = None,
     response_language: Language | str = Language.JA,
@@ -518,6 +519,7 @@ def review_question(
             action=action,
             reviewer_id=reviewer_id,
             language=lang.value,
+            reason=reason,
             before_question=before[0],
             before_answer=before[1],
             after_question=after[0],
@@ -639,6 +641,7 @@ def bulk_review_questions(
     question_ids: list[int],
     action: QuestionReviewAction,
     reviewer_id: int,
+    reason: str | None = None,
     comment: str | None = None,
     response_language: Language | str = Language.JA,
 ) -> tuple[list[Question], list[int]]:
@@ -651,6 +654,7 @@ def bulk_review_questions(
             question_id,
             action=action,
             reviewer_id=reviewer_id,
+            reason=reason,
             comment=comment,
             response_language=response_language,
         )

@@ -77,10 +77,26 @@ export type SearchQuestionsParams = {
 
 export type QuestionReviewAction = "APPROVE" | "EDIT_APPROVE" | "REJECT";
 
+export const REVIEW_REASONS = [
+    "PHYSICS_ERROR",
+    "MATH_ERROR",
+    "INCOMPLETE",
+    "OFF_TOPIC",
+    "TOO_ADVANCED",
+    "UNCLEAR",
+    "FORMATTING",
+    "LANGUAGE",
+    "DUPLICATE",
+    "OTHER",
+] as const;
+
+export type ReviewReason = (typeof REVIEW_REASONS)[number];
+
 export type QuestionReview = {
     id: number;
     question_id: number;
     action: QuestionReviewAction;
+    reason: ReviewReason | null;
     language: ContentLanguage;
     before_question: string | null;
     before_answer: string | null;
@@ -96,6 +112,7 @@ export type ReviewQuestionRequest = {
     language?: ContentLanguage;
     question?: string;
     answer?: string;
+    reason?: ReviewReason;
     comment?: string;
 };
 

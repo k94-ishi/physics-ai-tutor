@@ -257,6 +257,7 @@ def bulk_review_questions(
         data.question_ids,
         action=data.action,
         reviewer_id=int(current_user.sub),
+        reason=data.reason,
         comment=data.comment,
         response_language=lang,
     )
@@ -412,6 +413,7 @@ def review_question(
         reviewer_id=int(current_user.sub),
         question=data.question,
         answer=data.answer,
+        reason=data.reason,
         comment=data.comment,
         language=data.language,
         response_language=lang,

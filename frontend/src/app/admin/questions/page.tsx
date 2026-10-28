@@ -12,13 +12,19 @@ import {
     extractConcepts,
     translateQuestions,
 } from "@/lib/api";
-import { Question, QuestionStatus, SimilarQuestion } from "@/types/question";
+import {
+    Question,
+    QuestionStatus,
+    ReviewReason,
+    SimilarQuestion,
+} from "@/types/question";
 import Card from "@/components/ui/Card";
 import Button, { buttonClassName } from "@/components/ui/Button";
 import SelectField from "@/components/ui/SelectField";
 import LoadingState from "@/components/ui/LoadingState";
 import StatusMessage from "@/components/ui/StatusMessage";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ReviewReasonDialog from "@/components/ui/ReviewReasonDialog";
 import Pagination from "@/components/ui/Pagination";
 import MarkdownContent from "@/components/ui/MarkdownContent";
 import ReferencedQuestions from "@/components/ui/ReferencedQuestions";
@@ -115,6 +121,7 @@ function AdminQuestionsPageInner() {
     // 選択・一括操作(キーワード検索モードのみ)
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [bulkAction, setBulkAction] = useState<BulkAction | null>(null);
+    const [rejectTarget, setRejectTarget] = useState<Question | null>(null);
     const [bulkProcessing, setBulkProcessing] = useState(false);
 
     // Concept抽出は選択質問ごとに非同期(並列)で進めるため、状態はフロント側でのみ管理する
@@ -298,7 +305,12 @@ function AdminQuestionsPageInner() {
         }
     };
 
-    const startReview = (question: Question, action: ReviewAction) => {
+    const startReview = (
+        question: Question,
+        action: ReviewAction,
+        reason?: ReviewReason,
+        comment?: string
+    ) => {
         if (reviewingIdsRef.current.has(question.id)) {
             return;
         }
@@ -312,7 +324,11 @@ function AdminQuestionsPageInner() {
 
         (async () => {
             try {
-                const updated = await reviewQuestion(question.id, { action });
+                const updated = await reviewQuestion(question.id, {
+                    action,
+                    reason,
+                    comment,
+                });
                 setListItems((prev) =>
                     prev.map((q) => (q.id === question.id ? updated : q))
                 );
@@ -340,7 +356,10 @@ function AdminQuestionsPageInner() {
         })();
     };
 
-    const handleConfirmBulkAction = async () => {
+    const handleConfirmBulkAction = async (
+        reason?: ReviewReason,
+        comment?: string
+    ) => {
         if (!bulkAction || bulkAction === "extract" || selectedIds.size === 0) {
             return;
         }
@@ -363,7 +382,9 @@ function AdminQuestionsPageInner() {
             } else {
                 const result = await bulkReviewQuestions(
                     ids,
-                    bulkAction === "approve" ? "APPROVE" : "REJECT"
+                    bulkAction === "approve" ? "APPROVE" : "REJECT",
+                    reason,
+                    comment
                 );
                 showToast(
                     t(
@@ -884,7 +905,7 @@ function AdminQuestionsPageInner() {
                                                                 variant="secondary"
                                                                 disabled={review?.state === "processing"}
                                                                 onClick={() =>
-                                                                    startReview(question, "REJECT")
+                                                                    setRejectTarget(question)
                                                                 }
                                                             >
                                                                 {t("common.reject")}
@@ -951,7 +972,7 @@ function AdminQuestionsPageInner() {
             />
 
             <ConfirmDialog
-                open={bulkAction !== null}
+                open={bulkAction !== null && bulkAction !== "reject"}
                 title={bulkAction ? t(BULK_ACTION_KEYS[bulkAction].title) : ""}
                 description={t("admin.bulkTargetCount", { count: selectedIds.size })}
                 confirmLabel={
@@ -962,6 +983,30 @@ function AdminQuestionsPageInner() {
                     bulkAction === "extract"
                         ? startConceptExtraction(Array.from(selectedIds))
                         : handleConfirmBulkAction()
+                }
+                onCancel={() => setBulkAction(null)}
+            />
+
+            <ReviewReasonDialog
+                open={rejectTarget !== null}
+                title={t("reviewReason.dialogRejectTitle")}
+                description={rejectTarget?.question}
+                onConfirm={(reason, comment) => {
+                    if (rejectTarget !== null) {
+                        startReview(rejectTarget, "REJECT", reason, comment);
+                        setRejectTarget(null);
+                    }
+                }}
+                onCancel={() => setRejectTarget(null)}
+            />
+
+            <ReviewReasonDialog
+                open={bulkAction === "reject"}
+                title={t("reviewReason.dialogRejectTitle")}
+                description={t("admin.bulkTargetCount", { count: selectedIds.size })}
+                confirming={bulkProcessing}
+                onConfirm={(reason, comment) =>
+                    handleConfirmBulkAction(reason, comment)
                 }
                 onCancel={() => setBulkAction(null)}
             />

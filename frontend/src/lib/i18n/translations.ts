@@ -291,6 +291,24 @@ const ja = {
 
 
 
+
+    // review reasons
+    "reviewReason.PHYSICS_ERROR": "物理の誤り",
+    "reviewReason.MATH_ERROR": "数学・計算の誤り",
+    "reviewReason.INCOMPLETE": "説明不足",
+    "reviewReason.OFF_TOPIC": "物理の範囲外",
+    "reviewReason.TOO_ADVANCED": "高校範囲を超えている",
+    "reviewReason.UNCLEAR": "わかりにくい",
+    "reviewReason.FORMATTING": "書式・数式の崩れ",
+    "reviewReason.LANGUAGE": "言語・表現の問題",
+    "reviewReason.DUPLICATE": "重複",
+    "reviewReason.OTHER": "その他(コメント必須)",
+    "reviewReason.dialogRejectTitle": "却下の理由",
+    "reviewReason.dialogEditTitle": "修正の理由",
+    "reviewReason.reasonLabel": "理由",
+    "reviewReason.commentLabel": "コメント(任意・「その他」は必須)",
+    "reviewReason.confirm": "確定",
+
     // adminStats
     "adminStats.title": "利用状況",
     "adminStats.fetchFailed": "利用状況を取得できませんでした。",
@@ -639,6 +657,24 @@ const en: Record<keyof typeof ja, string> = {
 
 
 
+
+
+    // review reasons
+    "reviewReason.PHYSICS_ERROR": "Physics error",
+    "reviewReason.MATH_ERROR": "Math or calculation error",
+    "reviewReason.INCOMPLETE": "Incomplete explanation",
+    "reviewReason.OFF_TOPIC": "Not physics",
+    "reviewReason.TOO_ADVANCED": "Beyond high-school level",
+    "reviewReason.UNCLEAR": "Hard to understand",
+    "reviewReason.FORMATTING": "Broken formatting or math",
+    "reviewReason.LANGUAGE": "Language or wording issue",
+    "reviewReason.DUPLICATE": "Duplicate",
+    "reviewReason.OTHER": "Other (comment required)",
+    "reviewReason.dialogRejectTitle": "Reason for rejection",
+    "reviewReason.dialogEditTitle": "Reason for the correction",
+    "reviewReason.reasonLabel": "Reason",
+    "reviewReason.commentLabel": "Comment (optional; required for Other)",
+    "reviewReason.confirm": "Confirm",
 
     // adminStats
     "adminStats.title": "Usage",

@@ -11,6 +11,7 @@ import {
 import {
     ContentLanguage,
     Question,
+    ReviewReason,
     UpdateQuestionRequest,
 } from "@/types/question";
 import Card from "@/components/ui/Card";
@@ -19,6 +20,7 @@ import Button from "@/components/ui/Button";
 import LoadingState from "@/components/ui/LoadingState";
 import StatusMessage from "@/components/ui/StatusMessage";
 import { showToast } from "@/components/ui/Toast";
+import ReviewReasonDialog from "@/components/ui/ReviewReasonDialog";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { TranslationKey } from "@/lib/i18n/translations";
 
@@ -80,6 +82,7 @@ export default function EditQuestionPage() {
     const [submitting, setSubmitting] = useState(false);
     const [approving, setApproving] = useState(false);
     const [translating, setTranslating] = useState(false);
+    const [reasonDialogOpen, setReasonDialogOpen] = useState(false);
     const [errors, setErrors] = useState<Partial<Record<ContentLanguage, string>>>(
         {}
     );
@@ -229,6 +232,21 @@ export default function EditQuestionPage() {
             return;
         }
 
+        // An edited approval must be labelled with why the text changed;
+        // the dialog's confirm resumes via submitSaveAndApprove.
+        if (changedLanguages().length > 0) {
+            setReasonDialogOpen(true);
+            return;
+        }
+
+        await submitSaveAndApprove(undefined, undefined);
+    };
+
+    const submitSaveAndApprove = async (
+        reason: ReviewReason | undefined,
+        comment: string | undefined
+    ) => {
+        setReasonDialogOpen(false);
         setApproving(true);
 
         try {
@@ -255,6 +273,8 @@ export default function EditQuestionPage() {
                         language: lang,
                         question: texts[lang].question,
                         answer: texts[lang].answer,
+                        reason,
+                        comment,
                     });
                 }
             }
@@ -381,6 +401,15 @@ export default function EditQuestionPage() {
                     </div>
                 </form>
             </Card>
+            <ReviewReasonDialog
+                open={reasonDialogOpen}
+                title={t("reviewReason.dialogEditTitle")}
+                confirming={approving}
+                onConfirm={(reason, comment) =>
+                    submitSaveAndApprove(reason, comment)
+                }
+                onCancel={() => setReasonDialogOpen(false)}
+            />
         </main>
     );
 }

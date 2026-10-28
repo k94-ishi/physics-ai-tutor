@@ -4,6 +4,9 @@ from physics_ai_tutor.services import deepseek_service
 ASK_PATH = "/api/v1/ai/ask"
 MY_QUESTIONS_PATH = "/api/v1/users/me/questions"
 
+MY_QUESTIONS_PATH = "/api/v1/users/me/questions"
+REJECT_BODY = {"action": "REJECT", "reason": "PHYSICS_ERROR"}
+
 
 def _mock_answer(monkeypatch, answer="回答"):
     monkeypatch.setattr(
@@ -89,6 +92,7 @@ def test_my_questions_shows_teacher_correction_after_edit_approve(
         f"/api/v1/questions/{question_id}/review",
         json={
             "action": "EDIT_APPROVE",
+            "reason": "INCOMPLETE",
             "language": "ja",
             "question": "添削される質問です",
             "answer": "先生が修正した回答",
@@ -108,9 +112,7 @@ def test_my_questions_withholds_rejected_answer(user_client, admin_client, monke
     asked = user_client.post(ASK_PATH, json={"question": "却下される質問です"})
     question_id = asked.json()["question_id"]
 
-    admin_client.post(
-        f"/api/v1/questions/{question_id}/review", json={"action": "REJECT"}
-    )
+    admin_client.post(f"/api/v1/questions/{question_id}/review", json=REJECT_BODY)
 
     item = user_client.get(MY_QUESTIONS_PATH).json()["items"][0]
 

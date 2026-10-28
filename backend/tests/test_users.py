@@ -184,7 +184,8 @@ def test_delete_user_keeps_review_history(admin_client, db):
     ).json()["id"]
     assert (
         reviewer.post(
-            f"/api/v1/questions/{question_id}/review", json={"action": "REJECT"}
+            f"/api/v1/questions/{question_id}/review",
+            json={"action": "REJECT", "reason": "PHYSICS_ERROR"},
         ).status_code
         == 200
     )

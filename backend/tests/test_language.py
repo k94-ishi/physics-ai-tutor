@@ -9,6 +9,7 @@ from physics_ai_tutor.services.translation_service import (
 )
 
 QUESTIONS = "/api/v1/questions"
+REJECT_BODY = {"action": "REJECT", "reason": "PHYSICS_ERROR"}
 ASK = "/api/v1/ai/ask"
 
 
@@ -263,7 +264,8 @@ def test_ask_does_not_serve_rejected_answer(client, admin_client, monkeypatch):
     monkeypatch.setattr(deepseek_service, "chat_completion", lambda s, u: "最初の回答")
     first = client.post(ASK, json={"question": "却下される質問です"}).json()
     admin_client.post(
-        f"{QUESTIONS}/{first['question_id']}/review", json={"action": "REJECT"}
+        f"{QUESTIONS}/{first['question_id']}/review",
+        json=REJECT_BODY,
     )
 
     monkeypatch.setattr(
@@ -292,6 +294,7 @@ def test_review_in_english_records_language_and_refreshes_machine_japanese(
         params={"lang": "en"},
         json={
             "action": "EDIT_APPROVE",
+            "reason": "INCOMPLETE",
             "language": "en",
             "question": "What is work in physics?",
             "answer": "Force times displacement.",

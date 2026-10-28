@@ -15,6 +15,8 @@ class QuestionReview(Base):
         nullable=False,
     )
     action: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Why the answer was rejected or edited; NULL for plain approvals.
+    reason: Mapped[str | None] = mapped_column(String(30), nullable=True)
     # Language of the text the reviewer looked at or edited.
     language: Mapped[str] = mapped_column(
         String(10), server_default="ja", nullable=False

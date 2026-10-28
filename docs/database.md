@@ -240,6 +240,7 @@ Append-only audit log of admin review actions on a question.
 | `id` | `integer` | no | serial | Primary key |
 | `question_id` | `integer` | no | | FK to `questions.id`, `ON DELETE CASCADE` |
 | `action` | `varchar(20)` | no | | `APPROVE`, `EDIT_APPROVE`, or `REJECT` |
+| `reason` | `varchar(30)` | yes | | Why the answer was rejected or edited (`PHYSICS_ERROR`, `OFF_TOPIC`, ...); `NULL` for plain approvals and for all rows created before 2026-10-28. |
 | `language` | `varchar(10)` | no | `'ja'` | Language the reviewer read or edited; the before/after snapshots are in this language. |
 | `before_question` | `text` | yes | | Snapshot before the action |
 | `before_answer` | `text` | yes | | Snapshot before the action |
@@ -408,7 +409,8 @@ Revisions in order from the first to the current head:
 | `c8d9e0f1a2b3` | 2026-10-27 | Create `rate_limit_hits` for the Postgres-backed rate limiter |
 | `d9e0f1a2b3c4` | 2026-10-27 | Google Sign-In: `users.hashed_password` nullable, add `auth_provider` and unique `google_sub`, provider check constraints. Downgrade deletes Google accounts. |
 | `e0f1a2b3c4d5` | 2026-10-28 | Create `question_asks`: per-user ask history for signed-in callers |
-| `f1a2b3c4d5e6` | 2026-10-28 | Add `question_asks.cache_hit` for the usage dashboard (**head**) |
+| `f1a2b3c4d5e6` | 2026-10-28 | Add `question_asks.cache_hit` for the usage dashboard |
+| `a2b3c4d5e6f7` | 2026-10-28 | Add `question_reviews.reason`: labelled reject/edit codes (**head**) |
 
 The chain is linear with a single head. Verify with:
 

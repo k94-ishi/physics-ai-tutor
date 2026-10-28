@@ -50,7 +50,11 @@ def test_rejected_answer_stays_hidden_and_is_filterable_by_admin(
 
     reject = admin_client.post(
         f"{QUESTIONS}/{question_id}/review",
-        json={"action": "REJECT", "comment": "内容が不正確"},
+        json={
+            "action": "REJECT",
+            "reason": "PHYSICS_ERROR",
+            "comment": "内容が不正確",
+        },
     )
 
     assert reject.status_code == 200
@@ -75,6 +79,7 @@ def test_edit_approve_records_before_and_after_and_reembeds(
         f"{QUESTIONS}/{question_id}/review",
         json={
             "action": "EDIT_APPROVE",
+            "reason": "INCOMPLETE",
             "question": "編集されるAI質問ですか？",
             "answer": "修正された回答",
         },

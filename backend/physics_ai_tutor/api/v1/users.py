@@ -3,6 +3,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Response
 
 from physics_ai_tutor.api.dependencies import (
+    ACCESS_TOKEN_COOKIE_NAME,
     get_current_db_user,
     get_current_user,
     require_admin,
@@ -48,6 +49,40 @@ def change_my_password(
         )
 
     return Response(status_code=204)
+
+
+@router.get("/me/profile", response_model=UserResponse)
+def get_my_profile(
+    user: User = Depends(get_current_db_user),
+):
+    return user
+
+
+@router.delete("/me", status_code=204)
+def delete_my_account(
+    user: User = Depends(get_current_db_user),
+    db=Depends(get_db),
+):
+    """Self-service account deletion for students.
+
+    Admins are refused so an admin cannot remove the last admin by
+    accident; they use the admin flow, which blocks self-deletion too.
+    Review history survives with `reviewer_id` set to NULL.
+    """
+    if user.role == "admin":
+        raise HTTPException(
+            status_code=400,
+            detail="Admins cannot delete their own account",
+        )
+
+    user_id = user.id
+    user_service.delete_user(db, user)
+    logger.info("Account self-deleted: user_id=%s", user_id)
+
+    response = Response(status_code=204)
+    response.delete_cookie(key=ACCESS_TOKEN_COOKIE_NAME, path="/")
+
+    return response
 
 
 @router.get("", response_model=list[UserResponse])

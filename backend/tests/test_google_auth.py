@@ -266,3 +266,13 @@ def test_parse_id_token_rejects_bad_claims(google_enabled, overrides):
 def test_parse_id_token_rejects_garbage(google_enabled):
     with pytest.raises(GoogleAuthError):
         google_auth_service.parse_id_token("not-a-jwt")
+
+
+def test_google_account_can_delete_itself(client, db, google_enabled, exchange_returns):
+    exchange_returns(IDENTITY)
+    _callback(client)
+
+    response = client.delete("/api/v1/users/me")
+
+    assert response.status_code == 204
+    assert db.query(User).filter_by(google_sub=IDENTITY.sub).first() is None

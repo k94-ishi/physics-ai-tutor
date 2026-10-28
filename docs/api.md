@@ -69,6 +69,8 @@ missing language is machine translated at creation.
 | --- | --- | --- | --- |
 | GET | `/api/v1/users/me` | User | Current user's id, email, role |
 | PUT | `/api/v1/users/me/password` | User | Change own password |
+| GET | `/api/v1/users/me/profile` | Authenticated | Own account details (email, role, `auth_provider`, registration date) for the account page |
+| DELETE | `/api/v1/users/me` | Authenticated | Self-service account deletion; clears the session cookie. Refused (400) for admins, who must be removed by another admin. Review history survives with `reviewer_id` set to `null`. |
 | GET | `/api/v1/users` | Admin | List users |
 | POST | `/api/v1/users` | Admin | Create a user or admin |
 | GET | `/api/v1/users/{user_id}` | Admin | Get one user |

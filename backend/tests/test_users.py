@@ -260,3 +260,73 @@ def test_change_password_requires_authentication(client):
     )
 
     assert response.status_code == 401
+
+
+def test_get_my_profile_returns_account_details(user_client):
+    response = user_client.get("/api/v1/users/me/profile")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["email"] == "user@example.com"
+    assert body["role"] == "user"
+    assert body["auth_provider"] == "password"
+
+
+def test_get_my_profile_requires_authentication(client):
+    assert client.get("/api/v1/users/me/profile").status_code == 401
+
+
+def test_delete_my_account_removes_user_and_clears_cookie(user_client, db):
+    from physics_ai_tutor.models import User
+
+    response = user_client.delete("/api/v1/users/me")
+
+    assert response.status_code == 204
+    assert "max-age=0" in response.headers.get("set-cookie", "").lower()
+    assert db.query(User).filter_by(email="user@example.com").first() is None
+
+    # The session is gone: the cleared cookie no longer authenticates.
+    assert user_client.get("/api/v1/users/me").status_code == 401
+
+
+def test_delete_my_account_refused_for_admin(admin_client, db):
+    from physics_ai_tutor.models import User
+
+    response = admin_client.delete("/api/v1/users/me")
+
+    assert response.status_code == 400
+    assert db.query(User).filter_by(email="admin@example.com").first() is not None
+
+
+def test_delete_my_account_requires_authentication(client):
+    assert client.delete("/api/v1/users/me").status_code == 401
+
+
+def test_delete_my_account_keeps_review_history(user_client, admin_client, db):
+    from physics_ai_tutor.models import QuestionReview, User
+
+    created = admin_client.post(
+        "/api/v1/questions",
+        json={"question": "履歴テスト質問", "answer": "回答"},
+    )
+    assert created.status_code == 201
+    question_id = created.json()["id"]
+
+    # A review written by the soon-to-be-deleted user (role has no bearing
+    # on the FK behaviour; write the row directly).
+    user = db.query(User).filter_by(email="user@example.com").one()
+    db.add(
+        QuestionReview(
+            question_id=question_id,
+            action="APPROVE",
+            reviewer_id=user.id,
+            language="ja",
+        )
+    )
+    db.commit()
+
+    assert user_client.delete("/api/v1/users/me").status_code == 204
+
+    review = db.query(QuestionReview).filter_by(question_id=question_id).one()
+    db.refresh(review)
+    assert review.reviewer_id is None

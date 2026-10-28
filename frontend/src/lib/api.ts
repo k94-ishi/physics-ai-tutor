@@ -212,6 +212,16 @@ export async function fetchCurrentUser(): Promise<User> {
     return apiFetch<User>(`${getUsersUrl()}/me`);
 }
 
+export async function fetchMyProfile(): Promise<AdminUser> {
+    return apiFetch<AdminUser>(`${getUsersUrl()}/me/profile`);
+}
+
+export async function deleteMyAccount(): Promise<void> {
+    return apiFetch<void>(`${getUsersUrl()}/me`, {
+        method: "DELETE",
+    });
+}
+
 export async function getUsers(): Promise<AdminUser[]> {
     return apiFetch<AdminUser[]>(getUsersUrl());
 }

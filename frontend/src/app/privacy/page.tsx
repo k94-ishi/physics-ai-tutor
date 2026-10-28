@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
+import Link from "next/link";
 import Card from "@/components/ui/Card";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { TranslationKey } from "@/lib/i18n/translations";
@@ -119,6 +120,12 @@ export default function PrivacyPage() {
 
             <Section headingKey="privacy.deletion.heading">
                 <Paragraphs keys={["privacy.deletion.body"]} />
+                <Link
+                    href="/account"
+                    className="text-sm text-blue-600 underline hover:text-blue-800"
+                >
+                    {t("privacy.deletion.linkLabel")}
+                </Link>
             </Section>
 
             <Section headingKey="privacy.contact.heading">

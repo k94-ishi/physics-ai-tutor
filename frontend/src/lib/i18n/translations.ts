@@ -36,6 +36,7 @@ const ja = {
     "header.userManagement": "ユーザー管理",
     "header.logout": "ログアウト",
     "header.login": "ログイン",
+    "header.account": "アカウント",
     "header.adminLogin": "管理者ログイン",
     "header.logoutSuccess": "ログアウトしました。",
     "header.logoutFailed": "ログアウトに失敗しました。",
@@ -275,7 +276,8 @@ const ja = {
         "アカウント情報は、削除の申し出があるまで保存します。利用記録は約1日で削除されます。質問と回答は教育コンテンツとして保存され、アカウントとは紐付けられません。",
     "privacy.deletion.heading": "アカウントの削除",
     "privacy.deletion.body":
-        "アカウント情報の削除を希望する場合は、下記の連絡先までお知らせください。確認のうえ削除します。アプリ内から自分で削除できる機能も準備中です。",
+        "ログイン中は、アカウントページからいつでも自分でアカウントを削除できます。ログインできない場合は、下記の連絡先にご依頼ください。",
+    "privacy.deletion.linkLabel": "アカウントページへ",
     "privacy.contact.heading": "お問い合わせ",
     "privacy.contact.body":
         "本ポリシーに関する質問や削除の依頼は、次の窓口までお願いします:",
@@ -283,6 +285,23 @@ const ja = {
     "privacy.changes.heading": "本ポリシーの変更",
     "privacy.changes.body":
         "保存する情報や利用目的が変わる場合は、本ページを更新します。重要な変更はログインページでお知らせします。",
+
+
+    // account
+    "account.title": "アカウント",
+    "account.emailLabel": "メールアドレス",
+    "account.providerLabel": "ログイン方法",
+    "account.registeredLabel": "登録日",
+    "account.fetchFailed": "アカウント情報を取得できませんでした。",
+    "account.deleteHeading": "アカウントの削除",
+    "account.deleteDescription":
+        "アカウント情報(メールアドレスなど)を削除します。これまでに保存された質問と回答は、アカウントと紐付いていないため残ります。この操作は取り消せません。",
+    "account.deleteButton": "アカウントを削除",
+    "account.confirmDelete": "本当にアカウントを削除しますか？",
+    "account.deleted": "アカウントを削除しました。",
+    "account.deleteFailed": "アカウントの削除に失敗しました。",
+    "account.adminNote":
+        "管理者アカウントはここからは削除できません。ユーザー管理画面から別の管理者が削除してください。",
 
     // footer
     "footer.privacy": "プライバシーポリシー",
@@ -330,6 +349,7 @@ const en: Record<keyof typeof ja, string> = {
     "header.userManagement": "Manage Users",
     "header.logout": "Logout",
     "header.login": "Login",
+    "header.account": "Account",
     "header.adminLogin": "Admin Login",
     "header.logoutSuccess": "Logged out.",
     "header.logoutFailed": "Failed to log out.",
@@ -574,7 +594,8 @@ const en: Record<keyof typeof ja, string> = {
         "Account information is kept until you ask us to delete it. Usage records are deleted after about one day. Questions and answers are kept as educational content and are not linked to accounts.",
     "privacy.deletion.heading": "Deleting your account",
     "privacy.deletion.body":
-        "If you want your account information deleted, contact us below and we will remove it after confirmation. An in-app self-deletion feature is planned.",
+        "While signed in, you can delete your account yourself at any time from the account page. If you can no longer sign in, send a request to the contact below.",
+    "privacy.deletion.linkLabel": "Go to the account page",
     "privacy.contact.heading": "Contact",
     "privacy.contact.body":
         "For questions about this policy or deletion requests, please use:",
@@ -582,6 +603,23 @@ const en: Record<keyof typeof ja, string> = {
     "privacy.changes.heading": "Changes to this policy",
     "privacy.changes.body":
         "If what we store or why changes, this page will be updated. Important changes will be announced on the login page.",
+
+
+    // account
+    "account.title": "Account",
+    "account.emailLabel": "Email",
+    "account.providerLabel": "Sign-in method",
+    "account.registeredLabel": "Registered",
+    "account.fetchFailed": "Failed to load your account.",
+    "account.deleteHeading": "Delete account",
+    "account.deleteDescription":
+        "This removes your account information (such as your email address). Questions and answers already saved remain, because they are not linked to your account. This cannot be undone.",
+    "account.deleteButton": "Delete my account",
+    "account.confirmDelete": "Really delete your account?",
+    "account.deleted": "Your account has been deleted.",
+    "account.deleteFailed": "Failed to delete your account.",
+    "account.adminNote":
+        "Administrator accounts cannot be deleted here. Ask another administrator to remove it from the user management page.",
 
     // footer
     "footer.privacy": "Privacy Policy",

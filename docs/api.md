@@ -87,7 +87,7 @@ missing language is machine translated at creation.
 | POST | `/api/v1/questions` | Admin | Create an `APPROVED` / `MANUAL` question |
 | PUT | `/api/v1/questions/{id}` | Admin | Edit question text and answer; embeddings are regenerated |
 | DELETE | `/api/v1/questions/{id}` | Admin | Delete a question and its embeddings, concept links, and reviews |
-| POST | `/api/v1/questions/{id}/review` | Admin | Apply `APPROVE`, `EDIT_APPROVE`, or `REJECT` and record a review row. Body may include `language` (which text was reviewed or edited; defaults to the original). Edit-approve regenerates a machine-made counterpart. |
+| POST | `/api/v1/questions/{id}/review` | Admin | Apply `APPROVE`, `EDIT_APPROVE`, or `REJECT` and record a review row. Body may include `language` (which text was reviewed or edited; defaults to the original). Edit-approve regenerates a machine-made counterpart. The admin UI's "Save and approve" sends `EDIT_APPROVE` with the edited text (one request per changed language, machine-translated languages first), so the review row holds the correction as a before/after diff. |
 | POST | `/api/v1/questions/translate` | Admin | Fill missing languages by machine translation. Body: `{"question_ids": [int]}`. |
 | POST | `/api/v1/questions/bulk-review` | Admin | Review many questions with one action |
 | POST | `/api/v1/questions/bulk-delete` | Admin | Delete many questions |

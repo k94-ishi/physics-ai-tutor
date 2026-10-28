@@ -147,6 +147,20 @@ export default function EditQuestionPage() {
         return changed ? changes : null;
     };
 
+    const changedLanguages = (): ContentLanguage[] => {
+        if (loaded === null) {
+            return [];
+        }
+
+        const original = textsFromQuestion(loaded);
+
+        return LANGUAGES.filter(
+            (lang) =>
+                texts[lang].question.trim() !== original[lang].question.trim() ||
+                texts[lang].answer.trim() !== original[lang].answer.trim()
+        );
+    };
+
     const validate = (): Partial<Record<ContentLanguage, string>> => {
         const nextErrors: Partial<Record<ContentLanguage, string>> = {};
 
@@ -208,15 +222,46 @@ export default function EditQuestionPage() {
     };
 
     const handleSaveAndApprove = async () => {
+        const nextErrors = validate();
+        setErrors(nextErrors);
+
+        if (Object.keys(nextErrors).length > 0) {
+            return;
+        }
+
         setApproving(true);
 
         try {
-            if (await saveChanges()) {
+            // EDIT_APPROVE stores the teacher's correction as a before/after
+            // diff in the review history; a separate PUT followed by APPROVE
+            // would record the edit as a no-op.
+            const changed = changedLanguages();
+
+            if (changed.length === 0) {
                 await reviewQuestion(id, { action: "APPROVE" });
-                showToast(t("editQuestion.savedAndApproved"));
-                router.push("/admin/questions");
-                return;
+            } else {
+                // Machine-translated languages first: approving the original
+                // regenerates MACHINE counterparts, which would discard a
+                // correction the teacher just made in the other language.
+                const ordered = [...changed].sort(
+                    (a, b) =>
+                        (loaded?.texts[a]?.provenance === "MACHINE" ? 0 : 1) -
+                        (loaded?.texts[b]?.provenance === "MACHINE" ? 0 : 1)
+                );
+
+                for (const lang of ordered) {
+                    await reviewQuestion(id, {
+                        action: "EDIT_APPROVE",
+                        language: lang,
+                        question: texts[lang].question,
+                        answer: texts[lang].answer,
+                    });
+                }
             }
+
+            showToast(t("editQuestion.savedAndApproved"));
+            router.push("/admin/questions");
+            return;
         } catch (error) {
             console.error(error);
             showToast(t("editQuestion.actionFailed"), "error");

@@ -276,6 +276,12 @@ Create the first admin with the CLI (see
 [Creating an admin user](#creating-an-admin-user)); further password
 accounts can be created by an admin through `POST /api/v1/users`.
 
+Note on review history data: rows created before 2026-10-28 by the admin
+UI's "Save and approve" have `action = 'APPROVE'` with `before_* = after_*`
+even when the teacher edited the text first (the edit went through a
+separate `PUT`). Analyses of corrections should exclude rows from before
+that date.
+
 ### `rate_limit_hits`
 
 One row per counted request for the sliding-window rate limiter (see

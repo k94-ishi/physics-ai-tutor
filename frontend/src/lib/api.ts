@@ -25,7 +25,7 @@ import {
 } from "@/types/auth";
 import { ContentLanguage, TranslationBatchResponse } from "@/types/question";
 import { AskAiResponse } from "@/types/ai";
-import { MyQuestionsResponse } from "@/types/question";
+import { AdminStatsResponse, MyQuestionsResponse } from "@/types/question";
 
 function getApiUrl(): string {
     const url = typeof window === "undefined"
@@ -211,6 +211,14 @@ export async function logout(): Promise<void> {
 
 export async function fetchCurrentUser(): Promise<User> {
     return apiFetch<User>(`${getUsersUrl()}/me`);
+}
+
+export async function fetchAdminStats(
+    days: number
+): Promise<AdminStatsResponse> {
+    return apiFetch<AdminStatsResponse>(
+        `${getApiUrl()}/api/v1/admin/stats?days=${days}`
+    );
 }
 
 export async function fetchMyQuestions(

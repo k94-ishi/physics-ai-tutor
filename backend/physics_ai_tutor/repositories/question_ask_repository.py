@@ -9,11 +9,13 @@ def create(
     question_id: int,
     user_id: int,
     language: str,
+    cache_hit: bool,
 ) -> QuestionAsk:
     ask = QuestionAsk(
         question_id=question_id,
         user_id=user_id,
         language=language,
+        cache_hit=cache_hit,
     )
 
     db.add(ask)

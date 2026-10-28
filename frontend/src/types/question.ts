@@ -152,3 +152,19 @@ export type MyQuestionsResponse = {
     page: number;
     size: number;
 };
+
+export type DailyUsage = {
+    day: string;
+    generations: number;
+    asks: number;
+    cache_hits: number;
+    distinct_users: number;
+};
+
+export type AdminStatsResponse = {
+    days: number;
+    daily: DailyUsage[];
+    unreviewed_count: number;
+    unreviewed_median_age_days: number | null;
+    anonymous_ip_buckets_24h: number;
+};

@@ -286,6 +286,7 @@ not recorded. Powers `GET /users/me/questions` and the planned usage counts.
 | `id` | `integer` | no | serial | Primary key |
 | `question_id` | `integer` | no | | FK → `questions.id`, `ON DELETE CASCADE`, indexed. |
 | `user_id` | `integer` | yes | | FK → `users.id`, `ON DELETE SET NULL`: deleting the account unlinks the history but keeps aggregate counts. |
+| `cache_hit` | `boolean` | no | `false` | True when the answer came from the cache; set explicitly by the recorder, not inferred from timestamps. |
 | `language` | `varchar(10)` | no | `'ja'` | Language the student asked in. |
 | `created_at` | `timestamptz` | no | `now()` | |
 
@@ -406,7 +407,8 @@ Revisions in order from the first to the current head:
 | `b2c3d4e5f6a7` | 2026-10-25 | Bilingual rows: `question`/`answer` become `question_ja`/`answer_ja` (`text`), add `*_en` and provenance columns, `original_language`, `question_embeddings.language`, `concepts.name_ja`/`name_en`, `question_reviews.language`. Downgrade deletes English-only rows. |
 | `c8d9e0f1a2b3` | 2026-10-27 | Create `rate_limit_hits` for the Postgres-backed rate limiter |
 | `d9e0f1a2b3c4` | 2026-10-27 | Google Sign-In: `users.hashed_password` nullable, add `auth_provider` and unique `google_sub`, provider check constraints. Downgrade deletes Google accounts. |
-| `e0f1a2b3c4d5` | 2026-10-28 | Create `question_asks`: per-user ask history for signed-in callers (**head**) |
+| `e0f1a2b3c4d5` | 2026-10-28 | Create `question_asks`: per-user ask history for signed-in callers |
+| `f1a2b3c4d5e6` | 2026-10-28 | Add `question_asks.cache_hit` for the usage dashboard (**head**) |
 
 The chain is linear with a single head. Verify with:
 

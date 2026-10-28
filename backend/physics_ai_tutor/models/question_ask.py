@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from physics_ai_tutor.database.base import Base
@@ -27,6 +27,10 @@ class QuestionAsk(Base):
     user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
+    )
+    # True when the answer came from the cache instead of a generation.
+    cache_hit: Mapped[bool] = mapped_column(
+        Boolean, server_default="false", nullable=False
     )
     # Language the student asked in, not the row's original language.
     language: Mapped[str] = mapped_column(

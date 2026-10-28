@@ -15,11 +15,12 @@ def record_ask(
     question_id: int,
     user_id: int,
     language: Language | str,
+    cache_hit: bool,
 ) -> None:
     """Best-effort: a failed history row must not fail the answer."""
     try:
         question_ask_repository.create(
-            db, question_id, user_id, Language(language).value
+            db, question_id, user_id, Language(language).value, cache_hit=cache_hit
         )
         db.commit()
 

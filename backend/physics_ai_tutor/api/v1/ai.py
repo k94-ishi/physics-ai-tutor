@@ -53,7 +53,7 @@ def ask_ai(
     if cached is not None:
         if user is not None:
             ask_history_service.record_ask(
-                db, cached.id, int(user.sub), request.language
+                db, cached.id, int(user.sub), request.language, cache_hit=True
             )
         text = cached.text(request.language)
         assert text is not None
@@ -104,7 +104,7 @@ def ask_ai(
     if saved is not None:
         if user is not None:
             ask_history_service.record_ask(
-                db, saved.id, int(user.sub), request.language
+                db, saved.id, int(user.sub), request.language, cache_hit=False
             )
         background_tasks.add_task(translate_in_background, saved.id)
 

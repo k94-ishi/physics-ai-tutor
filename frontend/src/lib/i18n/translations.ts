@@ -34,6 +34,7 @@ const ja = {
     "header.questionList": "質問一覧",
     "header.questionManagement": "質問管理",
     "header.userManagement": "ユーザー管理",
+    "header.adminStats": "利用状況",
     "header.logout": "ログアウト",
     "header.login": "ログイン",
     "header.myQuestions": "自分の質問",
@@ -289,6 +290,24 @@ const ja = {
 
 
 
+
+    // adminStats
+    "adminStats.title": "利用状況",
+    "adminStats.fetchFailed": "利用状況を取得できませんでした。",
+    "adminStats.daysLabel": "表示期間",
+    "adminStats.daysUnit": "{count}日間",
+    "adminStats.colDay": "日付",
+    "adminStats.colGenerations": "生成",
+    "adminStats.colAsks": "質問(ログイン)",
+    "adminStats.colCacheHits": "キャッシュ回答",
+    "adminStats.colUsers": "利用者数",
+    "adminStats.unreviewedCount": "未レビューの質問",
+    "adminStats.unreviewedMedianAge": "未レビューの滞留期間(中央値)",
+    "adminStats.medianAgeDays": "{days}日",
+    "adminStats.anonymousIps": "匿名IP数(直近24時間)",
+    "adminStats.generationsHint":
+        "生成 = LLMを呼び出した回数(匿名を含む)。質問・キャッシュ回答・利用者数はログイン中の利用のみを数えます。",
+
     // myQuestions
     "myQuestions.title": "自分の質問",
     "myQuestions.fetchFailed": "質問履歴を取得できませんでした。",
@@ -359,6 +378,7 @@ const en: Record<keyof typeof ja, string> = {
     "header.questionList": "Questions",
     "header.questionManagement": "Manage Questions",
     "header.userManagement": "Manage Users",
+    "header.adminStats": "Usage",
     "header.logout": "Logout",
     "header.login": "Login",
     "header.myQuestions": "My questions",
@@ -618,6 +638,24 @@ const en: Record<keyof typeof ja, string> = {
         "If what we store or why changes, this page will be updated. Important changes will be announced on the login page.",
 
 
+
+
+    // adminStats
+    "adminStats.title": "Usage",
+    "adminStats.fetchFailed": "Failed to load usage statistics.",
+    "adminStats.daysLabel": "Window",
+    "adminStats.daysUnit": "{count} days",
+    "adminStats.colDay": "Day",
+    "adminStats.colGenerations": "Generations",
+    "adminStats.colAsks": "Asks (signed in)",
+    "adminStats.colCacheHits": "Cache hits",
+    "adminStats.colUsers": "Users",
+    "adminStats.unreviewedCount": "Unreviewed questions",
+    "adminStats.unreviewedMedianAge": "Unreviewed backlog age (median)",
+    "adminStats.medianAgeDays": "{days} days",
+    "adminStats.anonymousIps": "Anonymous IPs (last 24h)",
+    "adminStats.generationsHint":
+        "Generations = LLM calls (including anonymous). Asks, cache hits, and users count signed-in activity only.",
 
     // myQuestions
     "myQuestions.title": "My questions",

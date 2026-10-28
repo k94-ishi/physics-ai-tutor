@@ -52,6 +52,13 @@ export default function Header() {
                             >
                                 {t("header.userManagement")}
                             </Link>
+
+                            <Link
+                                href="/admin/stats"
+                                className="text-gray-600 hover:text-gray-900"
+                            >
+                                {t("header.adminStats")}
+                            </Link>
                         </>
                     )}
 

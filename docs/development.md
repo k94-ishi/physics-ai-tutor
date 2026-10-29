@@ -297,6 +297,24 @@ Students on under-18 Google Workspace for Education accounts may see
 "Access blocked" until their school's admin allows the app; the login page
 tells them to use a personal Google account instead.
 
+### Prompts
+
+All prompt texts are data: `backend/physics_ai_tutor/core/prompt_library.jsonl`,
+one record per line with `family`, `name`, `language` (`null` for texts shared
+by both languages), `version`, `description`, and `text`. The `prompts` module
+and `concept_service` build their strings from it at import.
+
+```bash
+uv run python -m physics_ai_tutor.cli.show_prompts                 # read it
+uv run python -m physics_ai_tutor.cli.show_prompts --family answer
+```
+
+To change wording: edit the JSONL record, bump the family's `version`, run
+the tests, and record the new fingerprint that `tests/test_prompts.py`
+reports. Versions are stored on generated rows (`questions.prompt_version`,
+`question_concepts.extraction_prompt_version`), which is what makes review
+outcomes comparable across prompt changes.
+
 ### Exporting the review dataset
 
 One JSONL line per human review, for offline analysis and prompt

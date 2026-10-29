@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from physics_ai_tutor.core import prompts
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.exceptions import ConceptExtractionError
+from physics_ai_tutor.core.prompt_library import load_library
 from physics_ai_tutor.models import Concept
 from physics_ai_tutor.repositories import (
     concept_repository,
@@ -16,49 +17,12 @@ from physics_ai_tutor.services import deepseek_service, embedding_service
 
 logger = logging.getLogger(__name__)
 
-CONCEPT_EXTRACTION_PROMPT_VERSION = "v2"
+_LIBRARY = load_library()
 
-_SYSTEM_PROMPT = (
-    "You are an expert in physics education. Your output is processed "
-    "automatically: print only the required format, one concept per line as "
-    "'<Japanese name> | <English name>', and nothing else."
-)
+CONCEPT_EXTRACTION_PROMPT_VERSION = _LIBRARY.version("concept_extraction")
 
-_USER_PROMPT_TEMPLATE = """---Example---
-
-Question:
-加速度って何?
-
-Answer:
-加速度は単位時間あたりの速度の変化量です。
-速度と同じくベクトル量で、単位は $m/s^2$ です。
-
-速度-時間グラフの接線の傾きを考えると、加速度になります。
-
-Output:
-加速度 | acceleration
-単位時間 | unit time
-速度 | velocity
-変化量 | change
-ベクトル | vector
-単位 | unit
-$m/s^2$ | $m/s^2$
-v-tグラフ | v-t graph
-接線の傾き | slope of the tangent
-微分 | differentiation
----End of example---
-As in the example, extract the physics concepts from the following question
-and answer (written in {language_name}). Print one concept per line as
-'<Japanese name> | <English name>', newline separated, and nothing else.
-{glossary}
-Question:
-{question}
-
-Answer:
-{answer}
-
-Output:
-"""
+_SYSTEM_PROMPT = _LIBRARY.get("concept_extraction", "system")
+_USER_PROMPT_TEMPLATE = _LIBRARY.get("concept_extraction", "user_template")
 
 
 @dataclass(frozen=True)
@@ -97,7 +61,10 @@ def extract_concept_names(
     question: str, answer: str, language: str = "ja"
 ) -> list[str]:
     """Return raw '<ja> | <en>' lines from the model (parsed later)."""
+    # The worked example matches the row's language: few-shot examples
+    # steer the model more than the instruction text does.
     user_prompt = _USER_PROMPT_TEMPLATE.format(
+        example=_LIBRARY.get("concept_extraction", "example", language),
         language_name=prompts.LANGUAGE_NAMES[Language(language)],
         glossary=prompts.glossary_block(),
         question=question,

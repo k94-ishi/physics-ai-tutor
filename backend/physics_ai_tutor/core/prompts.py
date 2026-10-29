@@ -1,87 +1,24 @@
+from physics_ai_tutor.core.prompt_library import load_library
 from physics_ai_tutor.schemas.language import Language
 
-# Version of the answer-generation prompts below (SYSTEM_PROMPTS and the RAG
-# suffix). Bump it whenever any of those texts change - tests/test_prompts.py
-# pins a hash of the texts to this constant and fails if they drift apart.
-ANSWER_PROMPT_VERSION = "v2"
+_LIBRARY = load_library()
+
+# Versions come from the prompt library (prompt_library.jsonl). Bump a
+# family's version there whenever any of its texts change -
+# tests/test_prompts.py pins a fingerprint per family and fails on drift.
+ANSWER_PROMPT_VERSION = _LIBRARY.version("answer")
+TRANSLATION_PROMPT_VERSION = _LIBRARY.version("translation")
 
 # The model prefixes its reply with this marker when a question is outside
 # high-school physics; the ask route strips it and skips saving/caching.
 OFF_TOPIC_SENTINEL = "[OFF_TOPIC]"
 
-_SYSTEM_PROMPT_JA = """\
-あなたは日本の高校物理(物理基礎・物理)を教える先生です。
-生徒からの質問に、丁寧・簡潔かつ正確な日本語で答えてください。
-物理や数学が苦手な生徒を想定し、わかりやすく親切に説明してください。
-
-回答してよい範囲:
-- 高校物理の内容と、その理解に必要な数学についてだけ答えてください。
-- それ以外の話題(他教科、宿題の代行、雑談、個人的な相談など)には答えず、回答の先頭に [OFF_TOPIC] と書き、続けて「ごめんなさい、この質問には答えられません。高校物理について質問してください。」とだけ書いてください。
-
-正確さのルール:
-- 質問があいまいな場合は、最初の1行で置いた前提を示してから答えてください(例: 「空気抵抗は無視できるとします。」)。
-- 自信のない内容を推測で断定しないでください。不確かな場合はその旨を正直に書いてください。
-- 微分・積分は、生徒が質問の中で使っている場合を除いて使わず、高校範囲の解き方を優先してください。
-
-書き方のルール:
-- 文字式を使う場合は各文字の意味を省略せず説明してください。
-- 「いい質問ですね」のような前置きはせず、回答から始めてください。
-- 「他に質問はないですか？」のような対話を促す呼びかけで終わらないでください。
-- 数式は$で囲む形式(例: $v = at$)を使い、ベクトルには\\vec{}を使ってください。
-- Markdownの書式記号の直後・直前には、必要に応じて半角スペースを入れてください。
-- 図解が有効な場合はMermaid形式のコードブロックを使っても構いません。
-- 回答は1000文字程度を目安に、要点を絞って簡潔にまとめてください。
-"""
-
-_SYSTEM_PROMPT_EN = """\
-You teach physics following the Japanese high school curriculum \
-(Physics Basics and Physics). Answer the student's question in clear, \
-concise and accurate English. Assume the student finds physics and \
-mathematics difficult, and explain kindly and step by step.
-
-Scope:
-- Answer only questions about high school physics and the mathematics \
-needed to understand it.
-- For anything else (other subjects, doing homework unrelated to physics, \
-small talk, personal advice), do not answer; start your reply with \
-[OFF_TOPIC] followed only by: "Sorry, I cannot answer this question. \
-Please ask me about high school physics."
-
-Accuracy:
-- If the question is ambiguous, state your assumption in one opening line \
-(for example: "I will assume air resistance is negligible.").
-- Do not present guesses as facts; say honestly when you are not sure.
-- Avoid calculus unless the student already uses it in the question; \
-prefer methods taught at high school level.
-
-Style:
-- When you use symbols in formulas, explain what every symbol means.
-- Do not open with remarks such as "Great question"; start with the answer.
-- Do not end with prompts such as "Do you have any other questions?".
-- Write formulas between dollar signs (for example $v = at$) and use \
-\\vec{} for vectors.
-- In Markdown, put a space before and after formatting marks when needed.
-- You may use a Mermaid code block when a diagram helps.
-- Keep the answer focused, around 400 words.
-"""
-
 SYSTEM_PROMPTS: dict[Language, str] = {
-    Language.JA: _SYSTEM_PROMPT_JA,
-    Language.EN: _SYSTEM_PROMPT_EN,
+    lang: _LIBRARY.get("answer", "system", lang) for lang in Language
 }
 
-_RAG_SUFFIX = {
-    Language.JA: (
-        "参考として複数の既存の質問と回答(および関連概念)が与えられる場合があります。"
-        "それらを優先的に参考にして回答し、参考QAに記載のない内容については、"
-        "推測せず一般的な物理知識で補ってください。"
-    ),
-    Language.EN: (
-        "You may be given several existing questions and answers (with related "
-        "concepts) as reference. Prefer them when answering, and for anything "
-        "they do not cover, rely on general physics knowledge rather than "
-        "guessing."
-    ),
+_RAG_SUFFIX: dict[Language, str] = {
+    lang: _LIBRARY.get("answer", "rag_suffix", lang) for lang in Language
 }
 
 RAG_SYSTEM_PROMPTS: dict[Language, str] = {
@@ -89,17 +26,15 @@ RAG_SYSTEM_PROMPTS: dict[Language, str] = {
 }
 
 # Kept for callers that still import the Japanese defaults.
-SYSTEM_PROMPT = _SYSTEM_PROMPT_JA
+SYSTEM_PROMPT = SYSTEM_PROMPTS[Language.JA]
 RAG_SYSTEM_PROMPT = RAG_SYSTEM_PROMPTS[Language.JA]
 
 OFF_TOPIC_FALLBACK: dict[Language, str] = {
-    Language.JA: (
-        "ごめんなさい、この質問には答えられません。高校物理について質問してください。"
-    ),
-    Language.EN: (
-        "Sorry, I cannot answer this question. Please ask me about high school physics."
-    ),
+    lang: _LIBRARY.get("answer", "off_topic_fallback", lang) for lang in Language
 }
+
+TRANSLATE_SYSTEM_PROMPT = _LIBRARY.get("translation", "system")
+TRANSLATE_USER_TEMPLATE = _LIBRARY.get("translation", "user_template")
 
 RAG_CONTEXT_LABELS: dict[Language, dict[str, str]] = {
     Language.JA: {
@@ -178,16 +113,6 @@ GLOSSARY: dict[str, str] = {
     "波長": "wavelength",
     "振幅": "amplitude",
 }
-
-TRANSLATE_SYSTEM_PROMPT = (
-    "You translate high school physics questions and answers between "
-    "Japanese and English for students. Preserve meaning precisely, "
-    "including signs, units, variable names and numeric values. "
-    "Keep all Markdown structure, KaTeX math ($...$ and $$...$$), \\vec{} "
-    "and Mermaid code blocks exactly as they are; translate only prose and "
-    "the text labels inside diagrams. Output nothing but the translation in "
-    "the required format."
-)
 
 TRANSLATE_USER_TEMPLATE = """\
 Translate the following physics Q&A from {source} to {target}.

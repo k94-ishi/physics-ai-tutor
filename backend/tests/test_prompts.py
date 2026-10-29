@@ -18,6 +18,7 @@ def _answer_prompt_hash() -> str:
 # instead of editing the old one.
 VERSION_HASHES = {
     "v1": "1e0b352610e376de185c7b5e58aa4a414c2ce211e60b8463b14c4b06e1b5afee",
+    "v2": "bf43a65b1c5b2ffa6903531b5814bbcab417bc462c000b0d798e8d792a059aac",
 }
 
 

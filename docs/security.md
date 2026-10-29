@@ -158,6 +158,12 @@ Notes:
   Only enable it behind a proxy you control (Render sets this header). If
   the backend is ever exposed directly, set it to `false`, otherwise clients
   can spoof their IP and bypass the limit.
+- The answer prompt (v2) restricts the model to high-school physics: any
+  other request is declined with a fixed sentence. The model marks declines
+  with a leading `[OFF_TOPIC]` sentinel; the ask route strips it and returns
+  the message **without saving it**, so off-topic exchanges never enter the
+  knowledge base or the cache. The ask still consumes the caller's quota,
+  and declines are logged with the rate-limit bucket for monitoring.
 - Exact-match lookup and semantic search run before any LLM call, and every
   AI answer is cached as a question row. The ask endpoint returns a cached
   answer (including unreviewed ones, labelled) for an identical question, so

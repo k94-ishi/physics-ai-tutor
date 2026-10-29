@@ -93,6 +93,22 @@ def ask_ai(
 
     answer = result.content
 
+    # A declined off-topic question is returned but never saved: it must not
+    # enter the knowledge base nor be served from the cache to someone else.
+    # The asker's quota stays spent - the LLM call did happen.
+    stripped = answer.lstrip()
+    if stripped.startswith(prompts.OFF_TOPIC_SENTINEL):
+        message = stripped[len(prompts.OFF_TOPIC_SENTINEL) :].strip()
+        logger.info(
+            "Ask AI declined off-topic question: bucket=%s mode=%s",
+            rate_limit.bucket_key,
+            generation_mode,
+        )
+        return AskAiResponse(
+            answer=message or prompts.OFF_TOPIC_FALLBACK[request.language],
+            language=request.language,
+        )
+
     logger.info(
         "Ask AI request answered: question_length=%d mode=%s language=%s",
         len(request.question),

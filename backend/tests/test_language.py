@@ -213,7 +213,7 @@ def test_ask_in_english_uses_english_prompt_and_translates_in_background(
     body = response.json()
     assert body["language"] == "en"
     assert body["cached"] is False
-    assert "physics teacher" in prompts_seen[0]
+    assert "You teach physics" in prompts_seen[0]
 
     saved = db.query(Question).filter(Question.id == body["question_id"]).one()
     db.refresh(saved)

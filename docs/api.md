@@ -121,8 +121,12 @@ The flow, in order:
    retrieves `APPROVED` questions by similarity within `language` (or loads
    the given `retrieved_question_ids`, re-validated server-side) and builds a
    context prompt (source `RAG_RESULT`).
-3. The answer is saved as `UNREVIEWED` in `language`, and the other language
-   is machine translated in a background task after the response is sent.
+3. If the model declines the question as outside high-school physics (a
+   leading `[OFF_TOPIC]` sentinel), the polite refusal is returned with
+   `question_id: null` and nothing is saved, translated, or cached; the ask
+   still counts against the rate limit. Otherwise the answer is saved as
+   `UNREVIEWED` in `language`, and the other language is machine translated
+   in a background task after the response is sent.
 4. For a signed-in caller, the ask is recorded in `question_asks` (on cache
    hits too) so `GET /users/me/questions` can show their history. Anonymous
    asks are not recorded.

@@ -371,3 +371,66 @@ def test_manual_question_has_no_generation_metadata(admin_client, db):
 
     admin = admin_client.get(f"/api/v1/questions/{question_id}").json()
     assert admin["generation"]["model"] is None
+
+
+def test_ask_ai_off_topic_reply_is_returned_but_never_saved(client, monkeypatch, db):
+    monkeypatch.setattr(
+        deepseek_service,
+        "generate_answer",
+        fake_generation(
+            "[OFF_TOPIC] ごめんなさい、この質問には答えられません。"
+            "高校物理について質問してください。"
+        ),
+    )
+
+    response = client.post(ASK_PATH, json={"question": "英語の宿題を手伝って"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["answer"].startswith("ごめんなさい")
+    assert "[OFF_TOPIC]" not in body["answer"]
+    assert body["question_id"] is None
+    assert body["status"] is None
+
+    assert db.query(Question).count() == 0
+
+
+def test_ask_ai_off_topic_with_bare_sentinel_uses_fallback(client, monkeypatch):
+    monkeypatch.setattr(
+        deepseek_service, "generate_answer", fake_generation("[OFF_TOPIC]")
+    )
+
+    response = client.post(ASK_PATH, json={"question": "こんにちは、元気ですか"})
+
+    assert response.status_code == 200
+    assert "高校物理" in response.json()["answer"]
+
+
+def test_ask_ai_off_topic_records_no_ask_history(user_client, db, monkeypatch):
+    from physics_ai_tutor.models import QuestionAsk
+
+    monkeypatch.setattr(
+        deepseek_service, "generate_answer", fake_generation("[OFF_TOPIC] 回答不可")
+    )
+
+    assert (
+        user_client.post(ASK_PATH, json={"question": "数学の宿題を解いて"}).status_code
+        == 200
+    )
+
+    assert db.query(QuestionAsk).count() == 0
+
+
+def test_ask_ai_off_topic_still_consumes_quota(client, monkeypatch):
+    monkeypatch.setattr(
+        deepseek_service, "generate_answer", fake_generation("[OFF_TOPIC] 回答不可")
+    )
+
+    # Anonymous limit is 3/hour; off-topic asks must not be free retries.
+    for index in range(3):
+        ok = client.post(ASK_PATH, json={"question": f"雑談その{index}です"})
+        assert ok.status_code == 200
+
+    limited = client.post(ASK_PATH, json={"question": "雑談その3です"})
+
+    assert limited.status_code == 429

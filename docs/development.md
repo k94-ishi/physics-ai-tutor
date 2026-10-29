@@ -297,6 +297,22 @@ Students on under-18 Google Workspace for Education accounts may see
 "Access blocked" until their school's admin allows the app; the login page
 tells them to use a personal Google account instead.
 
+### Exporting the review dataset
+
+One JSONL line per human review, for offline analysis and prompt
+evaluation. Rows before the 2026-10-28 data cutoff (no correction diff,
+reason, or generation metadata) are skipped unless `--all`:
+
+```bash
+uv run python -m physics_ai_tutor.cli.export_reviews --out reviews.jsonl
+uv run python -m physics_ai_tutor.cli.export_reviews --since 2026-11-01 --out nov.jsonl
+uv run python -m physics_ai_tutor.cli.export_reviews --all > everything.jsonl
+```
+
+Admins can fetch the same file from `GET /api/v1/admin/reviews/export`
+when the CLI has no database access. The line schema is documented in
+[docs/database.md](database.md#review-dataset-export).
+
 ## Pull Request Checks
 
 Before creating a pull request, run the same checks as CI:

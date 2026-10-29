@@ -646,6 +646,33 @@ uses the in-network URL set in `docker-compose.yml`).
 
 ---
 
+## Review dataset export
+
+`physics_ai_tutor/cli/export_reviews.py` (and `GET /admin/reviews/export`)
+emit one JSON object per `question_reviews` row, oldest first, with these
+fields in order:
+
+| Field | From | Notes |
+| --- | --- | --- |
+| `review_id`, `question_id` | ids | |
+| `language` | `question_reviews.language` | Text the reviewer looked at or edited. |
+| `source` | `questions.source` | `MANUAL`, `AI_GENERATED`, `RAG_RESULT`. |
+| `generation_model`, `prompt_version`, `generation_mode` | `questions` | `null` for manual rows and rows generated before 2026-10-28. |
+| `retrieved_question_ids` | `questions` | RAG grounding ids. |
+| `concepts` | `question_concepts` | Names in `language`. |
+| `question_before`, `answer_before`, `question_after`, `answer_after` | `question_reviews` | Equal for plain approvals. |
+| `action`, `reason`, `comment` | `question_reviews` | `reason` is `null` for approvals and for rows before 2026-10-28. |
+| `reviewer_kind`, `policy_name` | `question_reviews` | `human` for everything so far. |
+| `reviewer_hash` | derived | HMAC-SHA256 of the reviewer id keyed with `JWT_SECRET_KEY`, first 16 hex chars; `null` when the reviewer account was deleted. No user id or e-mail is exported. |
+| `reviewed_at` | `question_reviews.created_at` | ISO 8601. |
+
+The default start date is the **2026-10-28 data cutoff**: before it, rows
+lack the correction diff ([07]), the reason code ([08]), and generation
+metadata ([09]), so they would read as "approved unchanged, no reason,
+unknown prompt". Pass `--all` (or `all=true`) to include them anyway.
+
+---
+
 ## Cache and knowledge base
 
 The `questions` table serves two purposes with different rules:

@@ -13,6 +13,10 @@ _real_extract_concept_names = concept_service.extract_concept_names
 # assembled answer prompts to hashing library records on 2026-10-29; the
 # answer texts themselves did not change, so its version stayed v2.)
 FAMILY_FINGERPRINTS = {
+    "ai_review": (
+        "r1",
+        "5e5ad1c423a3961dcfa3c30795f98ec3d39ddca10e097ebbd4b064e26b8dd45d",
+    ),
     "answer": (
         "v2",
         "27aae451450eb6f4089f30edd8a576a3c80ceb348c20393dc8dff1a0f598344b",

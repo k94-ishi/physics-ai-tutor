@@ -162,7 +162,7 @@ def _mock_translate(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _background_translation_uses_test_db(monkeypatch):
-    # The AI router opens its own session for background translation.
+    # The AI router opens its own session for background tasks.
     monkeypatch.setattr(
         ai_router, "SessionLocal", sessionmaker(bind=engine, expire_on_commit=False)
     )

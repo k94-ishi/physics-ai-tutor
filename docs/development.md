@@ -267,6 +267,7 @@ Backend (`backend/.env`):
 | `SAME_SITE` | no | `lax`, `strict`, or `none` |
 | `EMBEDDING_MODEL`, `DEEPSEEK_CHAT_MODEL`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MAX_TOKENS` | no | Model overrides, see `core/config.py` |
 | `TRUST_FORWARDED_FOR` | no | Use `X-Forwarded-For` for rate limiting (default `true`) |
+| `AI_REVIEW_ENABLED` | no | Grade each new AI answer into `ai_reviews` (default `false`; one extra DeepSeek call per generation) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | no | Enable Google Sign-In for students; all three must be set (see below) |
 | `FRONTEND_URL` | no | Where the Google callback redirects the browser (default `http://localhost:3000`) |
 
@@ -314,6 +315,20 @@ the tests, and record the new fingerprint that `tests/test_prompts.py`
 reports. Versions are stored on generated rows (`questions.prompt_version`,
 `question_concepts.extraction_prompt_version`), which is what makes review
 outcomes comparable across prompt changes.
+
+### AI pre-review
+
+With `AI_REVIEW_ENABLED=true`, every new AI answer is graded in the same
+background task that translates it: a rubric prompt (family `ai_review` in
+the prompt library, per-language) returns a JSON verdict stored in
+`ai_reviews`. It is advisory only. Backfill the existing queue with:
+
+```bash
+uv run python -m physics_ai_tutor.cli.review_pending --limit 20
+```
+
+The command skips questions that already have a review and costs one
+DeepSeek call per question, regardless of the flag.
 
 ### Exporting the review dataset
 

@@ -168,6 +168,10 @@ Notes:
   AI answer is cached as a question row. The ask endpoint returns a cached
   answer (including unreviewed ones, labelled) for an identical question, so
   repeated questions do not cost tokens twice.
+- When `AI_REVIEW_ENABLED=true`, each new AI answer additionally triggers
+  one grading call whose verdict lands in `ai_reviews`; it is advisory only
+  and never changes a question's status. Off by default; cache hits never
+  trigger it.
 - Each created row also triggers one translation call and one extra
   embedding call for the other language. These run at creation (AI answers
   translate in a background task), so they are bounded by the same ask rate

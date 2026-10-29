@@ -42,3 +42,24 @@ def list_for_question(db: Session, question_id: int) -> list[AiReview]:
         .order_by(AiReview.created_at.desc(), AiReview.id.desc())
         .all()
     )
+
+
+def list_pending_question_ids(db: Session, limit: int) -> list[int]:
+    """UNREVIEWED AI questions that have no AI review yet, oldest first."""
+    from physics_ai_tutor.models import Question
+
+    reviewed = db.query(AiReview.question_id)
+
+    rows = (
+        db.query(Question.id)
+        .filter(
+            Question.status == "UNREVIEWED",
+            Question.source.in_(["AI_GENERATED", "RAG_RESULT"]),
+            ~Question.id.in_(reviewed),
+        )
+        .order_by(Question.id.asc())
+        .limit(limit)
+        .all()
+    )
+
+    return [question_id for (question_id,) in rows]

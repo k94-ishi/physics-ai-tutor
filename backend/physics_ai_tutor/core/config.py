@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     deepseek_max_tokens: int = 1500
     # Rate limiting
     trust_forwarded_for: bool = True
+    # AI pre-review of new answers (one extra LLM call per generation)
+    ai_review_enabled: bool = False
     # JWT
     jwt_secret_key: str
     jwt_algorithm: str

@@ -9,8 +9,10 @@ from physics_ai_tutor.api.dependencies import (
     get_current_user_optional,
 )
 from physics_ai_tutor.core import prompts
+from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.database.database import SessionLocal
 from physics_ai_tutor.database.dependency import get_db
+from physics_ai_tutor.models import Question
 from physics_ai_tutor.schemas.ai import AskAiRequest, AskAiResponse
 from physics_ai_tutor.schemas.question import (
     GenerationMeta,
@@ -19,6 +21,7 @@ from physics_ai_tutor.schemas.question import (
 )
 from physics_ai_tutor.schemas.token import JWTPayload
 from physics_ai_tutor.services import (
+    ai_review_service,
     ask_history_service,
     deepseek_service,
     question_service,
@@ -30,15 +33,28 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ai", tags=["ai"])
 
 
-def translate_in_background(question_id: int) -> None:
-    """Fill the other language after the response has been sent."""
+def post_generation_tasks(question_id: int) -> None:
+    """After the response is sent: translate, then (if enabled) AI-review.
+
+    Each step is best-effort and isolated; a failure in one must not stop
+    the other, and neither can affect the already-sent answer.
+    """
     db = SessionLocal()
     try:
-        question_service.translate_missing_languages(db, question_id)
-    except Exception:
-        logger.warning(
-            "Background translation failed: question_id=%d", question_id, exc_info=True
-        )
+        try:
+            question_service.translate_missing_languages(db, question_id)
+        except Exception:
+            logger.warning(
+                "Background translation failed: question_id=%d",
+                question_id,
+                exc_info=True,
+            )
+            db.rollback()
+
+        if settings.ai_review_enabled:
+            question = db.get(Question, question_id)
+            if question is not None:
+                ai_review_service.review_question(db, question)
     finally:
         db.close()
 
@@ -137,7 +153,7 @@ def ask_ai(
             ask_history_service.record_ask(
                 db, saved.id, int(user.sub), request.language, cache_hit=False
             )
-        background_tasks.add_task(translate_in_background, saved.id)
+        background_tasks.add_task(post_generation_tasks, saved.id)
 
     return AskAiResponse(
         answer=answer,

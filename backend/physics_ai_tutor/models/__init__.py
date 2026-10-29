@@ -1,3 +1,4 @@
+from .ai_review import AiReview  # noqa: F401
 from .concept import Concept  # noqa: F401
 from .embedding import QuestionEmbedding  # noqa: F401
 from .question import Question  # noqa: F401
@@ -8,6 +9,7 @@ from .rate_limit_hit import RateLimitHit  # noqa: F401
 from .user import User  # noqa: F401
 
 __all__ = [
+    "AiReview",
     "Concept",
     "Question",
     "QuestionAsk",

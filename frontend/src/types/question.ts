@@ -98,6 +98,8 @@ export type QuestionReview = {
     question_id: number;
     action: QuestionReviewAction;
     reason: ReviewReason | null;
+    reviewer_kind: "human" | "ai" | "policy";
+    policy_name: string | null;
     language: ContentLanguage;
     before_question: string | null;
     before_answer: string | null;

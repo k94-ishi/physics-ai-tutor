@@ -72,10 +72,18 @@ def validate_reason(review):
     return review
 
 
+class ReviewerKind(StrEnum):
+    HUMAN = "human"
+    AI = "ai"
+    POLICY = "policy"
+
+
 class QuestionReviewResponse(BaseModel):
     id: int
     question_id: int
     action: QuestionReviewAction
+    reviewer_kind: ReviewerKind
+    policy_name: str | None
     language: Language
     reason: QuestionReviewReason | None
     before_question: str | None

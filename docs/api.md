@@ -86,7 +86,7 @@ missing language is machine translated at creation.
 | GET | `/api/v1/questions/{id}?lang=` | Public | Question detail with concepts and referenced questions in `lang`. 404 for non-admins unless `APPROVED`. |
 | GET | `/api/v1/questions/{id}/related?lang=` | Public | Concept- and embedding-based recommendations, compared within `lang` |
 | POST | `/api/v1/questions/search` | Public | Semantic similarity search within one language. Body: `{"query": str, "limit": int, "language": "ja" or "en"}`. Returns rows with cosine `distance`. |
-| GET | `/api/v1/questions/{id}/reviews` | Admin | Review history of a question |
+| GET | `/api/v1/questions/{id}/reviews` | Admin | Review history of a question. Each row carries `reviewer_kind` (`human`/`ai`/`policy`) and `policy_name`; everything recorded so far is `human`. |
 | GET | `/api/v1/admin/stats` | Admin | Usage dashboard data (`days` 1–90, default 14): per-day generations (all callers), signed-in asks, cache hits, distinct users; plus unreviewed count, median backlog age, and distinct anonymous IP buckets in the last 24h. 429 counts are deliberately not collected (recording them would add an unthrottled write on the rejection path). |
 | POST | `/api/v1/questions` | Admin | Create an `APPROVED` / `MANUAL` question |
 | PUT | `/api/v1/questions/{id}` | Admin | Edit question text and answer; embeddings are regenerated |

@@ -25,6 +25,12 @@ class QuestionReview(Base):
     before_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
     after_question: Mapped[str | None] = mapped_column(Text, nullable=True)
     after_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Who produced this row: a human admin, the AI reviewer, or a policy
+    # acting on the AI reviewer's verdict (then `policy_name` says which).
+    reviewer_kind: Mapped[str] = mapped_column(
+        String(10), server_default="human", nullable=False
+    )
+    policy_name: Mapped[str | None] = mapped_column(String, nullable=True)
     # Kept after the reviewer account is deleted so the audit trail survives.
     reviewer_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"),

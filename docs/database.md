@@ -305,6 +305,32 @@ even when the teacher edited the text first (the edit went through a
 separate `PUT`). Analyses of corrections should exclude rows from before
 that date.
 
+### `ai_reviews`
+
+Verdicts from the AI pre-reviewer ([13] fills it), kept apart from the human
+history so agreement between the two can be measured ([15]). Advisory only;
+rows here never change a question's status.
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | `integer` | no | serial | Primary key |
+| `question_id` | `integer` | no | | FK → `questions.id`, `ON DELETE CASCADE`. |
+| `language` | `varchar(10)` | no | `'ja'` | Language of the graded text. |
+| `verdict` | `varchar(10)` | yes | | `APPROVE`, `EDIT`, or `REJECT`; `NULL` when the model output could not be parsed (raw text kept in `rationale`). |
+| `confidence` | `float` | yes | | 0–1. |
+| `reasons` | `varchar[]` | no | `{}` | Codes from the human review vocabulary (`question_reviews.reason`). |
+| `rationale` | `text` | yes | | Free-text justification. |
+| `suggested_answer` | `text` | yes | | Proposed correction, if any. |
+| `rubric` | `jsonb` | yes | | Per-criterion scores; JSONB so criteria can evolve without migrations. |
+| `model`, `prompt_version` | `varchar` | no | | Which reviewer produced the verdict. |
+| `prompt_tokens`, `completion_tokens` | `integer` | yes | | Usage. |
+| `created_at` | `timestamptz` | no | `now()` | Indexed with `question_id` (`ix_ai_reviews_question_created`). |
+
+`question_reviews` additionally gained `reviewer_kind` (`human` default,
+`ai`, `policy`) and a nullable `policy_name`, so when a policy is later
+allowed to act, its status changes are ordinary review rows that remain
+distinguishable from a teacher's.
+
 ### `rate_limit_hits`
 
 One row per counted request for the sliding-window rate limiter (see
@@ -357,6 +383,7 @@ Foreign keys:
 | `question_reviews.reviewer_id` | `users.id` | SET NULL |
 | `question_asks.question_id` | `questions.id` | CASCADE |
 | `question_asks.user_id` | `users.id` | SET NULL |
+| `ai_reviews.question_id` | `questions.id` | CASCADE |
 
 Deleting a question therefore removes its embeddings, concept links, and
 review history. Concepts themselves are never deleted automatically, even if
@@ -416,7 +443,8 @@ Revisions in order from the first to the current head:
 | `e0f1a2b3c4d5` | 2026-10-28 | Create `question_asks`: per-user ask history for signed-in callers |
 | `f1a2b3c4d5e6` | 2026-10-28 | Add `question_asks.cache_hit` for the usage dashboard |
 | `a2b3c4d5e6f7` | 2026-10-28 | Add `question_reviews.reason`: labelled reject/edit codes |
-| `b3c4d5e6f7a8` | 2026-10-28 | Add generation metadata to `questions` (model, prompt version, mode, token usage) (**head**) |
+| `b3c4d5e6f7a8` | 2026-10-28 | Add generation metadata to `questions` (model, prompt version, mode, token usage) |
+| `c4d5e6f7a8b9` | 2026-10-29 | Create `ai_reviews`; add `reviewer_kind` and `policy_name` to `question_reviews` (**head**) |
 
 The chain is linear with a single head. Verify with:
 

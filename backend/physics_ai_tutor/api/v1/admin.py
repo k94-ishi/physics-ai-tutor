@@ -5,8 +5,15 @@ from sqlalchemy.orm import Session
 
 from physics_ai_tutor.api.dependencies import require_admin
 from physics_ai_tutor.database.dependency import get_db
-from physics_ai_tutor.schemas.admin_stats import AdminStatsResponse
-from physics_ai_tutor.services import review_export_service, stats_service
+from physics_ai_tutor.schemas.admin_stats import (
+    AdminStatsResponse,
+    ReviewAgreementResponse,
+)
+from physics_ai_tutor.services import (
+    review_export_service,
+    review_metrics_service,
+    stats_service,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -52,3 +59,22 @@ def export_reviews(
         media_type="application/x-ndjson",
         headers={"Content-Disposition": 'attachment; filename="reviews.jsonl"'},
     )
+
+
+@router.get(
+    "/stats/review-agreement",
+    response_model=ReviewAgreementResponse,
+    dependencies=[Depends(require_admin)],
+)
+def get_review_agreement(
+    since: date | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """How often the AI pre-reviewer agreed with the teacher who came after."""
+    start = (
+        datetime.combine(since, datetime.min.time(), tzinfo=UTC)
+        if since is not None
+        else review_export_service.default_since()
+    )
+
+    return review_metrics_service.build_report(db, start)

@@ -5,7 +5,7 @@ import { AdminStatsResponse } from "@/types/question";
 
 vi.mock("@/lib/api", async (importOriginal) => {
     const actual = await importOriginal<typeof import("@/lib/api")>();
-    return { ...actual, fetchAdminStats: vi.fn() };
+    return { ...actual, fetchAdminStats: vi.fn(), fetchReviewAgreement: vi.fn() };
 });
 
 import * as api from "@/lib/api";
@@ -45,8 +45,27 @@ function renderPage() {
     );
 }
 
+const EMPTY_METRICS = {
+    n: 0,
+    sufficient: false,
+    exact_agreement_rate: null,
+    publish_agreement_rate: null,
+    reject_precision: null,
+    reject_recall: null,
+    reason_jaccard_mean: null,
+    confusion_matrix: {},
+    calibration: [],
+};
+
 beforeEach(() => {
     mocked.fetchAdminStats.mockReset().mockResolvedValue(STATS);
+    mocked.fetchReviewAgreement.mockReset().mockResolvedValue({
+        since: null,
+        overall: EMPTY_METRICS,
+        by_answer_prompt_version: {},
+        by_reviewer_prompt_version: {},
+        by_month: {},
+    });
 });
 
 describe("AdminStatsPage", () => {

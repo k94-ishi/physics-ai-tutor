@@ -28,6 +28,7 @@ import { AskAiResponse } from "@/types/ai";
 import {
     AdminStatsResponse,
     MyQuestionsResponse,
+    ReviewAgreementResponse,
     ReviewReason,
 } from "@/types/question";
 
@@ -221,6 +222,12 @@ export async function logout(): Promise<void> {
 
 export async function fetchCurrentUser(): Promise<User> {
     return apiFetch<User>(`${getUsersUrl()}/me`);
+}
+
+export async function fetchReviewAgreement(): Promise<ReviewAgreementResponse> {
+    return apiFetch<ReviewAgreementResponse>(
+        `${getApiUrl()}/api/v1/admin/stats/review-agreement`
+    );
 }
 
 export async function fetchAdminStats(

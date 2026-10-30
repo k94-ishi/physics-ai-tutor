@@ -331,6 +331,28 @@ uv run python -m physics_ai_tutor.cli.review_pending --limit 20
 The command skips questions that already have a review and costs one
 DeepSeek call per question, regardless of the flag.
 
+### Measuring AI-reviewer agreement
+
+Each human review on a question that already had an AI verdict forms a
+pair (the latest `ai_reviews` row created *before* the human review; the
+backlog case where a teacher reviewed first is excluded). The admin stats
+page shows the agreement section; the same tables print from:
+
+```bash
+uv run python -m physics_ai_tutor.cli.review_metrics            # since the data cutoff
+uv run python -m physics_ai_tutor.cli.review_metrics --all
+```
+
+Read it like this: **exact agreement** is AI `APPROVE`/`EDIT`/`REJECT`
+matching teacher `APPROVE`/`EDIT_APPROVE`/`REJECT` one-to-one;
+**publish agreement** collapses that to publish-vs-withhold. **Reject
+precision** is how often an AI reject was confirmed by the teacher (the
+number that decides whether auto-reject is safe); **reject recall** is how
+many teacher rejects the AI caught. The **calibration table** shows
+agreement per confidence decile - a policy should only act in buckets with
+enough pairs and very high agreement. Unparsed AI output counts as
+disagreement everywhere. Under 30 pairs every block is marked too small.
+
 ### Exporting the review dataset
 
 One JSONL line per human review, for offline analysis and prompt

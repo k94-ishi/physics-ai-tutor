@@ -215,3 +215,30 @@ export type AdminStatsResponse = {
     unreviewed_median_age_days: number | null;
     anonymous_ip_buckets_24h: number;
 };
+
+export type CalibrationBucket = {
+    low: number;
+    high: number;
+    n: number;
+    agreement_rate: number | null;
+};
+
+export type AgreementMetrics = {
+    n: number;
+    sufficient: boolean;
+    exact_agreement_rate: number | null;
+    publish_agreement_rate: number | null;
+    reject_precision: number | null;
+    reject_recall: number | null;
+    reason_jaccard_mean: number | null;
+    confusion_matrix: Record<string, Record<string, number>>;
+    calibration: CalibrationBucket[];
+};
+
+export type ReviewAgreementResponse = {
+    since: string | null;
+    overall: AgreementMetrics;
+    by_answer_prompt_version: Record<string, AgreementMetrics>;
+    by_reviewer_prompt_version: Record<string, AgreementMetrics>;
+    by_month: Record<string, AgreementMetrics>;
+};

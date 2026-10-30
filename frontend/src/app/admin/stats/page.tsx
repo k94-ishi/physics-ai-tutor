@@ -7,6 +7,7 @@ import Card from "@/components/ui/Card";
 import LoadingState from "@/components/ui/LoadingState";
 import StatusMessage from "@/components/ui/StatusMessage";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
+import ReviewAgreementSection from "@/components/admin/ReviewAgreementSection";
 
 const DAY_OPTIONS = [7, 14, 30, 90];
 
@@ -148,6 +149,8 @@ export default function AdminStatsPage() {
             <p className="text-xs text-gray-500">
                 {t("adminStats.generationsHint")}
             </p>
+
+            <ReviewAgreementSection />
         </main>
     );
 }

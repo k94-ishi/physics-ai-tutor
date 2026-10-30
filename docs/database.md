@@ -331,6 +331,16 @@ rows here never change a question's status.
 allowed to act, its status changes are ordinary review rows that remain
 distinguishable from a teacher's.
 
+### `ai_review_runs`
+
+One row per AI reviewer invocation (scheduled, manual, or CLI): scope,
+the fixed list of question ids chosen at start, requested/reviewed/failed
+counts (updated per question so progress can be polled), token totals,
+status (`running`/`done`/`failed`/`cancelled`), timestamps, and the admin
+who started it (`SET NULL` on account deletion). A partial unique index
+(`uq_ai_review_runs_single_running`) allows at most one `running` row;
+runs stuck beyond 30 minutes are marked failed by the next start.
+
 ### `rate_limit_hits`
 
 One row per counted request for the sliding-window rate limiter (see
@@ -444,7 +454,8 @@ Revisions in order from the first to the current head:
 | `f1a2b3c4d5e6` | 2026-10-28 | Add `question_asks.cache_hit` for the usage dashboard |
 | `a2b3c4d5e6f7` | 2026-10-28 | Add `question_reviews.reason`: labelled reject/edit codes |
 | `b3c4d5e6f7a8` | 2026-10-28 | Add generation metadata to `questions` (model, prompt version, mode, token usage) |
-| `c4d5e6f7a8b9` | 2026-10-29 | Create `ai_reviews`; add `reviewer_kind` and `policy_name` to `question_reviews` (**head**) |
+| `c4d5e6f7a8b9` | 2026-10-29 | Create `ai_reviews`; add `reviewer_kind` and `policy_name` to `question_reviews` |
+| `d5e6f7a8b9c0` | 2026-10-30 | Create `ai_review_runs`: recorded reviewer runs with a single-running guard (**head**) |
 
 The chain is linear with a single head. Verify with:
 

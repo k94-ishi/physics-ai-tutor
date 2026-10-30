@@ -82,3 +82,69 @@ def list_pending_question_ids(db: Session, limit: int) -> list[int]:
     )
 
     return [question_id for (question_id,) in rows]
+
+
+def count_created_since(db: Session, hours: int) -> int:
+    """AI reviews created in the last `hours`, for the daily cap."""
+    from datetime import timedelta
+
+    from sqlalchemy import func
+
+    cutoff = func.now() - timedelta(hours=hours)
+
+    return (
+        db.query(func.count(AiReview.id)).filter(AiReview.created_at > cutoff).scalar()
+    ) or 0
+
+
+def list_stale_question_ids(db: Session, current_version: str, limit: int) -> list[int]:
+    """UNREVIEWED AI questions whose latest verdict used an older prompt."""
+    from sqlalchemy import func
+
+    from physics_ai_tutor.models import Question
+
+    latest = (
+        db.query(
+            AiReview.question_id,
+            func.max(AiReview.id).label("latest_id"),
+        )
+        .group_by(AiReview.question_id)
+        .subquery()
+    )
+
+    rows = (
+        db.query(Question.id)
+        .join(latest, latest.c.question_id == Question.id)
+        .join(AiReview, AiReview.id == latest.c.latest_id)
+        .filter(
+            Question.status == "UNREVIEWED",
+            Question.source.in_(["AI_GENERATED", "RAG_RESULT"]),
+            AiReview.prompt_version != current_version,
+        )
+        .order_by(Question.id.asc())
+        .limit(limit)
+        .all()
+    )
+
+    return [question_id for (question_id,) in rows]
+
+
+def filter_reviewable_ids(db: Session, ids: list[int]) -> list[int]:
+    """Keep only UNREVIEWED AI questions, preserving the given order."""
+    from physics_ai_tutor.models import Question
+
+    if not ids:
+        return []
+
+    rows = (
+        db.query(Question.id)
+        .filter(
+            Question.id.in_(ids),
+            Question.status == "UNREVIEWED",
+            Question.source.in_(["AI_GENERATED", "RAG_RESULT"]),
+        )
+        .all()
+    )
+    eligible = {question_id for (question_id,) in rows}
+
+    return [question_id for question_id in ids if question_id in eligible]

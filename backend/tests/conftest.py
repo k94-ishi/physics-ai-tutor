@@ -9,6 +9,7 @@ from sqlalchemy import create_engine, make_url, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from alembic import command
+from physics_ai_tutor.api.v1 import admin as admin_router
 from physics_ai_tutor.api.v1 import ai as ai_router
 from physics_ai_tutor.database.base import Base
 from physics_ai_tutor.database.dependency import get_db
@@ -163,9 +164,9 @@ def _mock_translate(monkeypatch):
 @pytest.fixture(autouse=True)
 def _background_translation_uses_test_db(monkeypatch):
     # The AI router opens its own session for background tasks.
-    monkeypatch.setattr(
-        ai_router, "SessionLocal", sessionmaker(bind=engine, expire_on_commit=False)
-    )
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    monkeypatch.setattr(ai_router, "SessionLocal", factory)
+    monkeypatch.setattr(admin_router, "SessionLocal", factory)
 
 
 # Rate-limit counters live in the rate_limit_hits table, which is

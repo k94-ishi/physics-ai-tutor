@@ -268,6 +268,7 @@ Backend (`backend/.env`):
 | `EMBEDDING_MODEL`, `DEEPSEEK_CHAT_MODEL`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MAX_TOKENS` | no | Model overrides, see `core/config.py` |
 | `TRUST_FORWARDED_FOR` | no | Use `X-Forwarded-For` for rate limiting (default `true`) |
 | `AI_REVIEW_ENABLED` | no | Grade each new AI answer into `ai_reviews` (default `false`; one extra DeepSeek call per generation) |
+| `AI_REVIEW_DAILY_CAP` | no | Rolling 24h budget of reviewer calls across all runs (default `200`) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | no | Enable Google Sign-In for students; all three must be set (see below) |
 | `FRONTEND_URL` | no | Where the Google callback redirects the browser (default `http://localhost:3000`) |
 
@@ -325,11 +326,15 @@ the prompt library, per-language) returns a JSON verdict stored in
 `ai_reviews`. It is advisory only. Backfill the existing queue with:
 
 ```bash
-uv run python -m physics_ai_tutor.cli.review_pending --limit 20
+uv run python -m physics_ai_tutor.cli.review_pending --limit 20            # no review yet
+uv run python -m physics_ai_tutor.cli.review_pending --scope stale         # older rubric version
 ```
 
-The command skips questions that already have a review and costs one
-DeepSeek call per question, regardless of the flag.
+Every invocation is recorded as a run (`ai_review_runs`): scope, counts,
+token totals, status. Only one run may execute at a time, and all runs
+share a rolling 24h budget (`AI_REVIEW_DAILY_CAP`, default 200 calls).
+Admins can start and watch runs from the API (`/admin/ai-review/runs`);
+each question costs one DeepSeek call regardless of `AI_REVIEW_ENABLED`.
 
 ### Measuring AI-reviewer agreement
 

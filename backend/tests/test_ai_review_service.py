@@ -223,3 +223,211 @@ def test_service_skips_non_ai_and_already_reviewed_questions(
 
     assert ai_review_service.review_question(db, question) is None
     assert db.query(AiReview).count() == 0
+
+
+# --- runs ----------------------------------------------------------------------
+
+
+def _three_pending(client, monkeypatch):
+    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    return [
+        client.post(ASK_PATH, json={"question": f"ラン対象の質問その{i}"}).json()[
+            "question_id"
+        ]
+        for i in range(3)
+    ]
+
+
+def test_run_over_pending_questions_counts_and_sums_tokens(
+    client, db, monkeypatch, _bind_review_cli
+):
+    ids = _three_pending(client, monkeypatch)
+    monkeypatch.setattr(
+        deepseek_service,
+        "generate_answer",
+        fake_generation(json.dumps(VALID_REVIEW)),
+    )
+
+    from physics_ai_tutor.services import ai_review_service as service
+
+    run = service.start_run(db, scope="pending", trigger="cli")
+    assert run.requested_count == 3
+    assert run.question_ids == ids
+
+    finished = service.execute_run(db, run.id)
+
+    assert finished.status == "done"
+    assert finished.reviewed_count == 3
+    assert finished.failed_count == 0
+    # fake_generation reports 11/22 tokens per call.
+    assert finished.prompt_tokens == 33
+    assert finished.completion_tokens == 66
+    assert finished.finished_at is not None
+    assert db.query(AiReview).count() == 3
+
+
+def test_second_run_refused_while_one_is_running(client, db, monkeypatch):
+    _three_pending(client, monkeypatch)
+    from physics_ai_tutor.services import ai_review_service as service
+
+    service.start_run(db, scope="pending", trigger="cli")
+
+    with pytest.raises(service.RunInProgressError):
+        service.start_run(db, scope="pending", trigger="cli")
+
+    from physics_ai_tutor.models import AiReviewRun
+
+    assert db.query(AiReviewRun).count() == 1
+
+
+def test_one_failure_is_counted_and_does_not_stop_the_run(client, db, monkeypatch):
+    ids = _three_pending(client, monkeypatch)
+    calls = {"n": 0}
+
+    def _second_fails(system_prompt, user_prompt):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("reviewer down")
+        return GenerationResult(
+            content=json.dumps(VALID_REVIEW),
+            model="mock-model",
+            prompt_tokens=11,
+            completion_tokens=22,
+        )
+
+    monkeypatch.setattr(deepseek_service, "generate_answer", _second_fails)
+    from physics_ai_tutor.services import ai_review_service as service
+
+    run = service.start_run(db, scope="pending", trigger="cli")
+    finished = service.execute_run(db, run.id)
+
+    assert finished.status == "done"
+    assert finished.reviewed_count == 2
+    assert finished.failed_count == 1
+    assert sorted(r.question_id for r in db.query(AiReview)) == sorted([ids[0], ids[2]])
+
+
+def test_stale_scope_picks_only_old_prompt_versions(client, db, monkeypatch):
+    first, second, _ = _three_pending(client, monkeypatch)
+    from physics_ai_tutor.repositories import ai_review_repository
+    from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
+    from physics_ai_tutor.schemas.language import Language
+    from physics_ai_tutor.services import ai_review_service as service
+
+    versions = ((first, "r0"), (second, service.REVIEW_PROMPT_VERSION))
+    for question_id, version in versions:
+        ai_review_repository.create(
+            db,
+            AiReviewCreate(
+                question_id=question_id,
+                language=Language.JA,
+                verdict=AiReviewVerdict.APPROVE,
+                model="mock",
+                prompt_version=version,
+            ),
+        )
+    db.commit()
+
+    assert service.eligible_question_ids(db, "stale") == [first]
+
+
+def test_daily_cap_truncates_and_then_refuses(client, db, monkeypatch):
+    _three_pending(client, monkeypatch)
+    monkeypatch.setattr(settings, "ai_review_daily_cap", 2)
+    monkeypatch.setattr(
+        deepseek_service,
+        "generate_answer",
+        fake_generation(json.dumps(VALID_REVIEW)),
+    )
+    from physics_ai_tutor.services import ai_review_service as service
+
+    run = service.start_run(db, scope="pending", trigger="cli")
+    assert run.requested_count == 2
+    service.execute_run(db, run.id)
+
+    with pytest.raises(service.DailyCapExhaustedError):
+        service.start_run(db, scope="pending", trigger="cli")
+
+
+def test_selected_scope_keeps_only_reviewable_ids(
+    client, admin_client, db, monkeypatch
+):
+    ids = _three_pending(client, monkeypatch)
+    manual = admin_client.post(
+        "/api/v1/questions",
+        json={"question": "手動のラン対象", "answer": "回答"},
+    ).json()["id"]
+    from physics_ai_tutor.services import ai_review_service as service
+
+    eligible = service.eligible_question_ids(
+        db, "selected", question_ids=[ids[0], manual, ids[2], 99999]
+    )
+
+    assert eligible == [ids[0], ids[2]]
+
+
+def test_timed_out_run_is_failed_and_replaced(client, db, monkeypatch):
+    _three_pending(client, monkeypatch)
+    from datetime import UTC, datetime, timedelta
+
+    from physics_ai_tutor.models import AiReviewRun
+    from physics_ai_tutor.services import ai_review_service as service
+
+    stuck = service.start_run(db, scope="pending", trigger="cli")
+    db.query(AiReviewRun).filter_by(id=stuck.id).update(
+        {"started_at": datetime.now(UTC) - timedelta(hours=1)}
+    )
+    db.commit()
+
+    fresh = service.start_run(db, scope="pending", trigger="manual")
+
+    stale_row = db.get(AiReviewRun, stuck.id)
+    assert stale_row.status == "failed"
+    assert "timed out" in stale_row.error
+    assert fresh.status == "running"
+
+
+def test_run_endpoints(client, user_client, admin_client, db, monkeypatch):
+    RUNS = "/api/v1/admin/ai-review/runs"
+    COUNT = "/api/v1/admin/ai-review/pending-count"
+    assert client.post(RUNS, json={"scope": "pending"}).status_code == 401
+    assert user_client.get(COUNT).status_code == 403
+
+    _three_pending(client, monkeypatch)
+    monkeypatch.setattr(
+        deepseek_service,
+        "generate_answer",
+        fake_generation(json.dumps(VALID_REVIEW)),
+    )
+
+    preview = admin_client.get(COUNT).json()
+    assert preview["pending"] == 3
+    assert preview["remaining"] == settings.ai_review_daily_cap
+
+    started = admin_client.post(RUNS, json={"scope": "pending"})
+    assert started.status_code == 202
+    run_id = started.json()["id"]
+
+    # TestClient executes background tasks before returning, so it is done.
+    polled = admin_client.get(f"{RUNS}/{run_id}").json()
+    assert polled["status"] == "done"
+    assert polled["reviewed_count"] == 3
+    assert polled["trigger"] == "manual"
+    assert polled["started_by_user_id"] is not None
+
+    listed = admin_client.get(RUNS).json()
+    assert [run["id"] for run in listed] == [run_id]
+    assert admin_client.get(f"{RUNS}/9999").status_code == 404
+
+
+def test_run_endpoint_conflict_returns_409(client, admin_client, db, monkeypatch):
+    _three_pending(client, monkeypatch)
+    from physics_ai_tutor.services import ai_review_service as service
+
+    service.start_run(db, scope="pending", trigger="cli")
+
+    response = admin_client.post(
+        "/api/v1/admin/ai-review/runs", json={"scope": "pending"}
+    )
+
+    assert response.status_code == 409

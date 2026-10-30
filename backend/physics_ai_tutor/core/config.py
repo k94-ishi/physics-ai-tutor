@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     trust_forwarded_for: bool = True
     # AI pre-review of new answers (one extra LLM call per generation)
     ai_review_enabled: bool = False
+    # Upper bound on AI review calls per rolling 24h, across all runs
+    ai_review_daily_cap: int = 200
     # JWT
     jwt_secret_key: str
     jwt_algorithm: str

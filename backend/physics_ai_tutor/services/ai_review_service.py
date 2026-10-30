@@ -1,10 +1,14 @@
 import json
 import logging
+from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.prompt_library import load_library
-from physics_ai_tutor.models import AiReview, Question
+from physics_ai_tutor.models import AiReview, AiReviewRun, Question
 from physics_ai_tutor.repositories import (
     ai_review_repository,
     question_concept_repository,
@@ -224,3 +228,141 @@ def review_question(db: Session, question: Question) -> AiReview | None:
     )
 
     return row
+
+
+# --- runs ----------------------------------------------------------------------
+
+RUN_TIMEOUT_MINUTES = 30
+CAP_WINDOW_HOURS = 24
+
+
+class RunInProgressError(Exception):
+    """Another AI review run is already running."""
+
+
+class DailyCapExhaustedError(Exception):
+    """The rolling 24h budget of reviewer calls is spent."""
+
+
+def remaining_daily_budget(db: Session) -> int:
+    used = ai_review_repository.count_created_since(db, CAP_WINDOW_HOURS)
+
+    return max(settings.ai_review_daily_cap - used, 0)
+
+
+def eligible_question_ids(
+    db: Session,
+    scope: str,
+    question_ids: list[int] | None = None,
+    limit: int | None = None,
+) -> list[int]:
+    bound = limit if limit is not None else settings.ai_review_daily_cap
+
+    if scope == "pending":
+        return ai_review_repository.list_pending_question_ids(db, bound)
+    if scope == "stale":
+        return ai_review_repository.list_stale_question_ids(
+            db, REVIEW_PROMPT_VERSION, bound
+        )
+    if scope == "selected":
+        return ai_review_repository.filter_reviewable_ids(db, question_ids or [])[
+            :bound
+        ]
+
+    raise ValueError(f"Unknown scope: {scope}")
+
+
+def _fail_timed_out_runs(db: Session) -> None:
+    cutoff = datetime.now(UTC) - timedelta(minutes=RUN_TIMEOUT_MINUTES)
+
+    db.query(AiReviewRun).filter(
+        AiReviewRun.status == "running", AiReviewRun.started_at < cutoff
+    ).update(
+        {
+            "status": "failed",
+            "error": f"timed out after {RUN_TIMEOUT_MINUTES} minutes",
+            "finished_at": func.now(),
+        }
+    )
+
+
+def start_run(
+    db: Session,
+    scope: str,
+    trigger: str,
+    question_ids: list[int] | None = None,
+    limit: int | None = None,
+    started_by: int | None = None,
+) -> AiReviewRun:
+    """Create the run row with its fixed question list; raises on conflicts.
+
+    The partial unique index on status='running' is the real guard; the
+    pre-check only produces a friendlier error for the common case.
+    """
+    _fail_timed_out_runs(db)
+
+    running = db.query(AiReviewRun).filter(AiReviewRun.status == "running").first()
+    if running is not None:
+        db.rollback()
+        raise RunInProgressError(str(running.id))
+
+    budget = remaining_daily_budget(db)
+    if budget <= 0:
+        db.rollback()
+        raise DailyCapExhaustedError(str(settings.ai_review_daily_cap))
+
+    ids = eligible_question_ids(db, scope, question_ids, limit)[:budget]
+
+    run = AiReviewRun(
+        trigger=trigger,
+        scope=scope,
+        started_by_user_id=started_by,
+        question_ids=ids,
+        requested_count=len(ids),
+        status="running",
+    )
+    db.add(run)
+
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        # Lost the race against a concurrent start.
+        db.rollback()
+        raise RunInProgressError("concurrent start") from exc
+
+    return run
+
+
+def execute_run(db: Session, run_id: int) -> AiReviewRun | None:
+    """Process the run's fixed question list, committing progress per item."""
+    run = db.get(AiReviewRun, run_id)
+    if run is None or run.status != "running":
+        return run
+
+    try:
+        for question_id in run.question_ids:
+            question = db.get(Question, question_id)
+            row = review_question(db, question) if question is not None else None
+
+            if row is None:
+                run.failed_count += 1
+            else:
+                run.reviewed_count += 1
+                run.prompt_tokens += row.prompt_tokens or 0
+                run.completion_tokens += row.completion_tokens or 0
+
+            # Commit after every question so progress polling sees it.
+            db.commit()
+
+        run.status = "done"
+        run.finished_at = datetime.now(UTC)
+        db.commit()
+    except Exception:
+        logger.exception("AI review run failed: run_id=%d", run_id)
+        db.rollback()
+        run.status = "failed"
+        run.error = "unexpected error; see server logs"
+        run.finished_at = datetime.now(UTC)
+        db.commit()
+
+    return run

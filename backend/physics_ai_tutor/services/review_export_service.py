@@ -10,6 +10,7 @@ from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.repositories import (
     question_concept_repository,
     question_review_repository,
+    review_metrics_repository,
 )
 
 # Reviews written before this date lack the correction diff ([07]), the
@@ -39,6 +40,13 @@ EXPORT_FIELDS = [
     "reviewer_hash",
     "policy_name",
     "reviewed_at",
+    # The AI verdict the teacher could see when reviewing (latest AI review
+    # created before the human one); all null when there was none.
+    "ai_verdict",
+    "ai_confidence",
+    "ai_reasons",
+    "ai_prompt_version",
+    "ai_reviewed_at",
 ]
 
 
@@ -80,7 +88,14 @@ def iter_export_rows(
             )
         )
 
+    ai_by_question = review_metrics_repository.ai_reviews_by_question(
+        db, {question.id for _, question in rows}
+    )
+
     for review, question in rows:
+        ai = review_metrics_repository.ai_review_before(
+            ai_by_question.get(question.id, []), review.created_at
+        )
         yield {
             "review_id": review.id,
             "question_id": question.id,
@@ -102,6 +117,11 @@ def iter_export_rows(
             "reviewer_hash": reviewer_hash(review.reviewer_id),
             "policy_name": review.policy_name,
             "reviewed_at": review.created_at.isoformat(),
+            "ai_verdict": ai.verdict if ai else None,
+            "ai_confidence": ai.confidence if ai else None,
+            "ai_reasons": list(ai.reasons or []) if ai else None,
+            "ai_prompt_version": ai.prompt_version if ai else None,
+            "ai_reviewed_at": ai.created_at.isoformat() if ai else None,
         }
 
 

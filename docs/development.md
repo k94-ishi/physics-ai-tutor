@@ -341,7 +341,13 @@ page shows the agreement section; the same tables print from:
 ```bash
 uv run python -m physics_ai_tutor.cli.review_metrics            # since the data cutoff
 uv run python -m physics_ai_tutor.cli.review_metrics --all
+uv run python -m physics_ai_tutor.cli.review_metrics --from-file reviews.jsonl   # offline, from an export
 ```
+
+The export carries each review's paired AI verdict (`ai_*` fields), so
+`--from-file` on an `export_reviews` snapshot gives the same numbers as the
+database path - handy for sharing a reproducible snapshot or analysing a
+production export on a laptop.
 
 Read it like this: **exact agreement** is AI `APPROVE`/`EDIT`/`REJECT`
 matching teacher `APPROVE`/`EDIT_APPROVE`/`REJECT` one-to-one;
@@ -352,6 +358,15 @@ many teacher rejects the AI caught. The **calibration table** shows
 agreement per confidence decile - a policy should only act in buckets with
 enough pairs and very high agreement. Unparsed AI output counts as
 disagreement everywhere. Under 30 pairs every block is marked too small.
+
+### DeepSeek pricing notes (checked 2026-10-30)
+
+DeepSeek offers no Batch API: `GET /batches` on the live endpoint returns
+404 (`/models` and `/files` exist). Cheaper reviewing therefore means
+running the backlog in the off-peak discount window (UTC 16:30-00:30, JST
+01:30-09:30) and relying on context caching of the long rubric prefix;
+see the AI review run issues ([25]-[28]) for the scheduler and admin
+triggers. Re-check DeepSeek's pricing page before relying on the window.
 
 ### Exporting the review dataset
 

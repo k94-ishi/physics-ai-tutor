@@ -168,3 +168,54 @@ def test_cli_parses_arguments():
     assert args.since.isoformat() == "2026-10-28"
     assert args.out == "x.jsonl"
     assert args.all is False
+
+
+def test_export_carries_the_ai_verdict_the_teacher_could_see(
+    client, admin_client, db, monkeypatch
+):
+    from physics_ai_tutor.repositories import ai_review_repository
+    from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
+    from physics_ai_tutor.schemas.language import Language
+    from physics_ai_tutor.schemas.question_review import QuestionReviewReason
+
+    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    question_id = client.post(ASK_PATH, json={"question": "AI付き輸出の質問"}).json()[
+        "question_id"
+    ]
+    ai_review_repository.create(
+        db,
+        AiReviewCreate(
+            question_id=question_id,
+            language=Language.JA,
+            verdict=AiReviewVerdict.REJECT,
+            confidence=0.9,
+            reasons=[QuestionReviewReason.OFF_TOPIC],
+            model="mock",
+            prompt_version="r1",
+        ),
+    )
+    db.commit()
+    admin_client.post(
+        f"{QUESTIONS}/{question_id}/review",
+        json={"action": "REJECT", "reason": "OFF_TOPIC"},
+    )
+
+    row = _parse(admin_client.get(EXPORT_PATH).text)[0]
+
+    assert row["ai_verdict"] == "REJECT"
+    assert row["ai_confidence"] == 0.9
+    assert row["ai_reasons"] == ["OFF_TOPIC"]
+    assert row["ai_prompt_version"] == "r1"
+    assert row["ai_reviewed_at"] is not None
+    assert list(row.keys()) == review_export_service.EXPORT_FIELDS
+
+
+def test_export_ai_fields_are_null_without_an_earlier_ai_review(
+    client, admin_client, monkeypatch
+):
+    _ask_and_edit_approve(client, admin_client, monkeypatch)
+
+    row = _parse(admin_client.get(EXPORT_PATH).text)[0]
+
+    assert row["ai_verdict"] is None
+    assert row["ai_prompt_version"] is None

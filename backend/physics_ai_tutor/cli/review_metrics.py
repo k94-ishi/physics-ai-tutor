@@ -1,8 +1,15 @@
-"""Print AI-reviewer agreement with human reviews as text tables."""
+"""Print AI-reviewer agreement with human reviews as text tables.
+
+Reads the database by default, or a review export (export_reviews JSONL)
+with --from-file, so the same numbers can be produced offline from a
+snapshot without database access.
+"""
 
 import argparse
+import json
 import sys
 from datetime import UTC, date, datetime
+from pathlib import Path
 
 from physics_ai_tutor.database.database import SessionLocal
 from physics_ai_tutor.schemas.admin_stats import AgreementMetrics
@@ -19,6 +26,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--all", action="store_true", help="Use every review regardless of date."
+    )
+    parser.add_argument(
+        "--from-file",
+        type=Path,
+        default=None,
+        help="Compute from an export_reviews JSONL file instead of the database.",
     )
     return parser.parse_args(argv)
 
@@ -53,7 +66,16 @@ def format_metrics(title: str, metrics: AgreementMetrics) -> str:
     return "\n".join(lines)
 
 
-def main(since: date | None = None, include_all: bool = False) -> int:
+def _read_export(path: Path) -> list[dict]:
+    with path.open(encoding="utf-8") as handle:
+        return [json.loads(line) for line in handle if line.strip()]
+
+
+def main(
+    since: date | None = None,
+    include_all: bool = False,
+    from_file: Path | None = None,
+) -> int:
     if include_all:
         start: datetime | None = None
     elif since is None:
@@ -61,11 +83,17 @@ def main(since: date | None = None, include_all: bool = False) -> int:
     else:
         start = datetime.combine(since, datetime.min.time(), tzinfo=UTC)
 
-    db = SessionLocal()
-    try:
-        report = review_metrics_service.build_report(db, start)
-    finally:
-        db.close()
+    if from_file is not None:
+        pairs = review_metrics_service.pairs_from_export_rows(_read_export(from_file))
+        if start is not None:
+            pairs = [pair for pair in pairs if pair.reviewed_at >= start]
+        report = review_metrics_service.build_report_from_pairs(pairs, start)
+    else:
+        db = SessionLocal()
+        try:
+            report = review_metrics_service.build_report(db, start)
+        finally:
+            db.close()
 
     print(format_metrics("overall", report.overall))
     for label, groups in (
@@ -82,5 +110,5 @@ def main(since: date | None = None, include_all: bool = False) -> int:
 
 if __name__ == "__main__":
     args = parse_args()
-    main(args.since, args.all)
+    main(args.since, args.all, args.from_file)
     sys.exit(0)

@@ -120,9 +120,42 @@ def _grouped(
     }
 
 
-def build_report(db: Session, since: datetime | None) -> ReviewAgreementResponse:
-    pairs = review_metrics_repository.list_pairs(db, since)
+def pairs_from_export_rows(rows: Iterable[dict]) -> list[ReviewPair]:
+    """Rebuild pairs from review-export JSONL lines (see review_export_service).
 
+    Lines without a paired AI verdict (`ai_prompt_version` null) are skipped,
+    exactly as the database path skips reviews with no earlier AI review.
+    Only human rows count, matching list_pairs.
+    """
+    pairs = []
+    for row in rows:
+        if row.get("ai_prompt_version") is None:
+            continue
+        if row.get("reviewer_kind", "human") != "human":
+            continue
+        if row.get("action") not in HUMAN_ACTIONS:
+            continue
+
+        pairs.append(
+            ReviewPair(
+                question_id=int(row["question_id"]),
+                human_action=row["action"],
+                human_reason=row.get("reason"),
+                ai_verdict=row.get("ai_verdict"),
+                ai_confidence=row.get("ai_confidence"),
+                ai_reasons=tuple(row.get("ai_reasons") or ()),
+                answer_prompt_version=row.get("prompt_version"),
+                reviewer_prompt_version=row["ai_prompt_version"],
+                reviewed_at=datetime.fromisoformat(row["reviewed_at"]),
+            )
+        )
+
+    return pairs
+
+
+def build_report_from_pairs(
+    pairs: list[ReviewPair], since: datetime | None
+) -> ReviewAgreementResponse:
     return ReviewAgreementResponse(
         since=since,
         overall=compute_agreement(pairs),
@@ -131,4 +164,10 @@ def build_report(db: Session, since: datetime | None) -> ReviewAgreementResponse
         ),
         by_reviewer_prompt_version=_grouped(pairs, lambda p: p.reviewer_prompt_version),
         by_month=_grouped(pairs, lambda p: p.reviewed_at.strftime("%Y-%m")),
+    )
+
+
+def build_report(db: Session, since: datetime | None) -> ReviewAgreementResponse:
+    return build_report_from_pairs(
+        review_metrics_repository.list_pairs(db, since), since
     )

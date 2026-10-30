@@ -665,6 +665,7 @@ fields in order:
 | `reviewer_kind`, `policy_name` | `question_reviews` | `human` for everything so far. |
 | `reviewer_hash` | derived | HMAC-SHA256 of the reviewer id keyed with `JWT_SECRET_KEY`, first 16 hex chars; `null` when the reviewer account was deleted. No user id or e-mail is exported. |
 | `reviewed_at` | `question_reviews.created_at` | ISO 8601. |
+| `ai_verdict`, `ai_confidence`, `ai_reasons`, `ai_prompt_version`, `ai_reviewed_at` | `ai_reviews` | The latest AI verdict created *before* the human review (what the teacher could see); all `null` when there was none. Lets `review_metrics --from-file` reproduce the agreement report offline. |
 
 The default start date is the **2026-10-28 data cutoff**: before it, rows
 lack the correction diff ([07]), the reason code ([08]), and generation

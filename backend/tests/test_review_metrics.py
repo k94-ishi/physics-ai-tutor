@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -268,3 +269,81 @@ def test_cli_prints_tables(
     assert "reject precision 100.0%" in out
     assert "reviewer prompt r1" in out
     assert "0.9-1.0" in out
+
+
+def test_cli_from_export_file_matches_the_database_report(
+    client, admin_client, db, monkeypatch, tmp_path, _bind_metrics_cli, capsys
+):
+    from physics_ai_tutor.cli import export_reviews as export_cli
+    from physics_ai_tutor.services import review_export_service
+
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    monkeypatch.setattr(export_cli, "SessionLocal", factory)
+
+    agreed = _ask(client, monkeypatch, "ファイル集計の質問1")
+    disagreed = _ask(client, monkeypatch, "ファイル集計の質問2")
+    unpaired = _ask(client, monkeypatch, "ファイル集計の質問3")
+    _ai_review(db, agreed, AiReviewVerdict.REJECT, 0.9)
+    _ai_review(db, disagreed, AiReviewVerdict.APPROVE, 0.7)
+    _human_review(admin_client, agreed, "REJECT", "OFF_TOPIC")
+    _human_review(admin_client, disagreed, "REJECT", "PHYSICS_ERROR")
+    _human_review(admin_client, unpaired, "APPROVE")
+
+    export = tmp_path / "reviews.jsonl"
+    export_cli.main(include_all=True, out=str(export))
+
+    lines = export.read_text(encoding="utf-8").splitlines()
+    rows = [json.loads(line) for line in lines if line]
+    from_file = review_metrics_service.build_report_from_pairs(
+        review_metrics_service.pairs_from_export_rows(rows), None
+    )
+    from_db = review_metrics_service.build_report(db, None)
+
+    assert from_file.overall.n == from_db.overall.n == 2
+    assert from_file.overall.model_dump() == from_db.overall.model_dump()
+    assert from_file.by_reviewer_prompt_version == from_db.by_reviewer_prompt_version
+    assert from_file.overall.reject_precision == 1.0
+    assert from_file.overall.reject_recall == 0.5
+
+    # The CLI path reads the same file.
+    assert metrics_cli.main(include_all=True, from_file=export) == 2
+    assert "== overall (n=2)" in capsys.readouterr().out
+    assert review_export_service.REVIEW_DATA_CUTOFF.year == 2026
+
+
+def test_pairs_from_export_rows_skips_unpaired_and_non_human_lines():
+    rows = [
+        {
+            "question_id": 1,
+            "action": "REJECT",
+            "reason": "OFF_TOPIC",
+            "reviewer_kind": "human",
+            "prompt_version": "v2",
+            "reviewed_at": "2026-11-01T00:00:00+00:00",
+            "ai_verdict": "REJECT",
+            "ai_confidence": 0.9,
+            "ai_reasons": ["OFF_TOPIC"],
+            "ai_prompt_version": "r1",
+        },
+        {  # no AI verdict before the human review
+            "question_id": 2,
+            "action": "APPROVE",
+            "reviewer_kind": "human",
+            "reviewed_at": "2026-11-01T00:00:00+00:00",
+            "ai_prompt_version": None,
+        },
+        {  # a policy row is not a human judgement
+            "question_id": 3,
+            "action": "REJECT",
+            "reviewer_kind": "policy",
+            "reviewed_at": "2026-11-01T00:00:00+00:00",
+            "ai_verdict": "REJECT",
+            "ai_prompt_version": "r1",
+        },
+    ]
+
+    pairs = review_metrics_service.pairs_from_export_rows(rows)
+
+    assert [p.question_id for p in pairs] == [1]
+    assert pairs[0].ai_reasons == ("OFF_TOPIC",)
+    assert pairs[0].answer_prompt_version == "v2"

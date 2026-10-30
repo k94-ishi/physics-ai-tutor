@@ -39,7 +39,7 @@ def _sequenced_generation(monkeypatch, *contents):
     """generate_answer returns the given contents in order of the calls."""
     queue = list(contents)
 
-    def _next(system_prompt, user_prompt):
+    def _next(system_prompt, user_prompt, temperature=None):
         content = queue.pop(0)
         return GenerationResult(
             content=content, model="mock-model", prompt_tokens=5, completion_tokens=7
@@ -108,7 +108,7 @@ def test_malformed_output_is_stored_as_a_visible_failure(
 def test_reviewer_failure_does_not_break_translation(
     client, db, monkeypatch, review_enabled
 ):
-    def _answer_then_error(system_prompt, user_prompt):
+    def _answer_then_error(system_prompt, user_prompt, temperature=None):
         if "審査します" in system_prompt or "screening" in system_prompt:
             raise RuntimeError("reviewer down")
         return fake_generation("回答")(system_prompt, user_prompt)
@@ -162,7 +162,7 @@ def test_reviewer_prompt_matches_the_questions_language(
 ):
     captured = []
 
-    def _capture(system_prompt, user_prompt):
+    def _capture(system_prompt, user_prompt, temperature=None):
         captured.append((system_prompt, user_prompt))
         content = json.dumps(VALID_REVIEW) if len(captured) % 2 == 0 else "An answer."
         return GenerationResult(
@@ -284,7 +284,7 @@ def test_one_failure_is_counted_and_does_not_stop_the_run(client, db, monkeypatc
     ids = _three_pending(client, monkeypatch)
     calls = {"n": 0}
 
-    def _second_fails(system_prompt, user_prompt):
+    def _second_fails(system_prompt, user_prompt, temperature=None):
         calls["n"] += 1
         if calls["n"] == 2:
             raise RuntimeError("reviewer down")

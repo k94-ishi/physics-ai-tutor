@@ -222,9 +222,12 @@ def fake_generation(answer: str):
     """A stand-in for deepseek_service.generate_answer in ask-flow tests."""
     from physics_ai_tutor.services.deepseek_service import GenerationResult
 
-    return lambda system_prompt, user_prompt: GenerationResult(
-        content=answer,
-        model="mock-model",
-        prompt_tokens=11,
-        completion_tokens=22,
-    )
+    def _generate(system_prompt, user_prompt, temperature=None):
+        return GenerationResult(
+            content=answer,
+            model="mock-model",
+            prompt_tokens=11,
+            completion_tokens=22,
+        )
+
+    return _generate

@@ -59,6 +59,10 @@ See docs/development.md (Testing) for layout and conventions.
 - Changing any text in a family requires bumping that family's `version` in
   the YAML and recording the new fingerprint in
   `backend/tests/test_prompts.py`; the suite fails otherwise.
+- Before merging a change to the `answer` or `ai_review` families, run the
+  prompt eval (`uv run python -m physics_ai_tutor.cli.eval_prompts`, or the
+  "Prompt Eval" GitHub Actions workflow) against `backend/eval/golden.jsonl`
+  and update the committed baseline if the change is intended.
 
 ## Coding Style
 

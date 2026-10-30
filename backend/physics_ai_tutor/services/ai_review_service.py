@@ -132,22 +132,68 @@ def _build_context(db: Session, question: Question, language: Language) -> str:
     return f"\n{header}{blocks}\n"
 
 
-def _build_prompts(
-    db: Session, question: Question, language: Language
+def build_review_prompts(
+    question_text: str,
+    answer_text: str,
+    language: Language,
+    concepts: list[str] | None = None,
+    context: str = "",
 ) -> tuple[str, str]:
-    text = question.text(language) or question.original_text()
-    concepts = question_concept_repository.get_concepts_for_questions(
-        db, [question.id], language=language.value
-    ).get(question.id, [])
-
+    """The reviewer prompts for one Q&A; pure strings, no database needed."""
     user_prompt = _LIBRARY.get("ai_review", "user_template", language).format(
-        question=text[0],
-        answer=text[1],
+        question=question_text,
+        answer=answer_text,
         concepts=", ".join(concepts) if concepts else "-",
-        context=_build_context(db, question, language),
+        context=context,
     )
 
     return _LIBRARY.get("ai_review", "system", language), user_prompt
+
+
+class GradedAnswer:
+    """Parsed reviewer output plus the call's usage; verdict None = unparsed."""
+
+    def __init__(self, result, data: dict | None) -> None:
+        self.model = result.model
+        self.prompt_tokens = result.prompt_tokens
+        self.completion_tokens = result.completion_tokens
+        self.raw = result.content
+
+        if data is None:
+            self.verdict = None
+            self.confidence = None
+            self.reasons: list[QuestionReviewReason] = []
+            self.rationale: str | None = result.content[:5000]
+            self.suggested_answer: str | None = None
+            self.rubric: dict[str, int] | None = None
+            self.parsed = False
+        else:
+            self.verdict = _coerce_verdict(data.get("verdict"))
+            self.confidence = _coerce_confidence(data.get("confidence"))
+            self.reasons = _coerce_reasons(data.get("reasons"))
+            self.rationale = _optional_text(data.get("rationale"))
+            self.suggested_answer = _optional_text(data.get("suggested_answer"))
+            self.rubric = _coerce_rubric(data.get("rubric"))
+            self.parsed = True
+
+
+def grade_answer(
+    question_text: str,
+    answer_text: str,
+    language: Language,
+    concepts: list[str] | None = None,
+    context: str = "",
+    temperature: float | None = None,
+) -> GradedAnswer:
+    """Grade one Q&A with the rubric; database-free (used by the eval too)."""
+    system_prompt, user_prompt = build_review_prompts(
+        question_text, answer_text, language, concepts, context
+    )
+    result = deepseek_service.generate_answer(
+        system_prompt, user_prompt, temperature=temperature
+    )
+
+    return GradedAnswer(result, _parse_output(result.content))
 
 
 def review_question(db: Session, question: Question) -> AiReview | None:
@@ -169,8 +215,17 @@ def review_question(db: Session, question: Question) -> AiReview | None:
     language = Language(question.original_language)
 
     try:
-        system_prompt, user_prompt = _build_prompts(db, question, language)
-        result = deepseek_service.generate_answer(system_prompt, user_prompt)
+        text = question.text(language) or question.original_text()
+        concepts = question_concept_repository.get_concepts_for_questions(
+            db, [question.id], language=language.value
+        ).get(question.id, [])
+        graded = grade_answer(
+            text[0],
+            text[1],
+            language,
+            concepts=concepts,
+            context=_build_context(db, question, language),
+        )
     except Exception:
         logger.warning(
             "AI review failed before storing: question_id=%d",
@@ -180,35 +235,20 @@ def review_question(db: Session, question: Question) -> AiReview | None:
         db.rollback()
         return None
 
-    data = _parse_output(result.content)
-
-    if data is None:
-        # Keep the failure visible instead of silently dropping it.
-        review = AiReviewCreate(
-            question_id=question.id,
-            language=language,
-            verdict=None,
-            rationale=result.content[:5000],
-            model=result.model,
-            prompt_version=REVIEW_PROMPT_VERSION,
-            prompt_tokens=result.prompt_tokens,
-            completion_tokens=result.completion_tokens,
-        )
-    else:
-        review = AiReviewCreate(
-            question_id=question.id,
-            language=language,
-            verdict=_coerce_verdict(data.get("verdict")),
-            confidence=_coerce_confidence(data.get("confidence")),
-            reasons=_coerce_reasons(data.get("reasons")),
-            rationale=_optional_text(data.get("rationale")),
-            suggested_answer=_optional_text(data.get("suggested_answer")),
-            rubric=_coerce_rubric(data.get("rubric")),
-            model=result.model,
-            prompt_version=REVIEW_PROMPT_VERSION,
-            prompt_tokens=result.prompt_tokens,
-            completion_tokens=result.completion_tokens,
-        )
+    review = AiReviewCreate(
+        question_id=question.id,
+        language=language,
+        verdict=graded.verdict,
+        confidence=graded.confidence,
+        reasons=graded.reasons,
+        rationale=graded.rationale,
+        suggested_answer=graded.suggested_answer,
+        rubric=graded.rubric,
+        model=graded.model,
+        prompt_version=REVIEW_PROMPT_VERSION,
+        prompt_tokens=graded.prompt_tokens,
+        completion_tokens=graded.completion_tokens,
+    )
 
     try:
         row = ai_review_repository.create(db, review)

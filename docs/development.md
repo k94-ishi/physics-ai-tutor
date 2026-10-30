@@ -373,6 +373,29 @@ running the backlog in the off-peak discount window (UTC 16:30-00:30, JST
 see the AI review run issues ([25]-[28]) for the scheduler and admin
 triggers. Re-check DeepSeek's pricing page before relying on the window.
 
+### Prompt regression check (golden set)
+
+`backend/eval/golden.jsonl` is a hand-labelled set of Q&A pairs (see
+`backend/eval/README.md`; the starter set is labelled by construction and
+should grow to 50-100 teacher-verified cases). The check grades every case
+with the current reviewer prompt at temperature 0 and compares the
+agreement metrics against the committed baseline for the same prompt
+versions:
+
+```bash
+uv run python -m physics_ai_tutor.cli.eval_prompts --dry-run        # validate only, no API
+uv run python -m physics_ai_tutor.cli.eval_prompts                  # grade + compare (12+ DeepSeek calls)
+uv run python -m physics_ai_tutor.cli.eval_prompts --regenerate     # also regenerate answers (2x calls)
+uv run python -m physics_ai_tutor.cli.eval_prompts --save-baseline  # pin the current numbers
+```
+
+Exit code 1 means a metric dropped more than the tolerance (default 0.05)
+below the baseline - the prompt change regressed. The "Prompt Eval" GitHub
+Actions workflow (`workflow_dispatch`) runs the same thing with the
+repository's `DEEPSEEK_API_KEY`; no database is needed. Run it before
+merging changes to the `answer` or `ai_review` prompt families (rule in
+`AGENTS.md`).
+
 ### Exporting the review dataset
 
 One JSONL line per human review, for offline analysis and prompt

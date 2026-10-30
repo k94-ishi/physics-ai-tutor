@@ -11,6 +11,7 @@ from physics_ai_tutor.core.exceptions import (
 )
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.repositories import (
+    ai_review_repository,
     embedding_repository,
     question_concept_repository,
     question_repository,
@@ -19,6 +20,7 @@ from physics_ai_tutor.repositories import (
 from physics_ai_tutor.schemas.concept import ConceptExtractionResult
 from physics_ai_tutor.schemas.language import Language, TextProvenance
 from physics_ai_tutor.schemas.question import (
+    AiReviewSummary,
     GenerationMeta,
     QuestionCreate,
     QuestionListResponse,
@@ -103,6 +105,18 @@ def prepare_for_response(
 # --- reads --------------------------------------------------------------------
 
 
+def attach_ai_reviews(db: Session, questions: list[Question]) -> None:
+    """Expose each question's latest AI verdict; call for admins only."""
+    latest = ai_review_repository.latest_for_questions(
+        db, [question.id for question in questions]
+    )
+    for question in questions:
+        row = latest.get(question.id)
+        question.ai_review = (
+            AiReviewSummary.model_validate(row) if row is not None else None
+        )
+
+
 def attach_generation_meta(questions: list[Question]) -> None:
     """Expose generation metadata to the response; call for admins only."""
     for question in questions:
@@ -127,6 +141,8 @@ def fetch_questions(
     language: Language | str = Language.JA,
     only_with_language: bool = False,
     include_generation: bool = False,
+    sort: str | None = None,
+    ai_verdict: str | None = None,
 ) -> QuestionListResponse:
     offset = (page - 1) * size
     language_filter = Language(language) if only_with_language else None
@@ -141,6 +157,8 @@ def fetch_questions(
         search_question=search_question,
         search_answer=search_answer,
         language=language_filter,
+        sort=sort,
+        ai_verdict=ai_verdict,
     )
 
     total = question_repository.count_questions(
@@ -151,6 +169,7 @@ def fetch_questions(
         search_question=search_question,
         search_answer=search_answer,
         language=language_filter,
+        ai_verdict=ai_verdict,
     )
 
     prepare_for_response(db, questions, language)
@@ -159,6 +178,7 @@ def fetch_questions(
     # still in hand (the response models are built from them next).
     if include_generation:
         attach_generation_meta(questions)
+        attach_ai_reviews(db, questions)
 
     logger.info(
         "Questions fetched: page=%d size=%d keyword_present=%s results=%d total=%d",

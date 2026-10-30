@@ -44,6 +44,25 @@ def list_for_question(db: Session, question_id: int) -> list[AiReview]:
     )
 
 
+def latest_for_questions(db: Session, ids: list[int]) -> dict[int, AiReview]:
+    """question_id -> newest AiReview, for the ids that have one."""
+    if not ids:
+        return {}
+
+    rows = (
+        db.query(AiReview)
+        .filter(AiReview.question_id.in_(ids))
+        .order_by(AiReview.question_id, AiReview.id.desc())
+        .all()
+    )
+
+    latest: dict[int, AiReview] = {}
+    for row in rows:
+        latest.setdefault(row.question_id, row)
+
+    return latest
+
+
 def list_pending_question_ids(db: Session, limit: int) -> list[int]:
     """UNREVIEWED AI questions that have no AI review yet, oldest first."""
     from physics_ai_tutor.models import Question

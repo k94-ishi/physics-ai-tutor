@@ -12,6 +12,8 @@ type ReviewReasonDialogProps = {
     title: string;
     description?: string;
     confirming?: boolean;
+    // Pre-selected reason, e.g. the AI reviewer's first reason code.
+    defaultReason?: ReviewReason;
     onConfirm: (reason: ReviewReason, comment: string | undefined) => void;
     onCancel: () => void;
 };
@@ -26,6 +28,7 @@ export default function ReviewReasonDialog({
     title,
     description,
     confirming = false,
+    defaultReason,
     onConfirm,
     onCancel,
 }: ReviewReasonDialogProps) {
@@ -37,11 +40,11 @@ export default function ReviewReasonDialog({
     useEffect(() => {
         if (open) {
             // eslint-disable-next-line react-hooks/set-state-in-effect
-            setReason("PHYSICS_ERROR");
+            setReason(defaultReason ?? "PHYSICS_ERROR");
             setComment("");
             setError(false);
         }
-    }, [open]);
+    }, [open, defaultReason]);
 
     useEffect(() => {
         if (!open) {

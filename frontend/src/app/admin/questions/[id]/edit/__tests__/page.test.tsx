@@ -61,6 +61,60 @@ beforeEach(() => {
     mocked.updateQuestion.mockReset();
 });
 
+describe("AI suggestion", () => {
+    const WITH_SUGGESTION = {
+        ...QUESTION,
+        ai_review: {
+            verdict: "EDIT",
+            confidence: 0.82,
+            reasons: ["INCOMPLETE"],
+            rationale: "説明が途中で終わっている。",
+            suggested_answer: "AIの修正案",
+            created_at: "2026-10-30T00:00:00Z",
+        },
+    } as unknown as Question;
+
+    it("applies the suggested answer and sends it as an EDIT_APPROVE with the AI's reason", async () => {
+        mocked.fetchQuestion.mockResolvedValue(WITH_SUGGESTION);
+        const user = userEvent.setup();
+        await renderPage();
+
+        expect(screen.getByText("AIレビューの修正案")).toBeInTheDocument();
+        expect(screen.getByText(/確信度 82%/)).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", { name: "修正案を回答に反映" }));
+
+        expect(screen.getByDisplayValue("AIの修正案")).toBeInTheDocument();
+        expect(screen.getByText("AI提案を反映済み(未保存)")).toBeInTheDocument();
+        // Nothing is persisted by applying alone.
+        expect(mocked.updateQuestion).not.toHaveBeenCalled();
+        expect(mocked.reviewQuestion).not.toHaveBeenCalled();
+
+        await user.click(screen.getByRole("button", { name: "保存して承認" }));
+
+        // The dialog opens with the AI's first reason preselected.
+        const select = await screen.findByLabelText("理由");
+        expect(select).toHaveValue("INCOMPLETE");
+        await user.click(screen.getByRole("button", { name: "確定" }));
+
+        await waitFor(() => expect(mocked.reviewQuestion).toHaveBeenCalled());
+        expect(mocked.reviewQuestion).toHaveBeenCalledWith(7, {
+            action: "EDIT_APPROVE",
+            language: "ja",
+            question: "元の質問",
+            answer: "AIの修正案",
+            reason: "INCOMPLETE",
+            comment: undefined,
+        });
+    });
+
+    it("shows no panel when there is no AI review", async () => {
+        await renderPage();
+
+        expect(screen.queryByText("AIレビューの修正案")).not.toBeInTheDocument();
+    });
+});
+
 describe("Save and approve", () => {
     it("sends EDIT_APPROVE with the edited text so the diff is recorded", async () => {
         const user = userEvent.setup();

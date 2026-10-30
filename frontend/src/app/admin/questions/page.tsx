@@ -13,7 +13,10 @@ import {
     translateQuestions,
 } from "@/lib/api";
 import {
+    AiVerdict,
+    AiVerdictFilter,
     Question,
+    QuestionSort,
     QuestionStatus,
     ReviewReason,
     SimilarQuestion,
@@ -24,7 +27,9 @@ import SelectField from "@/components/ui/SelectField";
 import LoadingState from "@/components/ui/LoadingState";
 import StatusMessage from "@/components/ui/StatusMessage";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import ReviewReasonDialog from "@/components/ui/ReviewReasonDialog";
+import ReviewReasonDialog, {
+    reasonLabelKey,
+} from "@/components/ui/ReviewReasonDialog";
 import Pagination from "@/components/ui/Pagination";
 import MarkdownContent from "@/components/ui/MarkdownContent";
 import ReferencedQuestions from "@/components/ui/ReferencedQuestions";
@@ -50,6 +55,21 @@ const ADMIN_QUERY_DEFAULTS = {
     keyword: "",
     status: "",
     conceptFilter: "",
+    sort: "",
+    aiVerdict: "",
+};
+
+const AI_VERDICT_SHORT_KEYS: Record<AiVerdict, TranslationKey> = {
+    APPROVE: "admin.aiShortApprove",
+    EDIT: "admin.aiShortEdit",
+    REJECT: "admin.aiShortReject",
+};
+
+const AI_VERDICT_BADGE_CLASSES: Record<AiVerdict | "UNPARSED", string> = {
+    APPROVE: "bg-green-50 text-green-700",
+    EDIT: "bg-yellow-50 text-yellow-800",
+    REJECT: "bg-red-50 text-red-700",
+    UNPARSED: "bg-gray-100 text-gray-500",
 };
 
 const STATUS_LABEL_KEYS: Record<QuestionStatus, TranslationKey> = {
@@ -103,6 +123,8 @@ function AdminQuestionsPageInner() {
     const size = Number(queryState.size);
     const statusFilter = queryState.status as QuestionStatus | "";
     const conceptFilter = queryState.conceptFilter as ConceptFilter;
+    const sortOption = queryState.sort as QuestionSort | "";
+    const aiVerdictFilter = queryState.aiVerdict as AiVerdictFilter | "";
     const [keywordInput, setKeywordInput] = useState(queryState.keyword);
     const [listItems, setListItems] = useState<Question[]>([]);
     const [listTotal, setListTotal] = useState(0);
@@ -145,7 +167,9 @@ function AdminQuestionsPageInner() {
             targetPage: number,
             targetSize: number,
             keyword: string,
-            status: QuestionStatus | ""
+            status: QuestionStatus | "",
+            sort: QuestionSort | "" = "",
+            aiVerdict: AiVerdictFilter | "" = ""
         ) => {
             const requestId = ++listRequestId.current;
             setListLoading(true);
@@ -157,6 +181,8 @@ function AdminQuestionsPageInner() {
                     size: targetSize,
                     keyword: keyword || undefined,
                     status: status || undefined,
+                    sort: sort || undefined,
+                    aiVerdict: aiVerdict || undefined,
                 });
 
                 if (requestId !== listRequestId.current) {
@@ -204,12 +230,20 @@ function AdminQuestionsPageInner() {
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelectedIds(new Set());
-    }, [queryState.keyword, statusFilter, conceptFilter, page]);
+    }, [queryState.keyword, statusFilter, conceptFilter, sortOption, aiVerdictFilter, page]);
 
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        loadList(page, size, queryState.keyword, statusFilter);
-    }, [loadList, page, size, queryState.keyword, statusFilter]);
+        loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter);
+    }, [
+        loadList,
+        page,
+        size,
+        queryState.keyword,
+        statusFilter,
+        sortOption,
+        aiVerdictFilter,
+    ]);
 
     const runSimilaritySearch = useCallback(async (query: string) => {
         const trimmed = query.trim();
@@ -294,7 +328,7 @@ function AdminQuestionsPageInner() {
 
         try {
             await deleteQuestion(deleteTarget.id);
-            await loadList(page, size, queryState.keyword, statusFilter);
+            await loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter);
             showToast(t("admin.questionDeleted"));
             setDeleteTarget(null);
         } catch (error) {
@@ -398,7 +432,7 @@ function AdminQuestionsPageInner() {
 
             setSelectedIds(new Set());
             setBulkAction(null);
-            await loadList(page, size, queryState.keyword, statusFilter);
+            await loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter);
         } catch (error) {
             console.error(error);
             showToast(t("admin.bulkActionFailed"), "error");
@@ -564,6 +598,53 @@ function AdminQuestionsPageInner() {
                                 ]}
                             />
                         </div>
+
+                        <div className="w-56">
+                            <SelectField
+                                id="ai-verdict-filter"
+                                label={t("admin.aiVerdictFilterLabel")}
+                                value={aiVerdictFilter}
+                                onChange={(e) =>
+                                    setQueryState({
+                                        aiVerdict: e.target.value,
+                                        page: "1",
+                                    })
+                                }
+                                options={[
+                                    { value: "", label: t("common.all") },
+                                    { value: "REJECT", label: t("admin.aiVerdictReject") },
+                                    { value: "EDIT", label: t("admin.aiVerdictEdit") },
+                                    { value: "APPROVE", label: t("admin.aiVerdictApprove") },
+                                    { value: "NONE", label: t("admin.aiVerdictNone") },
+                                ]}
+                            />
+                        </div>
+
+                        <div className="w-56">
+                            <SelectField
+                                id="sort-order"
+                                label={t("admin.sortLabel")}
+                                value={sortOption}
+                                onChange={(e) =>
+                                    setQueryState({
+                                        sort: e.target.value,
+                                        page: "1",
+                                    })
+                                }
+                                options={[
+                                    { value: "", label: t("admin.sortDefault") },
+                                    { value: "oldest", label: t("admin.sortOldest") },
+                                    {
+                                        value: "ai_confidence",
+                                        label: t("admin.sortAiConfidence"),
+                                    },
+                                    {
+                                        value: "asked_count",
+                                        label: t("admin.sortAskedCount"),
+                                    },
+                                ]}
+                            />
+                        </div>
                     </>
                 )}
             </div>
@@ -657,7 +738,7 @@ function AdminQuestionsPageInner() {
                             variant="error"
                             message={t("admin.fetchFailed")}
                             onRetry={() =>
-                                loadList(page, size, queryState.keyword, statusFilter)
+                                loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter)
                             }
                         />
                     )}
@@ -841,6 +922,41 @@ function AdminQuestionsPageInner() {
                                                             </span>
                                                         )}
 
+                                                        {question.ai_review && (
+                                                            <span
+                                                                className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                                                                    AI_VERDICT_BADGE_CLASSES[
+                                                                        question.ai_review.verdict ??
+                                                                            "UNPARSED"
+                                                                    ]
+                                                                }`}
+                                                                title={
+                                                                    question.ai_review.rationale ??
+                                                                    undefined
+                                                                }
+                                                            >
+                                                                AI:{" "}
+                                                                {question.ai_review.verdict
+                                                                    ? t(
+                                                                          AI_VERDICT_SHORT_KEYS[
+                                                                              question.ai_review.verdict
+                                                                          ]
+                                                                      )
+                                                                    : t("admin.aiShortUnparsed")}
+                                                                {question.ai_review.confidence !==
+                                                                    null &&
+                                                                    ` ${Math.round(
+                                                                        question.ai_review.confidence * 100
+                                                                    )}%`}
+                                                                {question.ai_review.reasons[0] &&
+                                                                    ` · ${t(
+                                                                        reasonLabelKey(
+                                                                            question.ai_review.reasons[0]
+                                                                        )
+                                                                    )}`}
+                                                            </span>
+                                                        )}
+
                                                         {review?.state === "processing" && (
                                                             <span className="shrink-0 animate-pulse rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
                                                                 {review.action === "APPROVE"
@@ -861,6 +977,17 @@ function AdminQuestionsPageInner() {
                                                     <span className="font-medium text-gray-900">
                                                         {question.question}
                                                     </span>
+
+                                                    {question.ai_review?.rationale && (
+                                                        <details className="text-xs text-gray-600">
+                                                            <summary className="cursor-pointer select-none text-gray-500">
+                                                                {t("admin.aiRationaleToggle")}
+                                                            </summary>
+                                                            <p className="mt-1 whitespace-pre-wrap">
+                                                                {question.ai_review.rationale}
+                                                            </p>
+                                                        </details>
+                                                    )}
 
                                                     <MarkdownContent
                                                         content={question.answer}
@@ -991,6 +1118,7 @@ function AdminQuestionsPageInner() {
                 open={rejectTarget !== null}
                 title={t("reviewReason.dialogRejectTitle")}
                 description={rejectTarget?.question}
+                defaultReason={rejectTarget?.ai_review?.reasons[0]}
                 onConfirm={(reason, comment) => {
                     if (rejectTarget !== null) {
                         startReview(rejectTarget, "REJECT", reason, comment);

@@ -81,7 +81,7 @@ missing language is machine translated at creation.
 
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
-| GET | `/api/v1/questions?lang=` | Public | Paginated list with optional keyword (matches any language) and status filter. Non-admins only see `APPROVED` rows that have text in `lang`. |
+| GET | `/api/v1/questions?lang=` | Public | Paginated list with optional keyword (matches any language) and status filter. Non-admins only see `APPROVED` rows that have text in `lang`. Admins may also pass `sort` (`oldest`, `ai_confidence`, `asked_count`) and `ai_verdict` (`APPROVE`, `EDIT`, `REJECT`, `NONE` = no AI review); both are ignored for other callers. Admin items carry `ai_review` (latest verdict, confidence, reasons, rationale, suggested answer) and `generation`; public items return `null` for both. |
 | GET | `/api/v1/questions/exact-match?question=&lang=` | Public | Look up a question by exact text in the `lang` column. Non-admins only match `APPROVED` rows. |
 | GET | `/api/v1/questions/{id}?lang=` | Public | Question detail with concepts and referenced questions in `lang`. 404 for non-admins unless `APPROVED`. |
 | GET | `/api/v1/questions/{id}/related?lang=` | Public | Concept- and embedding-based recommendations, compared within `lang` |

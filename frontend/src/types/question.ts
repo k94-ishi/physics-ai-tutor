@@ -29,6 +29,7 @@ export type Question = {
     concepts: string[];
     retrieved_questions: RetrievedQuestionRef[];
     generation?: GenerationMeta | null;
+    ai_review?: AiReviewSummary | null;
 };
 
 export type QuestionListResponse = {
@@ -60,6 +61,9 @@ export type SimilarQuestion = {
     distance: number;
 };
 
+export type QuestionSort = "oldest" | "ai_confidence" | "asked_count";
+export type AiVerdictFilter = "APPROVE" | "EDIT" | "REJECT" | "NONE";
+
 export type FetchQuestionsParams = {
     page?: number;
     size?: number;
@@ -68,6 +72,8 @@ export type FetchQuestionsParams = {
     searchQuestion?: boolean;
     searchAnswer?: boolean;
     lang?: ContentLanguage;
+    sort?: QuestionSort;
+    aiVerdict?: AiVerdictFilter;
 };
 
 export type SearchQuestionsParams = {
@@ -92,6 +98,18 @@ export const REVIEW_REASONS = [
 ] as const;
 
 export type ReviewReason = (typeof REVIEW_REASONS)[number];
+
+export type AiVerdict = "APPROVE" | "EDIT" | "REJECT";
+
+// Latest AI pre-review verdict; present only in admin responses.
+export type AiReviewSummary = {
+    verdict: AiVerdict | null;
+    confidence: number | null;
+    reasons: ReviewReason[];
+    rationale: string | null;
+    suggested_answer: string | null;
+    created_at: string;
+};
 
 export type QuestionReview = {
     id: number;

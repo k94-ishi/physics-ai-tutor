@@ -88,6 +88,7 @@ class Question(Base):
     concepts: list[str]
     retrieved_questions: list[dict[str, int | str]]
     generation: object | None
+    ai_review: object | None
 
     # --- resolved text (transient) ----------------------------------------
     #

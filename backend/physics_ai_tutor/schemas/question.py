@@ -1,5 +1,6 @@
+from datetime import datetime
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints, model_validator
 
@@ -100,6 +101,34 @@ class QuestionRefSummary(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class QuestionSort(StrEnum):
+    OLDEST = "oldest"
+    AI_CONFIDENCE = "ai_confidence"
+    ASKED_COUNT = "asked_count"
+
+
+class AiVerdictFilter(StrEnum):
+    APPROVE = "APPROVE"
+    EDIT = "EDIT"
+    REJECT = "REJECT"
+    # Questions with no AI review at all.
+    NONE = "NONE"
+
+
+class AiReviewSummary(BaseModel):
+    """The latest AI verdict as shown to admins; defined here (not in
+    schemas.ai_review) to keep schema imports acyclic."""
+
+    verdict: Literal["APPROVE", "EDIT", "REJECT"] | None
+    confidence: float | None
+    reasons: list[str]
+    rationale: str | None
+    suggested_answer: str | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class GenerationMeta(BaseModel):
     """How an AI answer was produced; admins only, NULL for manual rows."""
 
@@ -126,6 +155,8 @@ class QuestionResponse(BaseModel):
     retrieved_questions: list[QuestionRefSummary] = Field(default_factory=list)
     # Populated only for admin callers; see attach_generation_meta.
     generation: GenerationMeta | None = None
+    # Latest AI verdict; admin callers only (attach_ai_reviews).
+    ai_review: AiReviewSummary | None = None
 
     model_config = {"from_attributes": True}
 

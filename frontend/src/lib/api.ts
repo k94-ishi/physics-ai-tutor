@@ -108,6 +108,12 @@ export async function fetchQuestions(
     if (params.keyword) {
         searchParams.set("keyword", params.keyword);
     }
+    if (params.sort) {
+        searchParams.set("sort", params.sort);
+    }
+    if (params.aiVerdict) {
+        searchParams.set("ai_verdict", params.aiVerdict);
+    }
     if (params.status) {
         searchParams.set("status", params.status);
     }

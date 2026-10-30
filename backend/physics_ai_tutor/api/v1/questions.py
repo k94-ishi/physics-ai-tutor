@@ -31,10 +31,12 @@ from physics_ai_tutor.schemas.embedding import (
 )
 from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.question import (
+    AiVerdictFilter,
     QuestionCreate,
     QuestionImportResponse,
     QuestionListResponse,
     QuestionResponse,
+    QuestionSort,
     QuestionSource,
     QuestionStatus,
     QuestionUpdate,
@@ -84,11 +86,15 @@ def get_questions(
     search_question: bool = Query(default=True),
     search_answer: bool = Query(default=True),
     lang: Language = Query(default=Language.JA),
+    sort: QuestionSort | None = Query(default=None),
+    ai_verdict: AiVerdictFilter | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
     # Students only see rows that have text in their language; admins see
     # every row, with the text falling back to the original language.
+    # AI-verdict sorting and filtering are review-queue tools: admins only.
+    is_admin = _is_admin(current_user)
     return question_service.fetch_questions(
         db,
         page,
@@ -99,8 +105,10 @@ def get_questions(
         search_question=search_question,
         search_answer=search_answer,
         language=lang,
-        only_with_language=not _is_admin(current_user),
-        include_generation=_is_admin(current_user),
+        only_with_language=not is_admin,
+        include_generation=is_admin,
+        sort=sort.value if sort and is_admin else None,
+        ai_verdict=ai_verdict.value if ai_verdict and is_admin else None,
     )
 
 
@@ -157,6 +165,7 @@ def get_question(
 
     if _is_admin(current_user):
         question_service.attach_generation_meta([question])
+        question_service.attach_ai_reviews(db, [question])
 
     return question
 

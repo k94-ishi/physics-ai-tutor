@@ -1,4 +1,4 @@
-"""Render the prompt library readably (JSONL escapes hide the line breaks)."""
+"""Print the prompt library as the model will see it, one record at a time."""
 
 import argparse
 

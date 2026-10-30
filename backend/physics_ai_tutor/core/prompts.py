@@ -3,7 +3,7 @@ from physics_ai_tutor.schemas.language import Language
 
 _LIBRARY = load_library()
 
-# Versions come from the prompt library (prompt_library.jsonl). Bump a
+# Versions come from the prompt library (prompt_library.yaml). Bump a
 # family's version there whenever any of its texts change -
 # tests/test_prompts.py pins a fingerprint per family and fails on drift.
 ANSWER_PROMPT_VERSION = _LIBRARY.version("answer")

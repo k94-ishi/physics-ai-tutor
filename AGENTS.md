@@ -47,8 +47,8 @@ See docs/development.md (Testing) for layout and conventions.
 
 ## Prompt Rules
 
-- Every LLM prompt text lives in `backend/physics_ai_tutor/core/prompt_library.jsonl`
-  (one record per line: family, name, language, version, description, text),
+- Every LLM prompt text lives in `backend/physics_ai_tutor/core/prompt_library.yaml`
+  (a list of records: family, name, language, version, description, text; prose in block scalars),
   never inline in Python. Render it readably with
   `uv run python -m physics_ai_tutor.cli.show_prompts`.
 - Anything a student reads must exist in both Japanese and English and be
@@ -57,7 +57,7 @@ See docs/development.md (Testing) for layout and conventions.
   stays identical, but must carry language-matched worked examples and the
   bilingual glossary.
 - Changing any text in a family requires bumping that family's `version` in
-  the JSONL and recording the new fingerprint in
+  the YAML and recording the new fingerprint in
   `backend/tests/test_prompts.py`; the suite fails otherwise.
 
 ## Coding Style

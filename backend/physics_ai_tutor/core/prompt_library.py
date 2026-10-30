@@ -1,25 +1,25 @@
-"""Typed access to the prompt library (prompt_library.jsonl).
+"""Typed access to the prompt library (prompt_library.yaml).
 
-Every LLM prompt text lives in the JSONL file next to this module, one
-record per line, so wording, language coverage, and versions are data
-rather than code. Python builds the strings it sends from these records;
+Every LLM prompt text lives in the YAML file next to this module, as a list
+of records under `prompts`, so wording, language coverage, and versions
+are data rather than code. YAML block scalars keep the prose readable with
+real line breaks. Python builds the strings it sends from these records;
 `tests/test_prompts.py` pins a fingerprint per family so the version must
 be bumped whenever any text changes.
 
-Render the library readably with:
-    uv run python -m physics_ai_tutor.cli.show_prompts
+Render the library with: uv run python -m physics_ai_tutor.cli.show_prompts
 """
 
 import hashlib
-import json
 from functools import lru_cache
 from importlib import resources
 
+import yaml
 from pydantic import BaseModel, field_validator
 
 from physics_ai_tutor.schemas.language import Language
 
-LIBRARY_FILENAME = "prompt_library.jsonl"
+LIBRARY_FILENAME = "prompt_library.yaml"
 
 
 class PromptRecord(BaseModel):
@@ -95,9 +95,6 @@ class PromptLibrary:
 @lru_cache(maxsize=1)
 def load_library() -> PromptLibrary:
     source = resources.files("physics_ai_tutor.core").joinpath(LIBRARY_FILENAME)
-    records = [
-        PromptRecord.model_validate(json.loads(line))
-        for line in source.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    data = yaml.safe_load(source.read_text(encoding="utf-8"))
+    records = [PromptRecord.model_validate(item) for item in data["prompts"]]
     return PromptLibrary(records)

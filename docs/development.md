@@ -300,9 +300,10 @@ tells them to use a personal Google account instead.
 
 ### Prompts
 
-All prompt texts are data: `backend/physics_ai_tutor/core/prompt_library.jsonl`,
-one record per line with `family`, `name`, `language` (`null` for texts shared
-by both languages), `version`, `description`, and `text`. The `prompts` module
+All prompt texts are data: `backend/physics_ai_tutor/core/prompt_library.yaml`,
+a list of records with `family`, `name`, `language` (`null` for texts shared
+by both languages), `version`, `description`, and `text` (a YAML block scalar,
+so the prose keeps real line breaks). The `prompts` module
 and `concept_service` build their strings from it at import.
 
 ```bash
@@ -310,7 +311,7 @@ uv run python -m physics_ai_tutor.cli.show_prompts                 # read it
 uv run python -m physics_ai_tutor.cli.show_prompts --family answer
 ```
 
-To change wording: edit the JSONL record, bump the family's `version`, run
+To change wording: edit the YAML record, bump the family's `version`, run
 the tests, and record the new fingerprint that `tests/test_prompts.py`
 reports. Versions are stored on generated rows (`questions.prompt_version`,
 `question_concepts.extraction_prompt_version`), which is what makes review

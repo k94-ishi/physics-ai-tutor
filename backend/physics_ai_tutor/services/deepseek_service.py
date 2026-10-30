@@ -20,7 +20,12 @@ class GenerationResult:
     completion_tokens: int | None
 
 
-def _request(system_prompt: str, user_prompt: str, temperature: float | None = None):
+def _request(
+    system_prompt: str,
+    user_prompt: str,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+):
     logger.debug(
         "Requesting DeepSeek chat completion: prompt_length=%d", len(user_prompt)
     )
@@ -37,7 +42,7 @@ def _request(system_prompt: str, user_prompt: str, temperature: float | None = N
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=settings.deepseek_max_tokens,
+            max_tokens=max_tokens or settings.deepseek_max_tokens,
             **extra,
         )
     except OpenAIError as exc:
@@ -62,10 +67,13 @@ def chat_completion(system_prompt: str, user_prompt: str) -> str:
 
 
 def generate_answer(
-    system_prompt: str, user_prompt: str, temperature: float | None = None
+    system_prompt: str,
+    user_prompt: str,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
 ) -> GenerationResult:
     """Answer generation; records the model and token usage for the row."""
-    response = _request(system_prompt, user_prompt, temperature)
+    response = _request(system_prompt, user_prompt, temperature, max_tokens)
     content = response.choices[0].message.content or ""
     usage = getattr(response, "usage", None)
 

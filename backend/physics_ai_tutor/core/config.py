@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     ai_review_enabled: bool = False
     # Upper bound on AI review calls per rolling 24h, across all runs
     ai_review_daily_cap: int = 200
+    # Reviewer output includes a full suggested answer, so it needs more
+    # room than a student answer or its JSON gets truncated.
+    ai_review_max_tokens: int = 3000
     # JWT
     jwt_secret_key: str
     jwt_algorithm: str

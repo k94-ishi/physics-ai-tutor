@@ -269,6 +269,7 @@ Backend (`backend/.env`):
 | `TRUST_FORWARDED_FOR` | no | Use `X-Forwarded-For` for rate limiting (default `true`) |
 | `AI_REVIEW_ENABLED` | no | Grade each new AI answer into `ai_reviews` (default `false`; one extra DeepSeek call per generation) |
 | `AI_REVIEW_DAILY_CAP` | no | Rolling 24h budget of reviewer calls across all runs (default `200`) |
+| `AI_REVIEW_MAX_TOKENS` | no | Output budget for reviewer calls (default `3000`); below ~2500 the JSON with a full suggested answer gets truncated |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | no | Enable Google Sign-In for students; all three must be set (see below) |
 | `FRONTEND_URL` | no | Where the Google callback redirects the browser (default `http://localhost:3000`) |
 
@@ -390,7 +391,11 @@ uv run python -m physics_ai_tutor.cli.eval_prompts --save-baseline  # pin the cu
 ```
 
 Exit code 1 means a metric dropped more than the tolerance (default 0.05)
-below the baseline - the prompt change regressed. The "Prompt Eval" GitHub
+below the baseline - the prompt change regressed. Add `--verbose` to print
+the reviewer's rationale on every disagreement; that is what a teacher
+needs to decide whether the label or the model is right. Runs are not
+bit-reproducible (about 3 of 69 verdicts flip between identical runs), so
+re-run once before trusting a change near the tolerance. The "Prompt Eval" GitHub
 Actions workflow (`workflow_dispatch`) runs the same thing with the
 repository's `DEEPSEEK_API_KEY`; no database is needed. Run it before
 merging changes to the `answer` or `ai_review` prompt families (rule in

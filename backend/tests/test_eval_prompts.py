@@ -38,11 +38,13 @@ def _graded(verdict, reasons=(), confidence=0.9):
 
 
 def _perfect_reviewer(cases):
-    by_question = {case.question: case.expected_verdict for case in cases}
+    # Production cases can share a question (pre-edit and approved texts of
+    # the same row), so key on the full pair.
+    by_pair = {(case.question, case.answer): case.expected_verdict for case in cases}
 
-    def _grade(question, answer, language, concepts=None, context="", temperature=None):
-        assert temperature == 0.0
-        return _graded(by_question[question], [])
+    def _grade(question, answer, language, concepts=None, context="", **kwargs):
+        assert kwargs.get("temperature") == 0.0
+        return _graded(by_pair[(question, answer)], [])
 
     return _grade
 
@@ -108,7 +110,7 @@ def test_regenerate_uses_the_answer_prompt_at_temperature_zero(monkeypatch, tmp_
     cases = eval_prompts.load_golden_set(eval_prompts.DEFAULT_SET)
     seen = {"temperatures": set(), "systems": set()}
 
-    def _generate(system_prompt, user_prompt, temperature=None):
+    def _generate(system_prompt, user_prompt, temperature=None, **kwargs):
         seen["temperatures"].add(temperature)
         seen["systems"].add(system_prompt[:20])
         return GenerationResult(
@@ -119,8 +121,10 @@ def test_regenerate_uses_the_answer_prompt_at_temperature_zero(monkeypatch, tmp_
 
     captured = {"answers": set()}
 
-    def _grade(question, answer, language, concepts=None, context="", temperature=None):
+    def _grade(question, answer, language, concepts=None, context="", **kwargs):
         captured["answers"].add(answer)
+        # Regenerated answers do not match stored ones; verdict by question
+        # is enough here since only the plumbing is under test.
         by_question = {case.question: case.expected_verdict for case in cases}
         return _graded(by_question[question])
 

@@ -39,7 +39,7 @@ def _sequenced_generation(monkeypatch, *contents):
     """generate_answer returns the given contents in order of the calls."""
     queue = list(contents)
 
-    def _next(system_prompt, user_prompt, temperature=None):
+    def _next(system_prompt, user_prompt, temperature=None, **kwargs):
         content = queue.pop(0)
         return GenerationResult(
             content=content, model="mock-model", prompt_tokens=5, completion_tokens=7
@@ -108,7 +108,7 @@ def test_malformed_output_is_stored_as_a_visible_failure(
 def test_reviewer_failure_does_not_break_translation(
     client, db, monkeypatch, review_enabled
 ):
-    def _answer_then_error(system_prompt, user_prompt, temperature=None):
+    def _answer_then_error(system_prompt, user_prompt, temperature=None, **kwargs):
         if "審査します" in system_prompt or "screening" in system_prompt:
             raise RuntimeError("reviewer down")
         return fake_generation("回答")(system_prompt, user_prompt)
@@ -162,7 +162,7 @@ def test_reviewer_prompt_matches_the_questions_language(
 ):
     captured = []
 
-    def _capture(system_prompt, user_prompt, temperature=None):
+    def _capture(system_prompt, user_prompt, temperature=None, **kwargs):
         captured.append((system_prompt, user_prompt))
         content = json.dumps(VALID_REVIEW) if len(captured) % 2 == 0 else "An answer."
         return GenerationResult(
@@ -284,7 +284,7 @@ def test_one_failure_is_counted_and_does_not_stop_the_run(client, db, monkeypatc
     ids = _three_pending(client, monkeypatch)
     calls = {"n": 0}
 
-    def _second_fails(system_prompt, user_prompt, temperature=None):
+    def _second_fails(system_prompt, user_prompt, temperature=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 2:
             raise RuntimeError("reviewer down")
@@ -431,3 +431,79 @@ def test_run_endpoint_conflict_returns_409(client, admin_client, db, monkeypatch
     )
 
     assert response.status_code == 409
+
+
+def test_reviewer_calls_use_the_larger_token_budget(monkeypatch):
+    from physics_ai_tutor.schemas.language import Language
+    from physics_ai_tutor.services import ai_review_service as service
+
+    seen = {}
+
+    def _capture(system_prompt, user_prompt, temperature=None, max_tokens=None):
+        seen["max_tokens"] = max_tokens
+        return GenerationResult(
+            content=json.dumps(VALID_REVIEW),
+            model="m",
+            prompt_tokens=1,
+            completion_tokens=1,
+        )
+
+    monkeypatch.setattr(deepseek_service, "generate_answer", _capture)
+
+    service.grade_answer("質問", "回答", Language.JA)
+
+    assert seen["max_tokens"] == settings.ai_review_max_tokens
+    assert settings.ai_review_max_tokens > settings.deepseek_max_tokens
+
+
+def test_real_reviewer_output_with_mixed_latex_escapes_parses():
+    from pathlib import Path
+
+    from physics_ai_tutor.services import ai_review_service as service
+
+    # Captured from DeepSeek on 2026-10-30: properly doubled \\text next to
+    # single-backslash \eta and \frac inside the same JSON string.
+    raw = (
+        Path(__file__)
+        .parent.joinpath("fixtures", "reviewer_output_mixed_escapes.txt")
+        .read_text(encoding="utf-8")
+    )
+
+    data = service._parse_output(raw)
+
+    assert data is not None
+    assert data["verdict"] == "EDIT"
+    assert "\\eta" in data["suggested_answer"]
+    assert "\\text{" in data["suggested_answer"]
+
+
+def test_strict_json_still_parses_first():
+    from physics_ai_tutor.services import ai_review_service as service
+
+    strict = json.dumps({"verdict": "APPROVE", "rationale": "line\nbreak \\frac"})
+
+    data = service._parse_output(strict)
+
+    assert data == {"verdict": "APPROVE", "rationale": "line\nbreak \\frac"}
+
+
+def test_literal_newlines_inside_reviewer_json_are_accepted():
+    from physics_ai_tutor.services import ai_review_service as service
+
+    raw = (
+        '{"verdict": "EDIT", "confidence": 0.8, "reasons": ["INCOMPLETE"],\n'
+        '"rationale": "一行目\n二行目", '
+        '"suggested_answer": "## 見出し\n\n本文の段落。\n\n- 箇条書き"}'
+    )
+
+    data = service._parse_output(raw)
+
+    assert data is not None
+    assert data["suggested_answer"].startswith("## 見出し\n")
+
+
+def test_hopeless_output_is_still_reported_unparsed():
+    from physics_ai_tutor.services import ai_review_service as service
+
+    assert service._parse_output('{"verdict": "EDIT", ') is None
+    assert service._parse_output("not json at all") is None

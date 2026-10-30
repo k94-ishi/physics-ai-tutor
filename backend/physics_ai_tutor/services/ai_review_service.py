@@ -49,6 +49,29 @@ def _strip_code_fences(content: str) -> str:
     return text.strip()
 
 
+# Reviewer output quotes physics with LaTeX, and models mix properly
+# doubled backslashes (\\text) with single ones (\eta) in one string.
+# Rather than guess with a regex, let the decoder point at each invalid
+# escape and double that backslash, bounded so garbage cannot loop.
+MAX_ESCAPE_REPAIRS = 500
+
+
+def _loads_with_escape_repair(text: str) -> dict | None:
+    for _ in range(MAX_ESCAPE_REPAIRS):
+        try:
+            # strict=False accepts literal line breaks inside strings, which
+            # multi-line suggested answers contain.
+            data = json.loads(text, strict=False)
+        except json.JSONDecodeError as exc:
+            if exc.msg.startswith("Invalid \\escape") and exc.pos < len(text):
+                text = text[: exc.pos] + "\\" + text[exc.pos :]
+                continue
+            return None
+        return data if isinstance(data, dict) else None
+
+    return None
+
+
 def _parse_output(content: str) -> dict | None:
     """The JSON object from the model, or None when unparseable."""
     text = _strip_code_fences(content)
@@ -58,12 +81,7 @@ def _parse_output(content: str) -> dict | None:
     if start == -1 or end <= start:
         return None
 
-    try:
-        data = json.loads(text[start : end + 1])
-    except ValueError:
-        return None
-
-    return data if isinstance(data, dict) else None
+    return _loads_with_escape_repair(text[start : end + 1])
 
 
 def _coerce_verdict(value: object) -> AiReviewVerdict | None:
@@ -190,7 +208,10 @@ def grade_answer(
         question_text, answer_text, language, concepts, context
     )
     result = deepseek_service.generate_answer(
-        system_prompt, user_prompt, temperature=temperature
+        system_prompt,
+        user_prompt,
+        temperature=temperature,
+        max_tokens=settings.ai_review_max_tokens,
     )
 
     return GradedAnswer(result, _parse_output(result.content))

@@ -569,6 +569,12 @@ docker compose exec backend uv run python -m physics_ai_tutor.database.seed
 
 ### Seed data
 
+`seed.json` holds 144 entries: 21 hand-translated bilingual pairs plus 123
+teacher-approved Q&A exported from production on 2026-10-30 (Japanese
+only; the English side is machine translated on import). Refresh the
+production part by exporting `questions` with `status = 'APPROVED'` again
+after a review pass.
+
 `backend/physics_ai_tutor/database/seed.py` loads
 `backend/physics_ai_tutor/database/seed.json` and inserts each entry as an
 `APPROVED` / `MANUAL` question with embeddings in every language. Entries

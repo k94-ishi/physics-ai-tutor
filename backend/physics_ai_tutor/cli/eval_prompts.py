@@ -69,7 +69,9 @@ def baseline_path() -> Path:
     )
 
 
-def grade_cases(cases: list[GoldenCase], regenerate: bool) -> list[ReviewPair]:
+def grade_cases(
+    cases: list[GoldenCase], regenerate: bool, verbose: bool = False
+) -> list[ReviewPair]:
     """One ReviewPair per case; the hand label plays the human reviewer."""
     now = datetime.now(UTC)
     pairs = []
@@ -95,6 +97,9 @@ def grade_cases(cases: list[GoldenCase], regenerate: bool) -> list[ReviewPair]:
             f"got={verdict or 'UNPARSED':<8} "
             f"reasons={','.join(r.value for r in graded.reasons) or '-'}"
         )
+        if verbose and marker == "DIFF" and graded.rationale:
+            # The rationale is what a teacher needs to judge who is right.
+            print(f"         why: {graded.rationale[:400]}")
 
         pairs.append(
             ReviewPair(
@@ -205,6 +210,9 @@ def parse_args() -> argparse.Namespace:
         help="Validate the set and baseline without any API call.",
     )
     parser.add_argument("--tolerance", type=float, default=DEFAULT_TOLERANCE)
+    parser.add_argument(
+        "--verbose", action="store_true", help="Print the AI rationale on DIFF lines."
+    )
     return parser.parse_args()
 
 
@@ -214,6 +222,7 @@ def main(
     save: bool = False,
     dry_run: bool = False,
     tolerance: float = DEFAULT_TOLERANCE,
+    verbose: bool = False,
 ) -> int:
     cases = load_golden_set(set_path)
     set_hash = set_fingerprint(set_path)
@@ -229,7 +238,7 @@ def main(
         print("dry run: set is valid; no API calls made.")
         return 0
 
-    pairs = grade_cases(cases, regenerate)
+    pairs = grade_cases(cases, regenerate, verbose)
     metrics = compute_agreement(pairs)
     print()
     print(format_metrics("golden set", metrics))
@@ -252,5 +261,6 @@ if __name__ == "__main__":
             args.save_baseline,
             args.dry_run,
             args.tolerance,
+            args.verbose,
         )
     )

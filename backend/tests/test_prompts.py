@@ -14,12 +14,12 @@ _real_extract_concept_names = concept_service.extract_concept_names
 # answer texts themselves did not change, so its version stayed v2.)
 FAMILY_FINGERPRINTS = {
     "ai_review": (
-        "r1",
-        "5e5ad1c423a3961dcfa3c30795f98ec3d39ddca10e097ebbd4b064e26b8dd45d",
+        "r2",
+        "fed2a126c3bec781ad5f1b7371ad41f93af7f6ba431433d5e9c5381fbfffa694",
     ),
     "answer": (
-        "v2",
-        "27aae451450eb6f4089f30edd8a576a3c80ceb348c20393dc8dff1a0f598344b",
+        "v3",
+        "634a8b4f78554e3f6306d95330362f4c822f77fa71e8d6441172da50446f11c3",
     ),
     "concept_extraction": (
         "v3",
@@ -52,7 +52,7 @@ def test_prompt_versions_match_prompt_texts():
 
 
 def test_version_constants_come_from_the_library():
-    assert prompts.ANSWER_PROMPT_VERSION == "v2"
+    assert prompts.ANSWER_PROMPT_VERSION == "v3"
     assert prompts.TRANSLATION_PROMPT_VERSION == "v1"
     assert concept_service.CONCEPT_EXTRACTION_PROMPT_VERSION == "v3"
 

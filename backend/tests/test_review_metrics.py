@@ -226,7 +226,7 @@ def test_report_groups_by_prompt_versions(client, admin_client, db, monkeypatch)
     assert report.by_reviewer_prompt_version["r1"].exact_agreement_rate == 1.0
     assert report.by_reviewer_prompt_version["r2"].exact_agreement_rate == 0.0
     # Both answers came from the current answer prompt version.
-    assert list(report.by_answer_prompt_version) == ["v2"]
+    assert list(report.by_answer_prompt_version) == ["v3"]
     assert len(report.by_month) == 1
 
 

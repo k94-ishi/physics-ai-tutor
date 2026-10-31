@@ -29,6 +29,16 @@ DEFAULT_SET = EVAL_DIR / "golden.jsonl"
 EVAL_TEMPERATURE = 0.0
 DEFAULT_TOLERANCE = 0.05
 
+# Metric -> how many tolerances it may drop before the run fails. Recall is
+# computed over the 13 reject cases only, so one flipped verdict moves it by
+# 0.077; it gets a wider band than the rates measured over the whole set.
+GATED_METRICS = {
+    "exact_agreement_rate": 1.0,
+    "publish_agreement_rate": 1.0,
+    "reject_precision": 1.0,
+    "reject_recall": 3.0,
+}
+
 # Expected verdict -> the human action it stands for in the metrics.
 ACTION_FOR_VERDICT = {"APPROVE": "APPROVE", "EDIT": "EDIT_APPROVE", "REJECT": "REJECT"}
 
@@ -151,12 +161,13 @@ def compare_with_baseline(metrics, set_hash: str, tolerance: float) -> int:
         )
 
     failures = []
-    for key in ("exact_agreement_rate", "reject_precision"):
+    for key, slack in GATED_METRICS.items():
         before = baseline.get(key)
         after = getattr(metrics, key)
-        if before is not None and (after is None or after < before - tolerance):
+        allowed = tolerance * slack
+        if before is not None and (after is None or after < before - allowed):
             shown = "None" if after is None else f"{after:.3f}"
-            failures.append(f"{key}: {before:.3f} -> {shown}")
+            failures.append(f"{key}: {before:.3f} -> {shown} (allowed -{allowed:.3f})")
 
     if failures:
         print("FAIL vs baseline " + path.name + ": " + "; ".join(failures))

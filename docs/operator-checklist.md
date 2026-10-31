@@ -12,7 +12,7 @@ minutes, Phase 4 ongoing (minutes per day), Phase 5 one hour once.
 
 ## Phase 1 - Decisions and judgement calls (no deployment yet)
 
-### 1.1 Read the v2 answer prompt and the reviewer rubric (15 min)
+### 1.1 Read the v4 answer prompt and the r3 reviewer rubric (15 min)
 
 ```bash
 cd backend
@@ -20,19 +20,28 @@ uv run python -m physics_ai_tutor.cli.show_prompts --family answer
 uv run python -m physics_ai_tutor.cli.show_prompts --family ai_review
 ```
 
-What you are checking: tone and wording a teacher would use, the scope
-rule (what the model should decline), the "no calculus unless the student
-used it" rule, the length targets. If you change any text:
+What you are checking: tone and wording a teacher would use, the two
+separate axes (below), the length targets. If you change any text:
 
 1. edit `backend/physics_ai_tutor/core/prompt_library.yaml`,
-2. bump that family's `version` (`v2` -> `v3`, `r1` -> `r2`),
+2. bump that family's `version` (`v3` -> `v4`, `r2` -> `r3`),
 3. run `uv run pytest tests/test_prompts.py` - it prints the new
    fingerprint to paste into `FAMILY_FINGERPRINTS`,
 4. run the eval (Phase 5.2) before relying on the new prompt.
 
-Issue [29] `84ff079` already lists the two changes the data asks for:
-ban Mermaid diagrams, tighten scope to exclude chemistry / materials /
-course-structure questions. Doing 1.1 and [29] together is the natural move.
+Since v4/r3 ([33]) the prompts keep **subject** and **level** apart, and
+they are meant to stay apart:
+
+- *Subject* decides what gets answered at all: physics and the maths it
+  needs, at any level including university. Other subjects are OFF_TOPIC
+  even when they use physics words (chemistry of materials, corrosion).
+- *Level* decides how it is explained: the reader is a high school
+  student, so advanced material must define its concepts and build up in
+  order. Being beyond the textbook is no longer a defect by itself, and
+  `TOO_ADVANCED` now means "too thin to follow", not "beyond the course".
+
+**Before the eval can be trusted again, the golden set needs your verdict
+on six reject cases** whose labels predate this policy - see 5.2a.
 
 ### 1.2 Judge the seven flagged answers - issue [30] `4ef75f5` (30 min)
 
@@ -240,10 +249,42 @@ uv run python -m physics_ai_tutor.cli.eval_prompts --save-baseline
 git add eval/ && git commit -m "Pin eval baseline for <versions>"
 ```
 
-Exit code 1 means exact agreement or reject precision dropped more than
-0.05 - look at the `[DIFF]` lines with `why:` before deciding. Two
+Exit code 1 means a gated metric dropped too far: exact agreement, publish
+agreement and reject precision by more than 0.05, or reject recall by more
+than 0.15 (recall moves 0.077 per verdict, since only 13 cases are
+rejects). Look at the `[DIFF]` lines with `why:` before deciding. Two
 identical runs differ by about 3 verdicts of 69, so re-run once if you are
 near the threshold.
+
+### 5.2a Decide six golden reject cases, then re-pin (one sitting)
+
+The v4/r3 policy ([33]) re-admits physics above the curriculum but keeps
+other subjects out. Six `p-reject-*` cases were labelled REJECT under the
+old, narrower policy and need your verdict before the next baseline means
+anything. For each, open it in the admin queue (`#id` search, [31]) and
+decide APPROVE / EDIT / REJECT:
+
+| case | question | why it is in doubt |
+| --- | --- | --- |
+| `p-reject-1070` | 放射性廃棄物の処理が難しいのは？ | half-life, shielding = physics above the course, but the answer drifts into policy and geology |
+| `p-reject-47` | 剛体のつり合いの実験 | core 物理基礎; the 2026-08 reject recorded no reason |
+| `p-reject-25` | 重心の位置と安定性 | plain physics; reason recorded as OTHER |
+| `p-reject-37` | 平面内の運動の例 | plain physics; reason recorded as OTHER |
+| `p-reject-3` | 「物理」と「物理基礎」の違い | about the course, not about physics |
+| `p-reject-201` | 単元構成の理由 | about the course, not about physics |
+
+The last two are the real policy question: *is "how is this course
+organised?" a physics question?* Today's prompts say no (the subject rule
+names other subjects, not meta-questions); if you disagree, say so and the
+rule gets a clause instead.
+
+Cases that stay REJECT under the new policy and need no decision: `g05`
+(English homework), `p-reject-1229`, `p-reject-1235`, `p-reject-1242`
+(chemistry / materials).
+
+Then run 5.2 with `--save-baseline` to write `baseline-v4-r3.json`. The
+older baselines were measured on a different set and on different prompts;
+do not compare across them (`backend/eval/README.md`).
 
 ### 5.3 Grow the golden set from your new reviews (quarterly)
 

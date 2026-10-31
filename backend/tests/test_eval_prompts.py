@@ -85,6 +85,36 @@ def test_broken_reviewer_fails_against_the_baseline(monkeypatch, tmp_path, capsy
     assert "exact_agreement_rate" in out
 
 
+def test_reject_recall_collapse_is_gated(monkeypatch, tmp_path, capsys):
+    """A reviewer that keeps its precision but stops rejecting must fail.
+
+    This is the v3/r2 shape: recall fell 0.385 -> 0.231 while the gated
+    metrics stayed inside tolerance, so the regression went unnoticed.
+    """
+    monkeypatch.setattr(eval_prompts, "EVAL_DIR", tmp_path)
+    cases = eval_prompts.load_golden_set(eval_prompts.DEFAULT_SET)
+    monkeypatch.setattr(ai_review_service, "grade_answer", _perfect_reviewer(cases))
+    assert eval_prompts.main(save=True) == 0
+
+    # Perfect except that most rejects are downgraded to EDIT: precision
+    # stays 1.0 (every reject it does make is right) but recall collapses.
+    perfect = _perfect_reviewer(cases)
+    seen = {"n": 0}
+
+    def _shy_about_rejecting(question, answer, language, **kwargs):
+        graded = perfect(question, answer, language, **kwargs)
+        if graded.verdict == AiReviewVerdict.REJECT:
+            seen["n"] += 1
+            if seen["n"] > 2:
+                return _graded("EDIT", [])
+        return graded
+
+    monkeypatch.setattr(ai_review_service, "grade_answer", _shy_about_rejecting)
+
+    assert eval_prompts.main() == 1
+    assert "reject_recall" in capsys.readouterr().out
+
+
 def test_missing_baseline_warns_but_passes(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(eval_prompts, "EVAL_DIR", tmp_path)
     cases = eval_prompts.load_golden_set(eval_prompts.DEFAULT_SET)

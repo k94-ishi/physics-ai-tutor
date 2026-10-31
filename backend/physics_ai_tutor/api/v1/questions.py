@@ -69,6 +69,31 @@ def _is_admin(current_user: JWTPayload | None) -> bool:
     return current_user is not None and current_user.role == UserRole.ADMIN
 
 
+MAX_ID_FILTER = 100
+
+
+def _parse_ids(raw: str | None) -> list[int] | None:
+    """Parse `ids=54,848`; None means no filter, [] means match nothing.
+
+    An unparseable or over-long list filters everything out rather than
+    silently listing the whole queue, which would look like a search hit.
+    """
+    if raw is None:
+        return None
+
+    parts = [part.strip() for part in raw.split(",") if part.strip()]
+    if not parts or len(parts) > MAX_ID_FILTER:
+        raise HTTPException(
+            status_code=422,
+            detail=f"ids must hold 1 to {MAX_ID_FILTER} question ids",
+        )
+
+    try:
+        return [int(part) for part in parts]
+    except ValueError:
+        raise HTTPException(status_code=422, detail="ids must be integers") from None
+
+
 def _hidden_statuses_for(current_user: JWTPayload | None) -> list[str] | None:
     # Admins see everything; everyone else only sees approved content.
     return None if _is_admin(current_user) else PUBLIC_HIDDEN_STATUSES
@@ -88,6 +113,11 @@ def get_questions(
     lang: Language = Query(default=Language.JA),
     sort: QuestionSort | None = Query(default=None),
     ai_verdict: AiVerdictFilter | None = Query(default=None),
+    ids: str | None = Query(
+        default=None,
+        max_length=800,
+        description="Admin only: comma-separated question ids, at most 100.",
+    ),
     db: Session = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
@@ -109,6 +139,7 @@ def get_questions(
         include_generation=is_admin,
         sort=sort.value if sort and is_admin else None,
         ai_verdict=ai_verdict.value if ai_verdict and is_admin else None,
+        ids=_parse_ids(ids) if is_admin else None,
     )
 
 

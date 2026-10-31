@@ -942,3 +942,52 @@ def test_get_questions_list_includes_retrieved_questions(admin_client, db):
     assert items[0]["retrieved_questions"] == [
         {"id": referenced.id, "question": "参照質問2"}
     ]
+
+
+def test_ids_filter_lists_exactly_those_questions(admin_client):
+    """[31]: `?ids=54,848` opens exactly those cards, total included."""
+    created = [
+        _post(admin_client, f"ID検索の質問その{i}", f"回答{i}").json()[Key.ID]
+        for i in range(3)
+    ]
+    wanted = [created[0], created[2]]
+
+    body = admin_client.get(
+        PATH, params={"ids": ",".join(str(i) for i in wanted)}
+    ).json()
+
+    assert [q[Key.ID] for q in body["items"]] == wanted
+    assert body["total"] == 2
+
+
+def test_ids_filter_is_ignored_for_non_admin_callers(client, admin_client):
+    """Public visibility rules are unchanged; the parameter is simply dropped."""
+    created = [
+        _post(admin_client, f"公開ID検索その{i}", f"回答{i}").json()[Key.ID]
+        for i in range(2)
+    ]
+
+    body = client.get(PATH, params={"ids": str(created[0])}).json()
+
+    assert {q[Key.ID] for q in body["items"]} >= set(created)
+
+
+def test_ids_filter_rejects_unusable_input(admin_client):
+    assert admin_client.get(PATH, params={"ids": "abc"}).status_code == 422
+    assert admin_client.get(PATH, params={"ids": ""}).status_code == 422
+    too_many = ",".join(str(i) for i in range(101))
+    assert admin_client.get(PATH, params={"ids": too_many}).status_code == 422
+
+
+def test_ids_filter_combines_with_the_status_filter(admin_client):
+    created = [
+        _post(admin_client, f"ID絞り込みその{i}", f"回答{i}").json()[Key.ID]
+        for i in range(2)
+    ]
+
+    body = admin_client.get(
+        PATH,
+        params={"ids": ",".join(str(i) for i in created), "status": "REJECTED"},
+    ).json()
+
+    assert body["total"] == 0

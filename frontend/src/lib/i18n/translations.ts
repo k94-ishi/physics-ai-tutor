@@ -145,7 +145,9 @@ const ja = {
     "admin.conceptFilterLabel": "Concept状態で絞り込み",
     "admin.conceptExtracted": "抽出済み",
     "admin.conceptUnextracted": "未抽出",
-    "admin.keywordPlaceholder": "キーワードで質問・回答を絞り込み",
+    "admin.keywordPlaceholder": "キーワード、または #54 / 54,848 でID検索",
+    "admin.questionIdCopy": "質問ID {id} をコピー",
+    "admin.questionIdCopied": "質問ID {id} をコピーしました",
     "admin.fetchFailed": "質問一覧を取得できませんでした。",
     "admin.noConceptMatch":
         "Concept状態の条件に一致する質問がこのページにはありません。",
@@ -551,7 +553,9 @@ const en: Record<keyof typeof ja, string> = {
     "admin.conceptFilterLabel": "Filter by Concept Status",
     "admin.conceptExtracted": "Extracted",
     "admin.conceptUnextracted": "Not extracted",
-    "admin.keywordPlaceholder": "Filter by keyword in question/answer",
+    "admin.keywordPlaceholder": "Keyword, or #54 / 54,848 to find by id",
+    "admin.questionIdCopy": "Copy question id {id}",
+    "admin.questionIdCopied": "Copied question id {id}",
     "admin.fetchFailed": "Failed to load the question list.",
     "admin.noConceptMatch":
         "No questions on this page match the concept filter.",

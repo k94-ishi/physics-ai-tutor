@@ -109,11 +109,15 @@ def _list_query(
     language: Language | str | None,
     ai_verdict: str | None,
     join_ai_review: bool,
+    ids: list[int] | None = None,
 ):
     query = db.query(Question)
 
     if join_ai_review or ai_verdict is not None:
         query = _with_latest_ai_review(db, query)
+
+    if ids is not None:
+        query = query.filter(Question.id.in_(ids))
 
     query = _filter_by_keyword(query, keyword, search_question, search_answer)
     query = _filter_by_status(query, status, exclude_statuses)
@@ -134,6 +138,7 @@ def get_questions(
     language: Language | str | None = None,
     sort: str | None = None,
     ai_verdict: str | None = None,
+    ids: list[int] | None = None,
 ) -> list[Question]:
     query = _list_query(
         db,
@@ -145,6 +150,7 @@ def get_questions(
         language,
         ai_verdict,
         join_ai_review=sort == "ai_confidence",
+        ids=ids,
     )
 
     return _apply_sort(db, query, sort).offset(offset).limit(limit).all()
@@ -159,6 +165,7 @@ def count_questions(
     search_answer: bool = True,
     language: Language | str | None = None,
     ai_verdict: str | None = None,
+    ids: list[int] | None = None,
 ) -> int:
     query = _list_query(
         db,
@@ -170,6 +177,7 @@ def count_questions(
         language,
         ai_verdict,
         join_ai_review=False,
+        ids=ids,
     )
 
     return query.count()

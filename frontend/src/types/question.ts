@@ -74,6 +74,8 @@ export type FetchQuestionsParams = {
     lang?: ContentLanguage;
     sort?: QuestionSort;
     aiVerdict?: AiVerdictFilter;
+    /** Admin only: list exactly these question ids. */
+    ids?: number[];
 };
 
 export type SearchQuestionsParams = {

@@ -2,6 +2,7 @@
 
 import { SyntheticEvent, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import QuestionIdBadge from "@/components/ui/QuestionIdBadge";
 import {
     fetchQuestion,
     reviewQuestion,
@@ -349,7 +350,12 @@ export default function EditQuestionPage() {
 
     return (
         <main className="flex flex-col gap-6">
-            <h1 className="text-2xl font-bold text-gray-900">{t("editQuestion.title")}</h1>
+            <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-2xl font-bold text-gray-900">
+                    {t("editQuestion.title")}
+                </h1>
+                <QuestionIdBadge id={id} />
+            </div>
 
             {aiReview && (
                 <Card className="flex flex-col gap-3 border-purple-200 bg-purple-50">

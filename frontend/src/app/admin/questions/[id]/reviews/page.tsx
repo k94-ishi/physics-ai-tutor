@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import QuestionIdBadge from "@/components/ui/QuestionIdBadge";
 import { useParams } from "next/navigation";
 import { fetchQuestionReviews } from "@/lib/api";
 import { QuestionReview, QuestionReviewAction } from "@/types/question";
@@ -51,9 +52,12 @@ export default function QuestionReviewsPage() {
 
     return (
         <main className="flex flex-col gap-6">
-            <h1 className="text-2xl font-bold text-gray-900">
-                {t("reviews.title")}
-            </h1>
+            <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-2xl font-bold text-gray-900">
+                    {t("reviews.title")}
+                </h1>
+                <QuestionIdBadge id={id} />
+            </div>
 
             {error && (
                 <StatusMessage

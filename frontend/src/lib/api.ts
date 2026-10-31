@@ -127,6 +127,9 @@ export async function fetchQuestions(
     if (params.lang) {
         searchParams.set("lang", params.lang);
     }
+    if (params.ids?.length) {
+        searchParams.set("ids", params.ids.join(","));
+    }
 
     const query = searchParams.toString();
 

@@ -36,6 +36,8 @@ import ReferencedQuestions from "@/components/ui/ReferencedQuestions";
 import { showToast } from "@/components/ui/Toast";
 import { useQueryState } from "@/lib/hooks/useQueryState";
 import { runWithConcurrencyLimit } from "@/lib/concurrency";
+import { parseIdSearch } from "@/lib/questionIds";
+import QuestionIdBadge from "@/components/ui/QuestionIdBadge";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { TranslationKey } from "@/lib/i18n/translations";
 
@@ -53,6 +55,7 @@ const ADMIN_QUERY_DEFAULTS = {
     page: "1",
     size: "30",
     keyword: "",
+    ids: "",
     status: "",
     conceptFilter: "",
     sort: "",
@@ -169,13 +172,15 @@ function AdminQuestionsPageInner() {
             keyword: string,
             status: QuestionStatus | "",
             sort: QuestionSort | "" = "",
-            aiVerdict: AiVerdictFilter | "" = ""
+            aiVerdict: AiVerdictFilter | "" = "",
+            ids: string = ""
         ) => {
             const requestId = ++listRequestId.current;
             setListLoading(true);
             setListError(false);
 
             try {
+                const idFilter = parseIdSearch(ids);
                 const data = await fetchQuestions({
                     page: targetPage,
                     size: targetSize,
@@ -183,6 +188,7 @@ function AdminQuestionsPageInner() {
                     status: status || undefined,
                     sort: sort || undefined,
                     aiVerdict: aiVerdict || undefined,
+                    ids: idFilter ?? undefined,
                 });
 
                 if (requestId !== listRequestId.current) {
@@ -207,18 +213,33 @@ function AdminQuestionsPageInner() {
         []
     );
 
-    // URLのkeywordが外部要因(戻る/進む等)で変わったら入力欄に反映する
+    // URLのkeyword/idsが外部要因(戻る/進む、?ids=の直リンク等)で変わったら
+    // 入力欄に反映する。id検索は "#54,848" の形に戻すとそのまま再解析できる。
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        setKeywordInput(queryState.keyword);
-    }, [queryState.keyword]);
+        setKeywordInput(
+            queryState.ids ? `#${queryState.ids}` : queryState.keyword
+        );
+    }, [queryState.keyword, queryState.ids]);
 
-    // キーワード入力をデバウンスしてURLへ反映する(1ページ目に戻す)
+    // キーワード入力をデバウンスしてURLへ反映する(1ページ目に戻す)。
+    // "#54" や "54,848" はキーワードではなくid検索としてidsへ送る。
     useEffect(() => {
         const timer = setTimeout(() => {
             const trimmed = keywordInput.trim();
-            if (trimmed !== queryState.keyword) {
-                setQueryState({ keyword: trimmed, page: "1" });
+            const ids = parseIdSearch(trimmed);
+            const nextIds = ids ? ids.join(",") : "";
+            const nextKeyword = ids ? "" : trimmed;
+
+            if (
+                nextKeyword !== queryState.keyword ||
+                nextIds !== queryState.ids
+            ) {
+                setQueryState({
+                    keyword: nextKeyword,
+                    ids: nextIds,
+                    page: "1",
+                });
             }
         }, KEYWORD_DEBOUNCE_MS);
 
@@ -230,16 +251,25 @@ function AdminQuestionsPageInner() {
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelectedIds(new Set());
-    }, [queryState.keyword, statusFilter, conceptFilter, sortOption, aiVerdictFilter, page]);
+    }, [
+        queryState.keyword,
+        queryState.ids,
+        statusFilter,
+        conceptFilter,
+        sortOption,
+        aiVerdictFilter,
+        page,
+    ]);
 
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter);
+        loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter, queryState.ids);
     }, [
         loadList,
         page,
         size,
         queryState.keyword,
+        queryState.ids,
         statusFilter,
         sortOption,
         aiVerdictFilter,
@@ -328,7 +358,7 @@ function AdminQuestionsPageInner() {
 
         try {
             await deleteQuestion(deleteTarget.id);
-            await loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter);
+            await loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter, queryState.ids);
             showToast(t("admin.questionDeleted"));
             setDeleteTarget(null);
         } catch (error) {
@@ -432,7 +462,7 @@ function AdminQuestionsPageInner() {
 
             setSelectedIds(new Set());
             setBulkAction(null);
-            await loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter);
+            await loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter, queryState.ids);
         } catch (error) {
             console.error(error);
             showToast(t("admin.bulkActionFailed"), "error");
@@ -738,7 +768,7 @@ function AdminQuestionsPageInner() {
                             variant="error"
                             message={t("admin.fetchFailed")}
                             onRetry={() =>
-                                loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter)
+                                loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter, queryState.ids)
                             }
                         />
                     )}
@@ -849,6 +879,10 @@ function AdminQuestionsPageInner() {
 
                                                 <div className="flex min-w-0 flex-1 flex-col gap-2">
                                                     <div className="flex flex-wrap items-center gap-2">
+                                                        <QuestionIdBadge
+                                                            id={question.id}
+                                                        />
+
                                                         <span
                                                             className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASSES[question.status]}`}
                                                         >

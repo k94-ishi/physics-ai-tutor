@@ -28,6 +28,14 @@ https://ai-tutor.pencil-net.com
 
 To run the project locally, see [docs/development.md](docs/development.md).
 
+## Documentation
+
+- [docs/development.md](docs/development.md): local setup, testing, environment variables
+- [docs/database.md](docs/database.md): database schema and Alembic migrations
+- [docs/api.md](docs/api.md): REST API reference
+- [docs/security.md](docs/security.md): security model and practices
+- [AGENTS.md](AGENTS.md): conventions for contributors and coding agents
+
 ---
 
 ## Screenshots
@@ -51,14 +59,14 @@ English UI mode, with question and answer content still in Japanese (see [Featur
 
 </details>
 
-### Login page for adimin
+### Login page for admin
 <details><summary>Screen Shot</summary>
 
 ![Login page](docs/images/login-en.png)
 
 </details>
 
-### Manage questions (Adimin page)
+### Manage questions (Admin page)
 <details><summary>Screen Shot</summary>
 
 ![Manage questions page](docs/images/manage-questions-en.png)
@@ -194,7 +202,7 @@ flowchart TB
 
 - Admin dashboard for educational content management
 - Review workflow for AI-generated answers
-- Separate approved content from unreviewed AI outputs
+- Separate approved content from unreviewed AI outputs; only approved content is shown to students
 
 ### Authentication and Authorization
 
@@ -259,9 +267,13 @@ physics-ai-tutor
 │   └── package.json
 │
 ├── docs
-│   └── development.md       # Development guide
+│   ├── development.md       # Development guide
+│   ├── database.md          # Schema and migration guide
+│   ├── api.md               # API reference
+│   └── security.md          # Security guide
 │
 ├── docker-compose.yml
+├── AGENTS.md                # Project rules (CLAUDE.md links here)
 ├── README.md
 └── LICENSE
 ```

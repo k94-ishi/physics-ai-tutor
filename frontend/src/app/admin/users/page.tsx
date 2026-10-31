@@ -10,8 +10,10 @@ import LoadingState from "@/components/ui/LoadingState";
 import StatusMessage from "@/components/ui/StatusMessage";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { showToast } from "@/components/ui/Toast";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 export default function AdminUsersPage() {
+    const { language, t } = useLanguage();
     const [users, setUsers] = useState<AdminUser[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
@@ -48,11 +50,11 @@ export default function AdminUsersPage() {
         try {
             await deleteUser(deleteTarget.id);
             await loadUsers();
-            showToast("ユーザーを削除しました。");
+            showToast(t("users.deleted"));
             setDeleteTarget(null);
         } catch (error) {
             console.error(error);
-            showToast("ユーザーの削除に失敗しました。", "error");
+            showToast(t("users.deleteFailed"), "error");
         } finally {
             setDeleting(false);
         }
@@ -66,27 +68,27 @@ export default function AdminUsersPage() {
         <main className="flex flex-col gap-6">
             <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-bold text-gray-900">
-                    ユーザー管理
+                    {t("users.title")}
                 </h1>
 
                 <Link
                     href="/admin/users/new"
                     className={buttonClassName("primary")}
                 >
-                    新規作成
+                    {t("users.newButton")}
                 </Link>
             </div>
 
             {error && (
                 <StatusMessage
                     variant="error"
-                    message="ユーザー一覧を取得できませんでした。"
+                    message={t("users.fetchFailed")}
                     onRetry={loadUsers}
                 />
             )}
 
             {!error && users.length === 0 && (
-                <StatusMessage message="登録されているユーザーがいません。" />
+                <StatusMessage message={t("users.empty")} />
             )}
 
             {!error && users.length > 0 && (
@@ -99,9 +101,13 @@ export default function AdminUsersPage() {
                                         {user.email}
                                     </span>
                                     <span className="text-xs text-gray-500">
-                                        {user.role === "admin" ? "管理者" : "一般ユーザー"}
-                                        {" ・ 登録日: "}
-                                        {new Date(user.created_at).toLocaleDateString("ja-JP")}
+                                        {user.role === "admin"
+                                            ? t("users.roleAdmin")
+                                            : t("users.roleUser")}
+                                        {` ・ ${t("users.registeredOn")}: `}
+                                        {new Date(user.created_at).toLocaleDateString(
+                                            language === "ja" ? "ja-JP" : "en-US"
+                                        )}
                                     </span>
                                 </div>
 
@@ -109,7 +115,7 @@ export default function AdminUsersPage() {
                                     variant="danger"
                                     onClick={() => setDeleteTarget(user)}
                                 >
-                                    削除
+                                    {t("common.delete")}
                                 </Button>
                             </Card>
                         </li>
@@ -119,7 +125,7 @@ export default function AdminUsersPage() {
 
             <ConfirmDialog
                 open={deleteTarget !== null}
-                title="ユーザーを削除しますか？"
+                title={t("users.confirmDelete")}
                 description={deleteTarget?.email}
                 confirming={deleting}
                 onConfirm={handleConfirmDelete}

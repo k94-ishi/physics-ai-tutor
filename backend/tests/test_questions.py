@@ -266,7 +266,21 @@ def test_get_exact_match_question_not_found(client):
     assert response.status_code == 404
 
 
-def test_get_exact_match_question_includes_unreviewed(admin_client, client):
+def test_get_exact_match_question_hides_unreviewed_from_public(admin_client, client):
+    _post_import(
+        admin_client,
+        [("未レビュー完全一致質問", "回答")],
+        status="UNREVIEWED",
+    )
+
+    response = client.get(
+        f"{PATH}/exact-match", params={"question": "未レビュー完全一致質問"}
+    )
+
+    assert response.status_code == 404
+
+
+def test_get_exact_match_question_includes_unreviewed_for_admin(admin_client):
     import_response = _post_import(
         admin_client,
         [("未レビュー完全一致質問", "回答")],
@@ -274,13 +288,37 @@ def test_get_exact_match_question_includes_unreviewed(admin_client, client):
     )
     question_id = import_response.json()[Key.QUESTIONS][0][Key.ID]
 
-    response = client.get(
+    response = admin_client.get(
         f"{PATH}/exact-match", params={"question": "未レビュー完全一致質問"}
     )
 
     assert response.status_code == 200
     assert response.json()[Key.ID] == question_id
     assert response.json()[Key.STATUS] == "UNREVIEWED"
+
+
+def test_list_questions_hides_unreviewed_from_public(admin_client, client):
+    _post(admin_client, "承認済み公開質問", "回答")
+    _post_import(admin_client, [("未レビュー公開質問", "回答")], status="UNREVIEWED")
+
+    public_items = client.get(PATH).json()["items"]
+    admin_items = admin_client.get(PATH).json()["items"]
+
+    assert [item[Key.STATUS] for item in public_items] == ["APPROVED"]
+    assert sorted(item[Key.STATUS] for item in admin_items) == [
+        "APPROVED",
+        "UNREVIEWED",
+    ]
+
+
+def test_get_question_hides_unreviewed_from_public(admin_client, client):
+    import_response = _post_import(
+        admin_client, [("未レビュー詳細質問", "回答")], status="UNREVIEWED"
+    )
+    question_id = import_response.json()[Key.QUESTIONS][0][Key.ID]
+
+    assert client.get(f"{PATH}/{question_id}").status_code == 404
+    assert admin_client.get(f"{PATH}/{question_id}").status_code == 200
 
 
 def test_get_exact_match_question_excludes_rejected(admin_client, client):

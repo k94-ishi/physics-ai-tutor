@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 type MermaidDiagramProps = {
     code: string;
@@ -10,6 +11,7 @@ export default function MermaidDiagram({ code }: MermaidDiagramProps) {
     const diagramId = useId().replace(/:/g, "");
     const containerRef = useRef<HTMLDivElement>(null);
     const [hasError, setHasError] = useState(false);
+    const { t } = useLanguage();
 
     useEffect(() => {
         let cancelled = false;
@@ -43,7 +45,7 @@ export default function MermaidDiagram({ code }: MermaidDiagramProps) {
     if (hasError) {
         return (
             <p className="my-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
-                図を表示できませんでした。
+                {t("markdown.diagramFailed")}
             </p>
         );
     }

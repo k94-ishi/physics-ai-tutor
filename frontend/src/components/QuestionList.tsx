@@ -36,7 +36,7 @@ const inputClassName =
     "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
 
 function QuestionListInner() {
-    const { t } = useLanguage();
+    const { language, t } = useLanguage();
     const [mode, setMode] = useState<Mode>("similarity");
 
     // 一覧(pagination + keyword filter、page/size/keywordはURLで管理)
@@ -72,6 +72,7 @@ function QuestionListInner() {
                     status: "APPROVED",
                     searchQuestion: targetSearchQuestion,
                     searchAnswer: targetSearchAnswer,
+                    lang: language,
                 });
 
                 if (requestId !== listRequestId.current) {
@@ -93,7 +94,7 @@ function QuestionListInner() {
                 }
             }
         },
-        []
+        [language]
     );
 
     // URLのkeywordが外部要因(戻る/進む等)で変わったら入力欄に反映する

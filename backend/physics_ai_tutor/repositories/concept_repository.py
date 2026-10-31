@@ -4,20 +4,31 @@ from sqlalchemy.orm import Session, aliased
 from physics_ai_tutor.models import Concept, QuestionConcept
 
 
-def get_by_name(db: Session, name: str) -> Concept | None:
-    return db.query(Concept).filter(Concept.name == name).first()
+def get_by_name(db: Session, name: str, language: str = "ja") -> Concept | None:
+    column = Concept.name_ja if language == "ja" else Concept.name_en
+    return db.query(Concept).filter(column == name).first()
 
 
 def create(
     db: Session,
-    name: str,
     embedding: list[float],
     extraction_model: str,
     embedding_model: str,
     extraction_prompt_version: str,
+    name_ja: str | None = None,
+    name_en: str | None = None,
+    name: str | None = None,
 ) -> Concept:
+    # Legacy single-name form means Japanese.
+    if name is not None:
+        name_ja = name
+
+    if name_ja is None and name_en is None:
+        raise ValueError("A concept needs a name in at least one language")
+
     concept = Concept(
-        name=name,
+        name_ja=name_ja,
+        name_en=name_en,
         embedding=embedding,
         extraction_model=extraction_model,
         embedding_model=embedding_model,

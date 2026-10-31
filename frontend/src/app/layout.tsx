@@ -19,7 +19,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Physics AI Tutor",
-  description: "高校物理の質問・回答を管理するWebアプリケーション",
+  description:
+    "高校物理の質問・回答を管理するWebアプリケーション / An AI-assisted Q&A platform for high school physics.",
   robots: {
     index: false,
     follow: false,

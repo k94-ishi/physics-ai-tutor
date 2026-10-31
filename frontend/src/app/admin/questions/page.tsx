@@ -10,6 +10,7 @@ import {
     bulkDeleteQuestions,
     bulkReviewQuestions,
     extractConcepts,
+    translateQuestions,
 } from "@/lib/api";
 import { Question, QuestionStatus, SimilarQuestion } from "@/types/question";
 import Card from "@/components/ui/Card";
@@ -28,7 +29,7 @@ import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { TranslationKey } from "@/lib/i18n/translations";
 
 type Mode = "ai" | "keyword";
-type BulkAction = "delete" | "approve" | "reject" | "extract";
+type BulkAction = "delete" | "approve" | "reject" | "extract" | "translate";
 type ConceptFilter = "" | "extracted" | "unextracted";
 type ExtractionStatus = "processing" | "done" | "error";
 type ReviewAction = "APPROVE" | "REJECT";
@@ -65,6 +66,10 @@ const BULK_ACTION_KEYS: Record<
     approve: { title: "admin.confirmBulkApprove", confirmLabel: "common.approve" },
     reject: { title: "admin.confirmBulkReject", confirmLabel: "common.reject" },
     extract: { title: "admin.confirmBulkExtract", confirmLabel: "admin.extractLabel" },
+    translate: {
+        title: "admin.confirmBulkTranslate",
+        confirmLabel: "admin.translateLabel",
+    },
 };
 
 function modeButtonClassName(active: boolean): string {
@@ -348,6 +353,12 @@ function AdminQuestionsPageInner() {
                 const result = await bulkDeleteQuestions(ids);
                 showToast(
                     t("admin.bulkDeletedCount", { count: result.deleted_count })
+                );
+            } else if (bulkAction === "translate") {
+                const { results } = await translateQuestions(ids);
+                const successCount = results.filter((r) => r.success).length;
+                showToast(
+                    t("admin.bulkTranslatedCount", { count: successCount })
                 );
             } else {
                 const result = await bulkReviewQuestions(
@@ -689,6 +700,14 @@ function AdminQuestionsPageInner() {
                                             {t("admin.extractConcepts")}
                                         </Button>
                                         <Button
+                                            variant="secondary"
+                                            onClick={() =>
+                                                setBulkAction("translate")
+                                            }
+                                        >
+                                            {t("admin.translateLabel")}
+                                        </Button>
+                                        <Button
                                             variant="danger"
                                             onClick={() => setBulkAction("delete")}
                                         >
@@ -738,6 +757,35 @@ function AdminQuestionsPageInner() {
                                                             <span className="shrink-0 rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">
                                                                 {t("admin.ragGenerated")}
                                                             </span>
+                                                        )}
+
+                                                        {(["ja", "en"] as const).map(
+                                                            (lang) => {
+                                                                const text =
+                                                                    question.texts[lang];
+                                                                return (
+                                                                    <span
+                                                                        key={lang}
+                                                                        className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                                                                            text
+                                                                                ? "bg-gray-100 text-gray-700"
+                                                                                : "bg-gray-50 text-gray-400 line-through"
+                                                                        }`}
+                                                                        title={
+                                                                            text?.provenance ===
+                                                                            "MACHINE"
+                                                                                ? t(
+                                                                                      "admin.machineProvenance"
+                                                                                  )
+                                                                                : undefined
+                                                                        }
+                                                                    >
+                                                                        {lang.toUpperCase()}
+                                                                        {text?.provenance ===
+                                                                            "MACHINE" && "*"}
+                                                                    </span>
+                                                                );
+                                                            }
                                                         )}
 
                                                         <span

@@ -47,8 +47,8 @@ def test_search_similar_questions_returns_response_schema(db, monkeypatch):
     def fake_search_similar_embeddings(**kwargs):
         search_calls.append(kwargs)
         return [
-            (None, Question(id=1, question="質問1", answer="回答1"), 0.1),
-            (None, Question(id=2, question="質問2", answer="回答2"), 0.5),
+            (None, Question(id=1, question_ja="質問1", answer_ja="回答1"), 0.1),
+            (None, Question(id=2, question_ja="質問2", answer_ja="回答2"), 0.5),
         ]
 
     monkeypatch.setattr(
@@ -66,12 +66,17 @@ def test_search_similar_questions_returns_response_schema(db, monkeypatch):
             "embedding_type": "question",
             "limit": 3,
             "exclude_statuses": None,
+            "language": "ja",
         }
     ]
 
     assert result == [
-        SimilarQuestionResponse(id=1, question="質問1", answer="回答1", distance=0.1),
-        SimilarQuestionResponse(id=2, question="質問2", answer="回答2", distance=0.5),
+        SimilarQuestionResponse(
+            id=1, question="質問1", answer="回答1", language="ja", distance=0.1
+        ),
+        SimilarQuestionResponse(
+            id=2, question="質問2", answer="回答2", language="ja", distance=0.5
+        ),
     ]
 
 

@@ -7,6 +7,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { normalizeMathDelimiters } from "@/lib/markdown";
 import MermaidDiagram from "./MermaidDiagram";
+import T from "@/components/ui/T";
 
 type Variant = "full" | "preview";
 
@@ -33,7 +34,7 @@ function CodeBlock({
         if (variant === "preview") {
             return (
                 <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
-                    図を含む
+                    <T k="markdown.hasDiagram" />
                 </span>
             );
         }

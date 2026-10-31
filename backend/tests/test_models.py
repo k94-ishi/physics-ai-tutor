@@ -6,7 +6,7 @@ from physics_ai_tutor.services.user_service import create_user
 
 
 def _create_question(db, question="質問", answer="回答"):
-    q = Question(question=question, answer=answer)
+    q = Question(question_ja=question, answer_ja=answer, ja_provenance="ORIGINAL")
     db.add(q)
     db.flush()
     return q
@@ -14,7 +14,7 @@ def _create_question(db, question="質問", answer="回答"):
 
 def _create_concept(db, name="概念"):
     c = Concept(
-        name=name,
+        name_ja=name,
         embedding=[0.1] * 1536,
         extraction_model="test-model",
         embedding_model="test-model",

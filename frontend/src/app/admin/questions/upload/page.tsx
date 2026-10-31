@@ -7,6 +7,8 @@ import { QuestionSource, QuestionStatus } from "@/types/question";
 import Card from "@/components/ui/Card";
 import SelectField from "@/components/ui/SelectField";
 import Button, { buttonClassName } from "@/components/ui/Button";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { TranslationKey } from "@/lib/i18n/translations";
 
 type FormErrors = {
     files?: string;
@@ -27,13 +29,13 @@ type FileUploadResult = {
     message?: string;
 };
 
-const RESULT_LABELS: Record<FileResultStatus, string> = {
-    pending: "待機中",
-    uploading: "登録中...",
-    success: "成功",
-    duplicate: "重複エラー",
-    invalid: "内容エラー",
-    error: "失敗",
+const RESULT_LABEL_KEYS: Record<FileResultStatus, TranslationKey> = {
+    pending: "upload.resultPending",
+    uploading: "upload.resultUploading",
+    success: "upload.resultSuccess",
+    duplicate: "upload.resultDuplicate",
+    invalid: "upload.resultInvalid",
+    error: "upload.resultError",
 };
 
 const RESULT_BADGE_CLASSES: Record<FileResultStatus, string> = {
@@ -53,6 +55,7 @@ function formatFileSize(bytes: number): string {
 }
 
 export default function UploadQuestionsPage() {
+    const { t } = useLanguage();
     const [files, setFiles] = useState<File[]>([]);
     const [source, setSource] = useState<QuestionSource>("AI_GENERATED");
     const [status, setStatus] = useState<QuestionStatus>("UNREVIEWED");
@@ -65,7 +68,7 @@ export default function UploadQuestionsPage() {
         const nextErrors: FormErrors = {};
 
         if (files.length === 0) {
-            nextErrors.files = "JSONLファイルを選択してください。";
+            nextErrors.files = t("upload.fileRequired");
         }
 
         return nextErrors;
@@ -141,14 +144,14 @@ export default function UploadQuestionsPage() {
             } catch (error) {
                 console.error(error);
                 let fileStatus: FileResultStatus = "error";
-                let message = "登録に失敗しました。";
+                let message = t("upload.uploadFailed");
 
                 if (error instanceof ApiError && error.status === 422) {
                     fileStatus = "invalid";
-                    message = "ファイルの内容に誤りがあります。";
+                    message = t("upload.invalidFile");
                 } else if (error instanceof ApiError && error.status === 409) {
                     fileStatus = "duplicate";
-                    message = "既存の質問と重複する内容が含まれています。";
+                    message = t("upload.duplicateFile");
                 }
 
                 setResults((prev) =>
@@ -177,7 +180,7 @@ export default function UploadQuestionsPage() {
     return (
         <main className="flex flex-col gap-6">
             <h1 className="text-2xl font-bold text-gray-900">
-                JSONLアップロード
+                {t("upload.title")}
             </h1>
 
             <Card>
@@ -188,7 +191,7 @@ export default function UploadQuestionsPage() {
                 >
                     <div className="flex flex-col gap-1.5">
                         <label className="text-sm font-medium text-gray-700">
-                            JSONLファイル(複数選択可)
+                            {t("upload.fileLabel")}
                             <span className="ml-1 text-red-600" aria-hidden="true">
                                 *
                             </span>
@@ -206,10 +209,10 @@ export default function UploadQuestionsPage() {
                             }`}
                         >
                             <span className="text-sm text-gray-600">
-                                ファイルをドラッグ&ドロップ、またはクリックして選択
+                                {t("upload.dropHint")}
                             </span>
                             <span className="text-xs text-gray-400">
-                                .jsonl形式のファイル(複数選択可)
+                                {t("upload.dropFormat")}
                             </span>
 
                             <input
@@ -246,8 +249,17 @@ export default function UploadQuestionsPage() {
                                                 >
                                                     {result.status === "success" &&
                                                     result.createdCount !== undefined
-                                                        ? `成功(${result.createdCount}件)`
-                                                        : RESULT_LABELS[result.status]}
+                                                        ? t(
+                                                              "upload.resultSuccessCount",
+                                                              {
+                                                                  count: result.createdCount,
+                                                              }
+                                                          )
+                                                        : t(
+                                                              RESULT_LABEL_KEYS[
+                                                                  result.status
+                                                              ]
+                                                          )}
                                                 </span>
                                             ) : (
                                                 !submitting && (
@@ -256,7 +268,7 @@ export default function UploadQuestionsPage() {
                                                         onClick={() => removeFile(index)}
                                                         className="shrink-0 text-xs text-red-600 hover:underline"
                                                     >
-                                                        削除
+                                                        {t("common.delete")}
                                                     </button>
                                                 )
                                             )}
@@ -273,26 +285,26 @@ export default function UploadQuestionsPage() {
 
                     <SelectField
                         id="source"
-                        label="登録元"
+                        label={t("upload.sourceLabel")}
                         value={source}
                         disabled={submitting}
                         onChange={(e) => setSource(e.target.value as QuestionSource)}
                         options={[
-                            { value: "AI_GENERATED", label: "AI生成" },
-                            { value: "MANUAL", label: "手動" },
+                            { value: "AI_GENERATED", label: t("upload.sourceAi") },
+                            { value: "MANUAL", label: t("upload.sourceManual") },
                         ]}
                     />
 
                     <SelectField
                         id="status"
-                        label="登録時のステータス"
+                        label={t("upload.statusLabel")}
                         value={status}
                         disabled={submitting}
                         onChange={(e) => setStatus(e.target.value as QuestionStatus)}
                         options={[
-                            { value: "UNREVIEWED", label: "未レビュー" },
-                            { value: "APPROVED", label: "承認済み" },
-                            { value: "REJECTED", label: "却下" },
+                            { value: "UNREVIEWED", label: t("admin.status.unreviewed") },
+                            { value: "APPROVED", label: t("admin.status.approved") },
+                            { value: "REJECTED", label: t("admin.status.rejected") },
                         ]}
                     />
 
@@ -301,7 +313,7 @@ export default function UploadQuestionsPage() {
                         disabled={submitting}
                         className="self-start"
                     >
-                        {submitting ? "登録中..." : "登録"}
+                        {submitting ? t("common.registering") : t("common.register")}
                     </Button>
                 </form>
             </Card>
@@ -309,15 +321,18 @@ export default function UploadQuestionsPage() {
             {showResults && allDone && (
                 <Card className="flex flex-col gap-3">
                     <p className="text-sm text-gray-700">
-                        {files.length}ファイル中{successCount}ファイルが成功し、
-                        計{totalCreated}件の質問を登録しました。
+                        {t("upload.summary", {
+                            total: files.length,
+                            success: successCount,
+                            created: totalCreated,
+                        })}
                     </p>
 
                     <Link
                         href="/admin/questions"
                         className={buttonClassName("primary", "self-start")}
                     >
-                        質問一覧へ戻る
+                        {t("common.backToQuestions")}
                     </Link>
                 </Card>
             )}

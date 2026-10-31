@@ -6,6 +6,8 @@ from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.exceptions import (
     ConceptExtractionError,
     DuplicateQuestionError,
+    EmbeddingGenerationError,
+    TranslationError,
 )
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.repositories import (
@@ -15,6 +17,7 @@ from physics_ai_tutor.repositories import (
     question_review_repository,
 )
 from physics_ai_tutor.schemas.concept import ConceptExtractionResult
+from physics_ai_tutor.schemas.language import Language, TextProvenance
 from physics_ai_tutor.schemas.question import (
     QuestionCreate,
     QuestionListResponse,
@@ -23,38 +26,45 @@ from physics_ai_tutor.schemas.question import (
     QuestionUpdate,
 )
 from physics_ai_tutor.schemas.question_review import QuestionReviewAction
-from physics_ai_tutor.services import concept_service, embedding_service
+from physics_ai_tutor.services import (
+    concept_service,
+    embedding_service,
+    translation_service,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def attach_concept_names(db: Session, questions: list[Question]) -> None:
-    """Populate each question's transient `.concepts` attribute (list[str]).
+# --- response preparation ---------------------------------------------------
 
-    Not a mapped column - `QuestionResponse.model_config = {"from_attributes":
-    True}` reads it via getattr, so this only needs to run before a Question
-    is serialized as a response, regardless of whether it was just committed
-    or only flushed within the current transaction.
+
+def resolve_language(questions: list[Question], language: Language | str) -> None:
+    """Populate transient `.question`, `.answer`, `.language`, `.provenance`
+    with the text in `language`, falling back to the original language.
     """
+    for question in questions:
+        question.resolve(language)
+
+
+def attach_concept_names(
+    db: Session, questions: list[Question], language: Language | str = Language.JA
+) -> None:
+    """Populate each question's transient `.concepts` (display names)."""
     if not questions:
         return
 
     concepts_by_id = question_concept_repository.get_concepts_for_questions(
-        db, [q.id for q in questions]
+        db, [q.id for q in questions], language=Language(language).value
     )
 
     for question in questions:
         question.concepts = concepts_by_id.get(question.id, [])
 
 
-def attach_retrieved_questions(db: Session, questions: list[Question]) -> None:
-    """Populate each question's transient `.retrieved_questions` attribute
-    (list[dict]) by resolving `retrieved_question_ids` to lightweight
-    {id, question} summaries, so RAG result cards can show what they were
-    generated from without a per-card frontend fetch. Same pattern as
-    `attach_concept_names` - must run before every QuestionResponse
-    serialization since the attribute is transient, not a mapped column.
-    """
+def attach_retrieved_questions(
+    db: Session, questions: list[Question], language: Language | str = Language.JA
+) -> None:
+    """Resolve `retrieved_question_ids` to {id, question} summaries."""
     if not questions:
         return
 
@@ -69,17 +79,27 @@ def attach_retrieved_questions(db: Session, questions: list[Question]) -> None:
             question.retrieved_questions = []
         return
 
-    referenced_by_id = {
-        referenced.id: referenced
-        for referenced in question_repository.get_questions_by_ids(db, list(all_ids))
-    }
+    referenced = question_repository.get_questions_by_ids(db, list(all_ids))
+    resolve_language(referenced, language)
+    referenced_by_id = {item.id: item for item in referenced}
 
     for question in questions:
         question.retrieved_questions = [
-            {"id": referenced_id, "question": referenced_by_id[referenced_id].question}
-            for referenced_id in question.retrieved_question_ids
-            if referenced_id in referenced_by_id
+            {"id": ref_id, "question": referenced_by_id[ref_id].question}
+            for ref_id in question.retrieved_question_ids
+            if ref_id in referenced_by_id
         ]
+
+
+def prepare_for_response(
+    db: Session, questions: list[Question], language: Language | str = Language.JA
+) -> None:
+    resolve_language(questions, language)
+    attach_concept_names(db, questions, language)
+    attach_retrieved_questions(db, questions, language)
+
+
+# --- reads --------------------------------------------------------------------
 
 
 def fetch_questions(
@@ -88,12 +108,14 @@ def fetch_questions(
     size: int,
     keyword: str | None = None,
     status: str | None = None,
-    exclude_status: str | None = None,
+    exclude_statuses: list[str] | None = None,
     search_question: bool = True,
     search_answer: bool = True,
+    language: Language | str = Language.JA,
+    only_with_language: bool = False,
 ) -> QuestionListResponse:
-
     offset = (page - 1) * size
+    language_filter = Language(language) if only_with_language else None
 
     questions = question_repository.get_questions(
         db,
@@ -101,22 +123,23 @@ def fetch_questions(
         limit=size,
         keyword=keyword,
         status=status,
-        exclude_status=exclude_status,
+        exclude_statuses=exclude_statuses,
         search_question=search_question,
         search_answer=search_answer,
+        language=language_filter,
     )
 
     total = question_repository.count_questions(
         db,
         keyword=keyword,
         status=status,
-        exclude_status=exclude_status,
+        exclude_statuses=exclude_statuses,
         search_question=search_question,
         search_answer=search_answer,
+        language=language_filter,
     )
 
-    attach_concept_names(db, questions)
-    attach_retrieved_questions(db, questions)
+    prepare_for_response(db, questions, language)
 
     logger.info(
         "Questions fetched: page=%d size=%d keyword_present=%s results=%d total=%d",
@@ -127,28 +150,29 @@ def fetch_questions(
         total,
     )
 
-    return QuestionListResponse(
-        items=questions,
-        total=total,
-        page=page,
-        size=size,
-    )
+    return QuestionListResponse(items=questions, total=total, page=page, size=size)
 
 
 def fetch_question(
     db: Session,
     question_id: int,
-    exclude_status: str | None = None,
+    exclude_statuses: list[str] | None = None,
+    language: Language | str = Language.JA,
+    translate_if_missing: bool = False,
 ) -> Question | None:
     question = question_repository.get_question(
-        db,
-        question_id,
-        exclude_status=exclude_status,
+        db, question_id, exclude_statuses=exclude_statuses
     )
 
-    if question is not None:
-        attach_concept_names(db, [question])
-        attach_retrieved_questions(db, [question])
+    if question is None:
+        return None
+
+    # Lazy fill for rows approved before translation existed.
+    if translate_if_missing and not question.has(language):
+        _translate_into(db, question, Language(language))
+        db.commit()
+
+    prepare_for_response(db, [question], language)
 
     return question
 
@@ -156,33 +180,133 @@ def fetch_question(
 def fetch_question_by_exact_text(
     db: Session,
     question_text: str,
-    exclude_status: str | None = None,
+    exclude_statuses: list[str] | None = None,
+    language: Language | str = Language.JA,
 ) -> Question | None:
     question = question_repository.get_by_exact_text(
-        db,
-        question_text,
-        exclude_status=exclude_status,
+        db, question_text, language=language, exclude_statuses=exclude_statuses
     )
 
     if question is not None:
-        attach_concept_names(db, [question])
-        attach_retrieved_questions(db, [question])
+        prepare_for_response(db, [question], language)
 
     return question
 
 
-def _attach_concepts_best_effort(
-    db: Session, question_id: int, question: str, answer: str
-) -> None:
+def find_cached_answer(
+    db: Session, question_text: str, language: Language | str
+) -> Question | None:
+    """Cache lookup for the ask flow: any non-rejected row with this exact
+    question text in `language`, including unreviewed AI answers.
+    """
+    return question_repository.get_by_exact_text(
+        db,
+        question_text,
+        language=language,
+        exclude_statuses=[QuestionStatus.REJECTED],
+    )
+
+
+# --- internals ----------------------------------------------------------------
+
+
+def _embed_language(db: Session, question: Question, language: Language) -> None:
+    text = question.text(language)
+    if text is None:
+        return
+
+    question_vec, answer_vec = embedding_service.create_embeddings(list(text))
+    embedding_repository.delete_by_question_id(db, question.id, language=language)
+
+    for embedding_type, vector in (("question", question_vec), ("answer", answer_vec)):
+        embedding_repository.create_embedding(
+            db,
+            question_id=question.id,
+            embedding=vector,
+            embedding_type=embedding_type,
+            model=settings.embedding_model,
+            language=language.value,
+        )
+
+
+def _attach_concepts_best_effort(db: Session, question: Question) -> None:
+    text = question.original_text()
     try:
-        concept_names = concept_service.extract_concept_names(question, answer)
-        concept_service.attach_concepts_to_question(db, question_id, concept_names)
+        names = concept_service.extract_concept_names(
+            *text, language=question.original_language
+        )
+        concept_service.attach_concepts_to_question(
+            db, question.id, names, language=question.original_language
+        )
     except ConceptExtractionError:
         logger.warning(
             "Concept extraction failed; question saved without concepts: "
             "question_id=%d",
-            question_id,
+            question.id,
         )
+
+
+def _translate_into(
+    db: Session, question: Question, target: Language, source: Language | None = None
+) -> bool:
+    """Fill `target` text by machine translation. Best effort; returns success."""
+    src = source or Language(question.original_language)
+    text = question.text(src)
+    if text is None:
+        src = Language(question.original_language)
+        text = question.original_text()
+
+    try:
+        translated_q, translated_a = translation_service.translate_qa(
+            text[0], text[1], source=src, target=target
+        )
+        question.set_text(target, translated_q, translated_a, TextProvenance.MACHINE)
+        db.flush()
+        _embed_language(db, question, target)
+    except (TranslationError, EmbeddingGenerationError):
+        logger.warning(
+            "Translation skipped: question_id=%d target=%s",
+            question.id,
+            target,
+            exc_info=True,
+        )
+        return False
+
+    logger.info("Question translated: question_id=%d target=%s", question.id, target)
+    return True
+
+
+def _translate_missing(db: Session, question: Question) -> list[Language]:
+    filled = [
+        lang
+        for lang in Language
+        if not question.has(lang) and _translate_into(db, question, lang)
+    ]
+    return filled
+
+
+def _refresh_machine_translations(
+    db: Session, question: Question, edited: Language
+) -> None:
+    """After a human edit in `edited`, regenerate machine-made counterparts."""
+    for lang in Language:
+        if lang == edited:
+            continue
+        if question.provenance_of(lang) == TextProvenance.MACHINE or not question.has(
+            lang
+        ):
+            _translate_into(db, question, lang, source=edited)
+
+
+def _check_duplicates(db: Session, texts: dict[Language, tuple[str, str]]) -> None:
+    for lang, (q, _) in texts.items():
+        if question_repository.get_by_exact_text(db, q, language=lang) is not None:
+            raise DuplicateQuestionError(
+                f"A question with identical text already exists: {q}"
+            )
+
+
+# --- writes -------------------------------------------------------------------
 
 
 def create_question(
@@ -190,57 +314,34 @@ def create_question(
     question: QuestionCreate,
     status: str = QuestionStatus.APPROVED,
     source: str = QuestionSource.MANUAL,
+    language: Language | str = Language.JA,
 ):
-    if question_repository.get_by_exact_text(db, question.question) is not None:
-        raise DuplicateQuestionError(
-            f"A question with identical text already exists: {question.question}"
-        )
+    texts = question.texts()
+    _check_duplicates(db, texts)
 
     try:
-        # Save question -> Create embeddings
-        # -> Save question emedding -> Save answer embedding
-        # -> Extract concepts (only if becoming APPROVED, best effort) -> Commit
         db_question = question_repository.create_question(
             db,
-            question=question.question,
-            answer=question.answer,
+            texts=texts,
+            original_language=question.original_language(),
             status=status,
             source=source,
         )
 
-        texts = [question.question, question.answer]
-        question_vec, answer_vec = embedding_service.create_embeddings(texts)
-
-        embedding_repository.create_embedding(
-            db,
-            question_id=db_question.id,
-            embedding=question_vec,
-            embedding_type="question",
-            model=settings.embedding_model,
-        )
-
-        embedding_repository.create_embedding(
-            db,
-            question_id=db_question.id,
-            embedding=answer_vec,
-            embedding_type="answer",
-            model=settings.embedding_model,
-        )
+        for lang in texts:
+            _embed_language(db, db_question, lang)
 
         if status == QuestionStatus.APPROVED:
-            _attach_concepts_best_effort(
-                db, db_question.id, question.question, question.answer
-            )
+            _attach_concepts_best_effort(db, db_question)
 
-        attach_concept_names(db, [db_question])
-        attach_retrieved_questions(db, [db_question])
+        _translate_missing(db, db_question)
+        prepare_for_response(db, [db_question], language)
 
         db.commit()
 
         logger.info("Question created: id=%d", db_question.id)
 
         return db_question
-
     except Exception:
         logger.warning("Rolling back transaction: operation=create_question")
         db.rollback()
@@ -248,18 +349,17 @@ def create_question(
 
 
 def _find_duplicate_texts(db: Session, rows: list[QuestionCreate]) -> list[str]:
-    seen: set[str] = set()
+    seen: set[tuple[Language, str]] = set()
     duplicates: list[str] = []
 
     for row in rows:
-        if row.question in seen:
-            duplicates.append(row.question)
-            continue
-
-        seen.add(row.question)
-
-        if question_repository.get_by_exact_text(db, row.question) is not None:
-            duplicates.append(row.question)
+        for lang, (q, _) in row.texts().items():
+            if (lang, q) in seen:
+                duplicates.append(q)
+                continue
+            seen.add((lang, q))
+            if question_repository.get_by_exact_text(db, q, language=lang):
+                duplicates.append(q)
 
     return duplicates
 
@@ -269,6 +369,7 @@ def import_questions_from_jsonl(
     rows: list[QuestionCreate],
     status: str,
     source: str,
+    language: Language | str = Language.JA,
 ) -> list[Question]:
     duplicates = _find_duplicate_texts(db, rows)
 
@@ -281,49 +382,21 @@ def import_questions_from_jsonl(
     try:
         db_questions = question_repository.create_questions(
             db,
-            rows,
+            [(row.texts(), row.original_language()) for row in rows],
             status=status,
             source=source,
         )
 
-        if db_questions:
-            texts = [q.question for q in db_questions]
-            texts.extend(q.answer for q in db_questions)
-
-            vectors = embedding_service.create_embeddings(texts)
-            embedding_records = []
-            question_count = len(db_questions)
-
-            for i, q in enumerate(db_questions):
-                embedding_records.append(
-                    {
-                        "question_id": q.id,
-                        "type": "question",
-                        "embedding": vectors[i],
-                        "model": settings.embedding_model,
-                    }
-                )
-
-                embedding_records.append(
-                    {
-                        "question_id": q.id,
-                        "type": "answer",
-                        "embedding": vectors[question_count + i],
-                        "model": settings.embedding_model,
-                    }
-                )
-
-            embedding_repository.create_embeddings(
-                db,
-                embedding_records,
-            )
+        for db_question in db_questions:
+            for lang in Language:
+                _embed_language(db, db_question, lang)
 
             if status == QuestionStatus.APPROVED:
-                for q in db_questions:
-                    _attach_concepts_best_effort(db, q.id, q.question, q.answer)
+                _attach_concepts_best_effort(db, db_question)
 
-            attach_concept_names(db, db_questions)
-            attach_retrieved_questions(db, db_questions)
+            _translate_missing(db, db_question)
+
+        prepare_for_response(db, db_questions, language)
 
         db.commit()
 
@@ -340,10 +413,7 @@ def import_questions_from_jsonl(
 
 def delete_question(db: Session, question_id: int) -> bool:
     try:
-        result = question_repository.delete(
-            db,
-            question_id,
-        )
+        result = question_repository.delete(db, question_id)
         db.commit()
 
         logger.info("Question delete requested: id=%d found=%s", question_id, result)
@@ -359,42 +429,31 @@ def update_question(
     db: Session,
     question_id: int,
     question_data: QuestionUpdate,
+    language: Language | str = Language.JA,
 ):
     try:
-        question = question_repository.update(
-            db,
-            question_id,
-            question_data,
-        )
+        question = question_repository.get_question(db, question_id)
 
         if question is None:
             return None
 
-        texts = [
-            question_data.question,
-            question_data.answer,
-        ]
-        question_vec, answer_vec = embedding_service.create_embeddings(texts)
-        embedding_repository.delete_by_question_id(db, question_id)
+        edited = question_data.texts()
 
-        embedding_repository.create_embedding(
-            db,
-            question_id=question_id,
-            embedding=question_vec,
-            embedding_type="question",
-            model=settings.embedding_model,
-        )
+        for lang, (q, a) in edited.items():
+            provenance = (
+                TextProvenance.ORIGINAL
+                if lang == question.original_language
+                else TextProvenance.HUMAN
+            )
+            question.set_text(lang, q, a, provenance)
+            db.flush()
+            _embed_language(db, question, lang)
 
-        embedding_repository.create_embedding(
-            db,
-            question_id=question_id,
-            embedding=answer_vec,
-            embedding_type="answer",
-            model=settings.embedding_model,
-        )
+        # A single-language edit refreshes machine-made counterparts.
+        if len(edited) == 1:
+            _refresh_machine_translations(db, question, next(iter(edited)))
 
-        attach_concept_names(db, [question])
-        attach_retrieved_questions(db, [question])
+        prepare_for_response(db, [question], language)
 
         db.commit()
 
@@ -415,6 +474,8 @@ def review_question(
     question: str | None = None,
     answer: str | None = None,
     comment: str | None = None,
+    language: Language | str | None = None,
+    response_language: Language | str = Language.JA,
 ) -> Question | None:
     try:
         current = question_repository.get_question(db, question_id)
@@ -422,86 +483,61 @@ def review_question(
         if current is None:
             return None
 
-        before_question = current.question
-        before_answer = current.answer
+        lang = Language(language) if language else Language(current.original_language)
+        before = current.text(lang) or current.original_text()
 
-        if action == QuestionReviewAction.EDIT_APPROVE:
-            new_status = QuestionStatus.APPROVED
-            new_question = question
-            new_answer = answer
-        elif action == QuestionReviewAction.APPROVE:
-            new_status = QuestionStatus.APPROVED
-            new_question = None
-            new_answer = None
-        else:
+        if action == QuestionReviewAction.REJECT:
             new_status = QuestionStatus.REJECTED
-            new_question = None
-            new_answer = None
-
-        updated = question_repository.update_content_and_status(
-            db,
-            question_id,
-            status=new_status,
-            question=new_question,
-            answer=new_answer,
-        )
-
-        if updated is None:
-            return None
+        else:
+            new_status = QuestionStatus.APPROVED
 
         if action == QuestionReviewAction.EDIT_APPROVE:
-            texts = [updated.question, updated.answer]
-            question_vec, answer_vec = embedding_service.create_embeddings(texts)
-            embedding_repository.delete_by_question_id(db, question_id)
-
-            embedding_repository.create_embedding(
-                db,
-                question_id=question_id,
-                embedding=question_vec,
-                embedding_type="question",
-                model=settings.embedding_model,
+            assert question is not None and answer is not None
+            provenance = (
+                TextProvenance.ORIGINAL
+                if lang == current.original_language
+                else TextProvenance.HUMAN
             )
+            current.set_text(lang, question, answer, provenance)
+            db.flush()
+            _embed_language(db, current, lang)
+            _refresh_machine_translations(db, current, lang)
 
-            embedding_repository.create_embedding(
-                db,
-                question_id=question_id,
-                embedding=answer_vec,
-                embedding_type="answer",
-                model=settings.embedding_model,
-            )
+        question_repository.update_status(db, question_id, new_status)
 
-        # Concept extraction is triggered by the status becoming APPROVED
-        # (via APPROVE or EDIT_APPROVE), not by question creation.
+        # Concept extraction is triggered by the status becoming APPROVED.
         if new_status == QuestionStatus.APPROVED:
-            _attach_concepts_best_effort(
-                db, question_id, updated.question, updated.answer
-            )
+            _attach_concepts_best_effort(db, current)
+            _translate_missing(db, current)
+
+        after = current.text(lang) or current.original_text()
 
         question_review_repository.create(
             db,
             question_id=question_id,
             action=action,
             reviewer_id=reviewer_id,
-            before_question=before_question,
-            before_answer=before_answer,
-            after_question=updated.question,
-            after_answer=updated.answer,
+            language=lang.value,
+            before_question=before[0],
+            before_answer=before[1],
+            after_question=after[0],
+            after_answer=after[1],
             comment=comment,
         )
 
-        attach_concept_names(db, [updated])
-        attach_retrieved_questions(db, [updated])
+        prepare_for_response(db, [current], response_language)
 
         db.commit()
 
         logger.info(
-            "Question reviewed: id=%d action=%s reviewer_id=%d",
+            "Question reviewed: id=%d action=%s reviewer_id=%d language=%s",
             question_id,
             action,
             reviewer_id,
+            lang,
         )
 
-        return updated
+        return current
     except Exception:
         logger.warning("Rolling back transaction: operation=review_question")
         db.rollback()
@@ -515,14 +551,7 @@ def fetch_question_reviews(db: Session, question_id: int):
 def reextract_concepts_for_questions(
     db: Session, question_ids: list[int]
 ) -> list[ConceptExtractionResult]:
-    """Re-run concept extraction for the given questions, regardless of
-    their current status or whether they already have concepts attached.
-
-    Each question is processed and committed independently so that one
-    failure (e.g. DeepSeek being down) doesn't roll back successes for
-    the rest of the batch - this is the manual recovery path for
-    concept-extraction failures.
-    """
+    """Re-run concept extraction; each question commits independently."""
     results = []
 
     for question_id in question_ids:
@@ -536,15 +565,21 @@ def reextract_concepts_for_questions(
 
         try:
             question_concept_repository.delete_by_question_id(db, question_id)
-            concept_names = concept_service.extract_concept_names(
-                question.question, question.answer
+            names = concept_service.extract_concept_names(
+                *question.original_text(), language=question.original_language
             )
-            concept_service.attach_concepts_to_question(db, question_id, concept_names)
+            concepts = concept_service.attach_concepts_to_question(
+                db, question_id, names, language=question.original_language
+            )
             db.commit()
 
             results.append(
                 ConceptExtractionResult(
-                    question_id=question_id, success=True, concepts=concept_names
+                    question_id=question_id,
+                    success=True,
+                    concepts=[
+                        c.display_name(question.original_language) for c in concepts
+                    ],
                 )
             )
             logger.info("Concepts re-extracted: question_id=%d", question_id)
@@ -560,6 +595,28 @@ def reextract_concepts_for_questions(
             )
 
     return results
+
+
+def translate_missing_languages(db: Session, question_id: int) -> list[Language]:
+    """Fill every missing language of one question; commits on its own.
+
+    Used by the background task after an AI answer, the admin endpoint, and
+    the backfill CLI.
+    """
+    question = question_repository.get_question(db, question_id)
+
+    if question is None:
+        return []
+
+    try:
+        filled = _translate_missing(db, question)
+        db.commit()
+    except Exception:
+        logger.warning("Rolling back transaction: operation=translate_missing")
+        db.rollback()
+        raise
+
+    return filled
 
 
 def bulk_delete_questions(
@@ -583,13 +640,19 @@ def bulk_review_questions(
     action: QuestionReviewAction,
     reviewer_id: int,
     comment: str | None = None,
+    response_language: Language | str = Language.JA,
 ) -> tuple[list[Question], list[int]]:
     updated_questions: list[Question] = []
     not_found_ids: list[int] = []
 
     for question_id in question_ids:
         result = review_question(
-            db, question_id, action=action, reviewer_id=reviewer_id, comment=comment
+            db,
+            question_id,
+            action=action,
+            reviewer_id=reviewer_id,
+            comment=comment,
+            response_language=response_language,
         )
 
         if result is None:
@@ -604,49 +667,33 @@ def save_ai_question(
     db: Session,
     question: str,
     answer: str,
+    language: Language | str = Language.JA,
     source: str = QuestionSource.AI_GENERATED,
     retrieved_question_ids: list[int] | None = None,
 ) -> Question | None:
-    """Best-effort save of a direct AI (or RAG) answer as a new question.
+    """Best-effort save of an AI answer as a new UNREVIEWED question.
 
-    Never raises: any failure (duplicate text, embedding generation, DB
-    error) is logged and swallowed so the caller can always still return
-    the DeepSeek answer to the user regardless of whether it was saved.
-    No concept extraction here - saved questions start as UNREVIEWED, and
-    concept extraction is only triggered once a question is APPROVED.
+    Never raises. Translation into the other language is not done here (it
+    would delay the student's response); callers schedule
+    `translate_missing_languages` afterwards.
     """
+    lang = Language(language)
+
     try:
-        if question_repository.get_by_exact_text(db, question) is not None:
+        if question_repository.get_by_exact_text(db, question, language=lang):
             logger.info("AI answer not saved: duplicate question text")
             return None
 
         db_question = question_repository.create_question(
             db,
-            question=question,
-            answer=answer,
+            texts={lang: (question, answer)},
+            original_language=lang,
             status=QuestionStatus.UNREVIEWED,
             source=source,
             retrieved_question_ids=retrieved_question_ids,
         )
 
-        texts = [question, answer]
-        question_vec, answer_vec = embedding_service.create_embeddings(texts)
-
-        embedding_repository.create_embedding(
-            db,
-            question_id=db_question.id,
-            embedding=question_vec,
-            embedding_type="question",
-            model=settings.embedding_model,
-        )
-
-        embedding_repository.create_embedding(
-            db,
-            question_id=db_question.id,
-            embedding=answer_vec,
-            embedding_type="answer",
-            model=settings.embedding_model,
-        )
+        _embed_language(db, db_question, lang)
 
         db.commit()
 

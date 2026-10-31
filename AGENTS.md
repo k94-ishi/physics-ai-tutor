@@ -40,7 +40,10 @@ Backend:
 Frontend:
 - lint
 - tsc
+- vitest (`npm test`)
 - build
+
+See docs/development.md (Testing) for layout and conventions.
 
 ## Coding Style
 

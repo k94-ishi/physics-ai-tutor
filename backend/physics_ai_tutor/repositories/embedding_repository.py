@@ -10,6 +10,7 @@ def create_embedding(
     embedding_type: str,
     model: str,
     chunk_index: int | None = None,
+    language: str = "ja",
 ) -> QuestionEmbedding:
     db_embedding = QuestionEmbedding(
         question_id=question_id,
@@ -17,6 +18,7 @@ def create_embedding(
         type=embedding_type,
         model=model,
         chunk_index=chunk_index,
+        language=language,
     )
 
     db.add(db_embedding)
@@ -45,6 +47,7 @@ def search_similar_embeddings(
     limit: int = 10,
     exclude_question_ids: list[int] | None = None,
     exclude_statuses: list[str] | None = None,
+    language: str | None = "ja",
 ) -> list[tuple[QuestionEmbedding, Question, float]]:
     """
     SELECT question_embeddings.*, questions.*
@@ -66,6 +69,9 @@ def search_similar_embeddings(
         .filter(QuestionEmbedding.type == embedding_type)
     )
 
+    if language is not None:
+        query = query.filter(QuestionEmbedding.language == language)
+
     if exclude_question_ids:
         query = query.filter(Question.id.notin_(exclude_question_ids))
 
@@ -79,12 +85,14 @@ def get_embedding(
     db: Session,
     question_id: int,
     embedding_type: str,
+    language: str = "ja",
 ) -> list[float] | None:
     row = (
         db.query(QuestionEmbedding.embedding)
         .filter(
             QuestionEmbedding.question_id == question_id,
             QuestionEmbedding.type == embedding_type,
+            QuestionEmbedding.language == language,
         )
         .first()
     )
@@ -95,12 +103,15 @@ def get_embedding(
 def delete_by_question_id(
     db: Session,
     question_id: int,
+    language: str | None = None,
 ) -> None:
-
-    (
-        db.query(QuestionEmbedding)
-        .filter(QuestionEmbedding.question_id == question_id)
-        .delete()
+    query = db.query(QuestionEmbedding).filter(
+        QuestionEmbedding.question_id == question_id
     )
+
+    if language is not None:
+        query = query.filter(QuestionEmbedding.language == language)
+
+    query.delete()
 
     db.flush()

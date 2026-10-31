@@ -1,5 +1,9 @@
 from datetime import datetime
 
+from fastapi.testclient import TestClient
+
+from physics_ai_tutor.main import app
+
 ME_PATH = "/api/v1/users/me"
 PASSWORD_PATH = "/api/v1/users/me/password"
 USERS_PATH = "/api/v1/users"
@@ -153,6 +157,46 @@ def test_delete_user_admin_only(admin_client, user_client):
 
     assert response.status_code == 204
     assert admin_client.get(f"{USERS_PATH}/{user_id}").status_code == 404
+
+
+def test_delete_user_keeps_review_history(admin_client, db):
+    # Create a second admin, let them review a question, then delete them.
+    created = admin_client.post(
+        USERS_PATH,
+        json={
+            "email": "reviewer@example.com",
+            "password": "reviewerpass1",
+            "role": "admin",
+        },
+    )
+    reviewer_id = created.json()["id"]
+
+    reviewer = TestClient(app)
+    login = reviewer.post(
+        "/api/v1/auth/login",
+        json={"email": "reviewer@example.com", "password": "reviewerpass1"},
+    )
+    assert login.status_code == 200
+
+    question_id = reviewer.post(
+        "/api/v1/questions",
+        json={"question": "削除される査読者の質問", "answer": "回答"},
+    ).json()["id"]
+    assert (
+        reviewer.post(
+            f"/api/v1/questions/{question_id}/review", json={"action": "REJECT"}
+        ).status_code
+        == 200
+    )
+
+    response = admin_client.delete(f"{USERS_PATH}/{reviewer_id}")
+
+    assert response.status_code == 204
+
+    reviews = admin_client.get(f"/api/v1/questions/{question_id}/reviews").json()
+    assert len(reviews) == 1
+    assert reviews[0]["action"] == "REJECT"
+    assert reviews[0]["reviewer_id"] is None
 
 
 def test_delete_user_not_found(admin_client):

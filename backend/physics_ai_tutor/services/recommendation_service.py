@@ -9,11 +9,9 @@ from physics_ai_tutor.repositories import (
     question_concept_repository,
     question_repository,
 )
+from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.question import QuestionResponse
-from physics_ai_tutor.services.question_service import (
-    attach_concept_names,
-    attach_retrieved_questions,
-)
+from physics_ai_tutor.services.question_service import prepare_for_response
 
 logger = logging.getLogger(__name__)
 
@@ -30,14 +28,28 @@ def get_related_questions(
     question_id: int,
     limit: int = 5,
     exclude_statuses: list[str] | None = None,
+    language: Language | str = Language.JA,
 ) -> list[QuestionResponse]:
     if exclude_statuses is None:
         exclude_statuses = ["REJECTED"]
 
+    lang = Language(language)
     question_similarity: dict[int, float] = {}
     questions_by_id: dict[int, Question] = {}
 
-    source_embedding = embedding_repository.get_embedding(db, question_id, "question")
+    # Compare within one language; fall back to the row's original language
+    # for rows that were never embedded in `lang`.
+    search_language = lang.value
+    source_embedding = embedding_repository.get_embedding(
+        db, question_id, "question", language=search_language
+    )
+    if source_embedding is None:
+        source_question = question_repository.get_question(db, question_id)
+        if source_question is not None:
+            search_language = source_question.original_language
+            source_embedding = embedding_repository.get_embedding(
+                db, question_id, "question", language=search_language
+            )
 
     if source_embedding is not None:
         embedding_rows = embedding_repository.search_similar_embeddings(
@@ -47,6 +59,7 @@ def get_related_questions(
             limit=CANDIDATE_POOL_SIZE,
             exclude_question_ids=[question_id],
             exclude_statuses=exclude_statuses,
+            language=search_language,
         )
 
         for _, question, distance in embedding_rows:
@@ -118,8 +131,7 @@ def get_related_questions(
     scored.sort(key=lambda item: item[0], reverse=True)
 
     top_questions = [candidate_question for _, candidate_question in scored[:limit]]
-    attach_concept_names(db, top_questions)
-    attach_retrieved_questions(db, top_questions)
+    prepare_for_response(db, top_questions, lang)
 
     logger.info(
         "Related questions computed: question_id=%d candidates=%d returned=%d",

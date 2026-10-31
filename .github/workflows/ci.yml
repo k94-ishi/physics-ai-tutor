@@ -29,6 +29,7 @@ jobs:
         working-directory: backend
     env:
       DATABASE_URL: postgresql+psycopg://physics:physics@localhost:5433/physics_ai_tutor_test
+      TEST_DATABASE_URL: postgresql+psycopg://physics:physics@localhost:5433/physics_ai_tutor_test
       OPENAI_API_KEY: ci-test-openai-key
       DEEPSEEK_API_KEY: ci-test-deepseek-key
       JWT_SECRET_KEY: ci-test-jwt-secret-key-for-github-actions-ci
@@ -63,7 +64,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: "25"
+          node-version: "24"
       
       - name: Install dependencies
         run: npm ci
@@ -71,6 +72,8 @@ jobs:
         run: npm run lint
       - name: TypeScript
         run: npx tsc --noEmit
+      - name: Vitest
+        run: npm test
       - name: Build
         run: npm run build
         

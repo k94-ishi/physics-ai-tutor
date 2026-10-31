@@ -197,7 +197,10 @@ The backlog is far above the default daily cap of 200. Options:
   tokens each.
 
 Either way, the run is recorded (`GET /admin/ai-review/runs`), only one
-can execute at a time, and a stuck run frees itself after 30 minutes.
+can execute at a time, and a run that goes silent for 30 minutes is freed
+by the next start - the measure is silence, not total duration, so a long
+full-cap run is safe. The command exits non-zero if the run does not
+finish, which is what a scheduled run ([26]) needs to alert on.
 Issue [26] `e0594f1` is the automated nightly version; until it exists this
 is a manual command.
 

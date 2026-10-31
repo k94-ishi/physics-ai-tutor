@@ -63,25 +63,47 @@ def latest_for_questions(db: Session, ids: list[int]) -> dict[int, AiReview]:
     return latest
 
 
-def list_pending_question_ids(db: Session, limit: int) -> list[int]:
-    """UNREVIEWED AI questions that have no AI review yet, oldest first."""
+# A verdict the parser could not read leaves a NULL-verdict row. Such a
+# question still has no usable verdict, so it stays pending - but only for
+# this many attempts, or a reliably unparseable answer would be re-reviewed
+# on every run forever.
+MAX_PARSE_ATTEMPTS = 3
+
+
+def _pending_question_query(db: Session):
+    """UNREVIEWED AI questions with no usable verdict yet, oldest first."""
+    from sqlalchemy import func
+
     from physics_ai_tutor.models import Question
 
-    reviewed = db.query(AiReview.question_id)
+    graded = db.query(AiReview.question_id).filter(AiReview.verdict.isnot(None))
+    exhausted = (
+        db.query(AiReview.question_id)
+        .group_by(AiReview.question_id)
+        .having(func.count(AiReview.id) >= MAX_PARSE_ATTEMPTS)
+    )
 
-    rows = (
+    return (
         db.query(Question.id)
         .filter(
             Question.status == "UNREVIEWED",
             Question.source.in_(["AI_GENERATED", "RAG_RESULT"]),
-            ~Question.id.in_(reviewed),
+            ~Question.id.in_(graded),
+            ~Question.id.in_(exhausted),
         )
         .order_by(Question.id.asc())
-        .limit(limit)
-        .all()
     )
 
+
+def list_pending_question_ids(db: Session, limit: int) -> list[int]:
+    rows = _pending_question_query(db).limit(limit).all()
+
     return [question_id for (question_id,) in rows]
+
+
+def count_pending_questions(db: Session) -> int:
+    """The true total, unbounded by any run's limit or the daily cap."""
+    return _pending_question_query(db).count()
 
 
 def count_created_since(db: Session, hours: int) -> int:
@@ -97,7 +119,7 @@ def count_created_since(db: Session, hours: int) -> int:
     ) or 0
 
 
-def list_stale_question_ids(db: Session, current_version: str, limit: int) -> list[int]:
+def _stale_question_query(db: Session, current_version: str):
     """UNREVIEWED AI questions whose latest verdict used an older prompt."""
     from sqlalchemy import func
 
@@ -112,7 +134,7 @@ def list_stale_question_ids(db: Session, current_version: str, limit: int) -> li
         .subquery()
     )
 
-    rows = (
+    return (
         db.query(Question.id)
         .join(latest, latest.c.question_id == Question.id)
         .join(AiReview, AiReview.id == latest.c.latest_id)
@@ -122,11 +144,18 @@ def list_stale_question_ids(db: Session, current_version: str, limit: int) -> li
             AiReview.prompt_version != current_version,
         )
         .order_by(Question.id.asc())
-        .limit(limit)
-        .all()
     )
 
+
+def list_stale_question_ids(db: Session, current_version: str, limit: int) -> list[int]:
+    rows = _stale_question_query(db, current_version).limit(limit).all()
+
     return [question_id for (question_id,) in rows]
+
+
+def count_stale_questions(db: Session, current_version: str) -> int:
+    """The true total, unbounded by any run's limit or the daily cap."""
+    return _stale_question_query(db, current_version).count()
 
 
 def filter_reviewable_ids(db: Session, ids: list[int]) -> list[int]:

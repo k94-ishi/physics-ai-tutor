@@ -24,6 +24,7 @@ class AiReviewRunResponse(BaseModel):
     requested_count: int
     reviewed_count: int
     failed_count: int
+    skipped_count: int
     prompt_tokens: int
     completion_tokens: int
     status: str
@@ -35,8 +36,12 @@ class AiReviewRunResponse(BaseModel):
 
 
 class PendingCountResponse(BaseModel):
+    # True totals, not capped by the daily budget.
     pending: int
     stale: int
     daily_cap: int
     used_24h: int
     remaining: int
+    # What a run started now would actually touch: min(total, remaining).
+    would_review_pending: int
+    would_review_stale: int

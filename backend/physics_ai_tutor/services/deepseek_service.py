@@ -76,16 +76,18 @@ def generate_answer(
     response = _request(system_prompt, user_prompt, temperature, max_tokens)
     content = response.choices[0].message.content or ""
     usage = getattr(response, "usage", None)
+    # What the API actually served, which an alias may not name.
+    model = getattr(response, "model", None) or settings.deepseek_chat_model
 
     logger.info(
         "DeepSeek answer generated: model=%s response_length=%d",
-        settings.deepseek_chat_model,
+        model,
         len(content),
     )
 
     return GenerationResult(
         content=content,
-        model=settings.deepseek_chat_model,
+        model=model,
         prompt_tokens=getattr(usage, "prompt_tokens", None),
         completion_tokens=getattr(usage, "completion_tokens", None),
     )

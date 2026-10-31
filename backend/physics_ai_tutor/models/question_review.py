@@ -15,6 +15,8 @@ class QuestionReview(Base):
         nullable=False,
     )
     action: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Why the answer was rejected or edited; NULL for plain approvals.
+    reason: Mapped[str | None] = mapped_column(String(30), nullable=True)
     # Language of the text the reviewer looked at or edited.
     language: Mapped[str] = mapped_column(
         String(10), server_default="ja", nullable=False
@@ -23,6 +25,12 @@ class QuestionReview(Base):
     before_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
     after_question: Mapped[str | None] = mapped_column(Text, nullable=True)
     after_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Who produced this row: a human admin, the AI reviewer, or a policy
+    # acting on the AI reviewer's verdict (then `policy_name` says which).
+    reviewer_kind: Mapped[str] = mapped_column(
+        String(10), server_default="human", nullable=False
+    )
+    policy_name: Mapped[str | None] = mapped_column(String, nullable=True)
     # Kept after the reviewer account is deleted so the audit trail survives.
     reviewer_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"),

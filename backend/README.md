@@ -12,7 +12,7 @@ FastAPI backend of Physics AI Tutor.
 ```
 physics_ai_tutor/
 ├── api/            # FastAPI routers (v1) and auth dependencies
-├── core/           # Settings, JWT, logging, rate limiting, LLM clients
+├── core/           # Settings, JWT, logging, LLM clients
 ├── database/       # Engine, session, seed script
 ├── models/         # SQLAlchemy models
 ├── repositories/   # Database access

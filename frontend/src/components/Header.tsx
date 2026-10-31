@@ -52,7 +52,32 @@ export default function Header() {
                             >
                                 {t("header.userManagement")}
                             </Link>
+
+                            <Link
+                                href="/admin/stats"
+                                className="text-gray-600 hover:text-gray-900"
+                            >
+                                {t("header.adminStats")}
+                            </Link>
                         </>
+                    )}
+
+                    {user && (
+                        <Link
+                            href="/me/questions"
+                            className="text-gray-600 hover:text-gray-900"
+                        >
+                            {t("header.myQuestions")}
+                        </Link>
+                    )}
+
+                    {user && (
+                        <Link
+                            href="/account"
+                            className="text-gray-600 hover:text-gray-900"
+                        >
+                            {t("header.account")}
+                        </Link>
                     )}
 
                     {user ? (
@@ -68,7 +93,7 @@ export default function Header() {
                             href="/login"
                             className="text-gray-600 hover:text-gray-900"
                         >
-                            {t("header.adminLogin")}
+                            {t("header.login")}
                         </Link>
                     )}
 

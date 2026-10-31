@@ -138,14 +138,15 @@ describe("JSON endpoints", () => {
         expect(lastRequest().url).toBe("http://api.test/api/v1/auth/login");
     });
 
-    it("bulkReviewQuestions sends ids, action and comment", async () => {
+    it("bulkReviewQuestions sends ids, action, reason and comment", async () => {
         fetchMock.mockResolvedValue(jsonResponse({ updated_count: 2, not_found_ids: [] }));
 
-        await bulkReviewQuestions([1, 2], "APPROVE", "ok");
+        await bulkReviewQuestions([1, 2], "REJECT", "OFF_TOPIC", "ok");
 
         expect(JSON.parse(lastRequest().init.body as string)).toEqual({
             question_ids: [1, 2],
-            action: "APPROVE",
+            action: "REJECT",
+            reason: "OFF_TOPIC",
             comment: "ok",
         });
     });

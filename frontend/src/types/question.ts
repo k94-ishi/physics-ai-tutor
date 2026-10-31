@@ -28,6 +28,8 @@ export type Question = {
     source: QuestionSource;
     concepts: string[];
     retrieved_questions: RetrievedQuestionRef[];
+    generation?: GenerationMeta | null;
+    ai_review?: AiReviewSummary | null;
 };
 
 export type QuestionListResponse = {
@@ -59,6 +61,9 @@ export type SimilarQuestion = {
     distance: number;
 };
 
+export type QuestionSort = "oldest" | "ai_confidence" | "asked_count";
+export type AiVerdictFilter = "APPROVE" | "EDIT" | "REJECT" | "NONE";
+
 export type FetchQuestionsParams = {
     page?: number;
     size?: number;
@@ -67,6 +72,8 @@ export type FetchQuestionsParams = {
     searchQuestion?: boolean;
     searchAnswer?: boolean;
     lang?: ContentLanguage;
+    sort?: QuestionSort;
+    aiVerdict?: AiVerdictFilter;
 };
 
 export type SearchQuestionsParams = {
@@ -77,10 +84,40 @@ export type SearchQuestionsParams = {
 
 export type QuestionReviewAction = "APPROVE" | "EDIT_APPROVE" | "REJECT";
 
+export const REVIEW_REASONS = [
+    "PHYSICS_ERROR",
+    "MATH_ERROR",
+    "INCOMPLETE",
+    "OFF_TOPIC",
+    "TOO_ADVANCED",
+    "UNCLEAR",
+    "FORMATTING",
+    "LANGUAGE",
+    "DUPLICATE",
+    "OTHER",
+] as const;
+
+export type ReviewReason = (typeof REVIEW_REASONS)[number];
+
+export type AiVerdict = "APPROVE" | "EDIT" | "REJECT";
+
+// Latest AI pre-review verdict; present only in admin responses.
+export type AiReviewSummary = {
+    verdict: AiVerdict | null;
+    confidence: number | null;
+    reasons: ReviewReason[];
+    rationale: string | null;
+    suggested_answer: string | null;
+    created_at: string;
+};
+
 export type QuestionReview = {
     id: number;
     question_id: number;
     action: QuestionReviewAction;
+    reason: ReviewReason | null;
+    reviewer_kind: "human" | "ai" | "policy";
+    policy_name: string | null;
     language: ContentLanguage;
     before_question: string | null;
     before_answer: string | null;
@@ -96,6 +133,7 @@ export type ReviewQuestionRequest = {
     language?: ContentLanguage;
     question?: string;
     answer?: string;
+    reason?: ReviewReason;
     comment?: string;
 };
 
@@ -134,4 +172,73 @@ export type ConceptExtractionResult = {
 
 export type ConceptExtractionBatchResponse = {
     results: ConceptExtractionResult[];
+};
+
+// Present only in admin responses; null fields for manual rows.
+export type GenerationMeta = {
+    model: string | null;
+    prompt_version: string | null;
+    mode: "DIRECT" | "RAG" | null;
+    prompt_tokens: number | null;
+    completion_tokens: number | null;
+};
+
+export type MyQuestionEntry = {
+    question_id: number;
+    question: string;
+    answer: string | null;
+    language: ContentLanguage;
+    provenance: string | null;
+    status: QuestionStatus;
+    asked_at: string;
+};
+
+export type MyQuestionsResponse = {
+    items: MyQuestionEntry[];
+    total: number;
+    page: number;
+    size: number;
+};
+
+export type DailyUsage = {
+    day: string;
+    generations: number;
+    asks: number;
+    cache_hits: number;
+    distinct_users: number;
+};
+
+export type AdminStatsResponse = {
+    days: number;
+    daily: DailyUsage[];
+    unreviewed_count: number;
+    unreviewed_median_age_days: number | null;
+    anonymous_ip_buckets_24h: number;
+};
+
+export type CalibrationBucket = {
+    low: number;
+    high: number;
+    n: number;
+    agreement_rate: number | null;
+};
+
+export type AgreementMetrics = {
+    n: number;
+    sufficient: boolean;
+    exact_agreement_rate: number | null;
+    publish_agreement_rate: number | null;
+    reject_precision: number | null;
+    reject_recall: number | null;
+    reason_jaccard_mean: number | null;
+    confusion_matrix: Record<string, Record<string, number>>;
+    calibration: CalibrationBucket[];
+};
+
+export type ReviewAgreementResponse = {
+    since: string | null;
+    overall: AgreementMetrics;
+    by_answer_prompt_version: Record<string, AgreementMetrics>;
+    by_reviewer_prompt_version: Record<string, AgreementMetrics>;
+    by_month: Record<string, AgreementMetrics>;
 };

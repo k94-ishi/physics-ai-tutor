@@ -7,8 +7,10 @@ from physics_ai_tutor.services import deepseek_service, translation_service
 from physics_ai_tutor.services.translation_service import (
     translate_qa as real_translate_qa,
 )
+from tests.conftest import fake_generation
 
 QUESTIONS = "/api/v1/questions"
+REJECT_BODY = {"action": "REJECT", "reason": "PHYSICS_ERROR"}
 ASK = "/api/v1/ai/ask"
 
 
@@ -197,7 +199,11 @@ def test_ask_in_english_uses_english_prompt_and_translates_in_background(
         prompts_seen.append(system_prompt)
         return "An answer."
 
-    monkeypatch.setattr(deepseek_service, "chat_completion", _chat)
+    monkeypatch.setattr(
+        deepseek_service,
+        "generate_answer",
+        lambda s, u: fake_generation(_chat(s, u))(s, u),
+    )
 
     response = client.post(
         ASK, json={"question": "What is momentum?", "language": "en"}
@@ -207,7 +213,7 @@ def test_ask_in_english_uses_english_prompt_and_translates_in_background(
     body = response.json()
     assert body["language"] == "en"
     assert body["cached"] is False
-    assert "physics teacher" in prompts_seen[0]
+    assert "You teach physics" in prompts_seen[0]
 
     saved = db.query(Question).filter(Question.id == body["question_id"]).one()
     db.refresh(saved)
@@ -226,7 +232,11 @@ def test_ask_serves_cached_answer_including_unreviewed(client, monkeypatch):
         calls.append(user_prompt)
         return "初回の回答"
 
-    monkeypatch.setattr(deepseek_service, "chat_completion", _chat)
+    monkeypatch.setattr(
+        deepseek_service,
+        "generate_answer",
+        lambda s, u: fake_generation(_chat(s, u))(s, u),
+    )
 
     first = client.post(ASK, json={"question": "キャッシュされる質問"}).json()
     second = client.post(ASK, json={"question": "キャッシュされる質問"}).json()
@@ -249,7 +259,11 @@ def test_ask_cache_hits_translated_text_of_other_language_row(
     def _chat(system_prompt, user_prompt):
         raise AssertionError("should be served from cache")
 
-    monkeypatch.setattr(deepseek_service, "chat_completion", _chat)
+    monkeypatch.setattr(
+        deepseek_service,
+        "generate_answer",
+        lambda s, u: fake_generation(_chat(s, u))(s, u),
+    )
 
     response = client.post(
         ASK, json={"question": "[en] 位置エネルギーとは", "language": "en"}
@@ -260,14 +274,17 @@ def test_ask_cache_hits_translated_text_of_other_language_row(
 
 
 def test_ask_does_not_serve_rejected_answer(client, admin_client, monkeypatch):
-    monkeypatch.setattr(deepseek_service, "chat_completion", lambda s, u: "最初の回答")
+    monkeypatch.setattr(
+        deepseek_service, "generate_answer", fake_generation("最初の回答")
+    )
     first = client.post(ASK, json={"question": "却下される質問です"}).json()
     admin_client.post(
-        f"{QUESTIONS}/{first['question_id']}/review", json={"action": "REJECT"}
+        f"{QUESTIONS}/{first['question_id']}/review",
+        json=REJECT_BODY,
     )
 
     monkeypatch.setattr(
-        deepseek_service, "chat_completion", lambda s, u: "二回目の回答"
+        deepseek_service, "generate_answer", fake_generation("二回目の回答")
     )
     second = client.post(ASK, json={"question": "却下される質問です"}).json()
 
@@ -281,7 +298,7 @@ def test_ask_does_not_serve_rejected_answer(client, admin_client, monkeypatch):
 def test_review_in_english_records_language_and_refreshes_machine_japanese(
     client, admin_client, monkeypatch, db
 ):
-    monkeypatch.setattr(deepseek_service, "chat_completion", lambda s, u: "Answer.")
+    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("Answer."))
     asked = client.post(
         ASK, json={"question": "What is work in physics?", "language": "en"}
     ).json()
@@ -292,6 +309,7 @@ def test_review_in_english_records_language_and_refreshes_machine_japanese(
         params={"lang": "en"},
         json={
             "action": "EDIT_APPROVE",
+            "reason": "INCOMPLETE",
             "language": "en",
             "question": "What is work in physics?",
             "answer": "Force times displacement.",

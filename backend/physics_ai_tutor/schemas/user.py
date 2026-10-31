@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field
 
-from physics_ai_tutor.schemas.token import UserRole
+from physics_ai_tutor.schemas.token import AuthProvider, UserRole
 
 
 class UserCreate(BaseModel):
@@ -15,6 +15,7 @@ class UserResponse(BaseModel):
     id: int
     email: EmailStr
     role: UserRole
+    auth_provider: AuthProvider
     created_at: datetime
 
 

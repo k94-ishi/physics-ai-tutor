@@ -8,6 +8,11 @@ class UserRole(StrEnum):
     USER = "user"
 
 
+class AuthProvider(StrEnum):
+    PASSWORD = "password"
+    GOOGLE = "google"
+
+
 class JWTPayload(BaseModel):
     sub: str
     role: UserRole

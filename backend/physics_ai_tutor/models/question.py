@@ -58,6 +58,14 @@ class Question(Base):
         server_default="MANUAL",
         nullable=False,
     )
+    # Generation metadata; NULL for manual and imported rows. `prompt_version`
+    # tracks prompts.ANSWER_PROMPT_VERSION at generation time.
+    generation_model: Mapped[str | None] = mapped_column(String, nullable=True)
+    prompt_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    generation_mode: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     retrieved_question_ids: Mapped[list[int]] = mapped_column(
         ARRAY(Integer),
         server_default="{}",
@@ -79,6 +87,8 @@ class Question(Base):
     # serialization; not mapped/persisted columns.
     concepts: list[str]
     retrieved_questions: list[dict[str, int | str]]
+    generation: object | None
+    ai_review: object | None
 
     # --- resolved text (transient) ----------------------------------------
     #

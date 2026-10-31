@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     deepseek_max_tokens: int = 1500
     # Rate limiting
     trust_forwarded_for: bool = True
+    # AI pre-review of new answers (one extra LLM call per generation)
+    ai_review_enabled: bool = False
+    # Upper bound on AI review calls per rolling 24h, across all runs
+    ai_review_daily_cap: int = 200
+    # Reviewer output includes a full suggested answer, so it needs more
+    # room than a student answer or its JSON gets truncated.
+    ai_review_max_tokens: int = 3000
     # JWT
     jwt_secret_key: str
     jwt_algorithm: str
@@ -28,6 +35,12 @@ class Settings(BaseSettings):
     same_site: Literal["lax", "strict", "none"] | None = None
     # CORS
     backend_cors_origins: list[str] = ["http://loaclhost:8000"]
+    # Google Sign-In (students); disabled unless all three are set
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    google_redirect_uri: str | None = None
+    # Where the browser is sent after the Google callback
+    frontend_url: str = "http://localhost:3000"
 
     model_config = SettingsConfigDict(
         env_file=".env",

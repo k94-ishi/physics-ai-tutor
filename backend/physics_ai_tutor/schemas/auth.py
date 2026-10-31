@@ -11,3 +11,10 @@ class LoginRequest(BaseModel):
 class CurrentUser(BaseModel):
     id: int
     role: UserRole
+
+
+class AuthProviders(BaseModel):
+    """Which login methods the frontend should offer."""
+
+    password: bool
+    google: bool

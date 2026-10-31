@@ -1,50 +1,24 @@
+from physics_ai_tutor.core.prompt_library import load_library
 from physics_ai_tutor.schemas.language import Language
 
-_SYSTEM_PROMPT_JA = (
-    "あなたは日本の高校物理を教える先生です。"
-    "生徒からの質問に、丁寧、簡潔かつ正確な日本語で答えること"
-    "物理や数学が苦手な生徒の質問だと想定し、わかりやすく親切に説明してください。"
-    "文字式を使う場合は各文字の意味を省略せず説明すること。"
-    "「いい質問ですね」のような前置きはせず、回答から始めてください。"
-    "「他に質問はないですか？」のような対話を促す呼びかけはしない。"
-    "数式を用いる場合は$で囲む形式(例: $v = at$)を用い、ベクトルには\\vec{}を使うこと。"
-    "Markdown記法では、書式記号の直後・直前には必要なら半角スペースを入れてください。"
-    "図解が有効な場合はMermaid形式のコードブロックを使っても構いません。"
-    "回答は1000文字程度を目安に、要点を絞って簡潔にまとめてください。"
-)
+_LIBRARY = load_library()
 
-_SYSTEM_PROMPT_EN = (
-    "You are a high school physics teacher. "
-    "Answer the student's question in clear, concise and accurate English. "
-    "Assume the student finds physics and mathematics difficult, and explain "
-    "kindly and step by step. "
-    "When you use symbols in formulas, explain what every symbol means. "
-    "Do not open with remarks such as 'Great question'; start with the answer. "
-    "Do not end with prompts such as 'Do you have any other questions?'. "
-    "Write formulas between dollar signs (for example $v = at$) and use "
-    "\\vec{} for vectors. "
-    "In Markdown, put a space before and after formatting marks when needed. "
-    "You may use a Mermaid code block when a diagram helps. "
-    "Keep the answer focused, around 400 words."
-)
+# Versions come from the prompt library (prompt_library.yaml). Bump a
+# family's version there whenever any of its texts change -
+# tests/test_prompts.py pins a fingerprint per family and fails on drift.
+ANSWER_PROMPT_VERSION = _LIBRARY.version("answer")
+TRANSLATION_PROMPT_VERSION = _LIBRARY.version("translation")
+
+# The model prefixes its reply with this marker when a question is outside
+# high-school physics; the ask route strips it and skips saving/caching.
+OFF_TOPIC_SENTINEL = "[OFF_TOPIC]"
 
 SYSTEM_PROMPTS: dict[Language, str] = {
-    Language.JA: _SYSTEM_PROMPT_JA,
-    Language.EN: _SYSTEM_PROMPT_EN,
+    lang: _LIBRARY.get("answer", "system", lang) for lang in Language
 }
 
-_RAG_SUFFIX = {
-    Language.JA: (
-        "参考として複数の既存の質問と回答(および関連概念)が与えられる場合があります。"
-        "それらを優先的に参考にして回答し、参考QAに記載のない内容については、"
-        "推測せず一般的な物理知識で補ってください。"
-    ),
-    Language.EN: (
-        "You may be given several existing questions and answers (with related "
-        "concepts) as reference. Prefer them when answering, and for anything "
-        "they do not cover, rely on general physics knowledge rather than "
-        "guessing."
-    ),
+_RAG_SUFFIX: dict[Language, str] = {
+    lang: _LIBRARY.get("answer", "rag_suffix", lang) for lang in Language
 }
 
 RAG_SYSTEM_PROMPTS: dict[Language, str] = {
@@ -52,8 +26,15 @@ RAG_SYSTEM_PROMPTS: dict[Language, str] = {
 }
 
 # Kept for callers that still import the Japanese defaults.
-SYSTEM_PROMPT = _SYSTEM_PROMPT_JA
+SYSTEM_PROMPT = SYSTEM_PROMPTS[Language.JA]
 RAG_SYSTEM_PROMPT = RAG_SYSTEM_PROMPTS[Language.JA]
+
+OFF_TOPIC_FALLBACK: dict[Language, str] = {
+    lang: _LIBRARY.get("answer", "off_topic_fallback", lang) for lang in Language
+}
+
+TRANSLATE_SYSTEM_PROMPT = _LIBRARY.get("translation", "system")
+TRANSLATE_USER_TEMPLATE = _LIBRARY.get("translation", "user_template")
 
 RAG_CONTEXT_LABELS: dict[Language, dict[str, str]] = {
     Language.JA: {
@@ -132,16 +113,6 @@ GLOSSARY: dict[str, str] = {
     "波長": "wavelength",
     "振幅": "amplitude",
 }
-
-TRANSLATE_SYSTEM_PROMPT = (
-    "You translate high school physics questions and answers between "
-    "Japanese and English for students. Preserve meaning precisely, "
-    "including signs, units, variable names and numeric values. "
-    "Keep all Markdown structure, KaTeX math ($...$ and $$...$$), \\vec{} "
-    "and Mermaid code blocks exactly as they are; translate only prose and "
-    "the text labels inside diagrams. Output nothing but the translation in "
-    "the required format."
-)
 
 TRANSLATE_USER_TEMPLATE = """\
 Translate the following physics Q&A from {source} to {target}.

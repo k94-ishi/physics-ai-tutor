@@ -1,0 +1,42 @@
+# Manual prompt regression check (costs DeepSeek tokens; not run per PR).
+# Run it before merging any change to backend/physics_ai_tutor/core/
+# prompt_library.yaml, then update the committed baseline if the change
+# is intended. Requires the DEEPSEEK_API_KEY repository secret; the other
+# variables are dummies - the eval never touches a database.
+name: Prompt Eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      regenerate:
+        description: "Also regenerate answers with the answer prompt (doubles cost)"
+        type: boolean
+        default: false
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: postgresql+psycopg://dummy:dummy@localhost:5432/dummy
+      OPENAI_API_KEY: unused
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      JWT_SECRET_KEY: prompt-eval-dummy-secret
+      JWT_ALGORITHM: HS256
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: uv sync
+      - name: Validate the golden set (no API)
+        run: uv run python -m physics_ai_tutor.cli.eval_prompts --dry-run
+      - name: Run the eval against the baseline
+        run: >
+          uv run python -m physics_ai_tutor.cli.eval_prompts
+          ${{ inputs.regenerate && '--regenerate' || '' }}

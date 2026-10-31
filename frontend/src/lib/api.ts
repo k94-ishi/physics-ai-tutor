@@ -16,9 +16,21 @@ import {
     SimilarQuestion,
     UpdateQuestionRequest,
 } from "@/types/question";
-import { AdminUser, CreateUserRequest, LoginRequest, User } from "@/types/auth";
+import {
+    AdminUser,
+    AuthProviders,
+    CreateUserRequest,
+    LoginRequest,
+    User,
+} from "@/types/auth";
 import { ContentLanguage, TranslationBatchResponse } from "@/types/question";
 import { AskAiResponse } from "@/types/ai";
+import {
+    AdminStatsResponse,
+    MyQuestionsResponse,
+    ReviewAgreementResponse,
+    ReviewReason,
+} from "@/types/question";
 
 function getApiUrl(): string {
     const url = typeof window === "undefined"
@@ -96,6 +108,12 @@ export async function fetchQuestions(
     }
     if (params.keyword) {
         searchParams.set("keyword", params.keyword);
+    }
+    if (params.sort) {
+        searchParams.set("sort", params.sort);
+    }
+    if (params.aiVerdict) {
+        searchParams.set("ai_verdict", params.aiVerdict);
     }
     if (params.status) {
         searchParams.set("status", params.status);
@@ -187,6 +205,15 @@ export async function login(data: LoginRequest): Promise<User> {
     });
 }
 
+export async function fetchAuthProviders(): Promise<AuthProviders> {
+    return apiFetch<AuthProviders>(`${getAuthUrl()}/providers`);
+}
+
+// A plain navigation: the backend redirects the browser to Google.
+export function getGoogleLoginUrl(): string {
+    return `${getAuthUrl()}/google/login`;
+}
+
 export async function logout(): Promise<void> {
     return apiFetch<void>(`${getAuthUrl()}/logout`, {
         method: "POST",
@@ -195,6 +222,46 @@ export async function logout(): Promise<void> {
 
 export async function fetchCurrentUser(): Promise<User> {
     return apiFetch<User>(`${getUsersUrl()}/me`);
+}
+
+export async function fetchReviewAgreement(): Promise<ReviewAgreementResponse> {
+    return apiFetch<ReviewAgreementResponse>(
+        `${getApiUrl()}/api/v1/admin/stats/review-agreement`
+    );
+}
+
+export async function fetchAdminStats(
+    days: number
+): Promise<AdminStatsResponse> {
+    return apiFetch<AdminStatsResponse>(
+        `${getApiUrl()}/api/v1/admin/stats?days=${days}`
+    );
+}
+
+export async function fetchMyQuestions(
+    page: number,
+    size: number,
+    lang: ContentLanguage
+): Promise<MyQuestionsResponse> {
+    const params = new URLSearchParams({
+        page: String(page),
+        size: String(size),
+        lang,
+    });
+
+    return apiFetch<MyQuestionsResponse>(
+        `${getUsersUrl()}/me/questions?${params.toString()}`
+    );
+}
+
+export async function fetchMyProfile(): Promise<AdminUser> {
+    return apiFetch<AdminUser>(`${getUsersUrl()}/me/profile`);
+}
+
+export async function deleteMyAccount(): Promise<void> {
+    return apiFetch<void>(`${getUsersUrl()}/me`, {
+        method: "DELETE",
+    });
 }
 
 export async function getUsers(): Promise<AdminUser[]> {
@@ -310,6 +377,7 @@ export async function bulkDeleteQuestions(
 export async function bulkReviewQuestions(
     questionIds: number[],
     action: BulkReviewAction,
+    reason?: ReviewReason,
     comment?: string
 ): Promise<BulkReviewResponse> {
     return apiFetch<BulkReviewResponse>(`${getQuestionsUrl()}/bulk-review`, {
@@ -317,7 +385,7 @@ export async function bulkReviewQuestions(
         headers: {
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({ question_ids: questionIds, action, comment }),
+        body: JSON.stringify({ question_ids: questionIds, action, reason, comment }),
     });
 }
 

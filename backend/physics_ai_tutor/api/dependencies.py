@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import jwt
@@ -8,16 +9,13 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core.config import settings
+from physics_ai_tutor.core.exceptions import RateLimitExceeded
 from physics_ai_tutor.core.jwt import create_access_token, decode_access_token
-from physics_ai_tutor.core.rate_limit import (
-    RateLimitExceeded,
-    ai_ask_rate_limiter,
-    login_rate_limiter,
-)
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.models.user import User
 from physics_ai_tutor.repositories import user_repository
 from physics_ai_tutor.schemas.token import JWTPayload, UserRole
+from physics_ai_tutor.services import rate_limit_service
 
 logger = logging.getLogger(__name__)
 
@@ -173,29 +171,70 @@ def get_client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+AI_ASK_ACTION = "ai_ask"
+LOGIN_ACTION = "login"
+
+ANONYMOUS_AI_ASK_LIMITS = [(3, 3600), (10, 86400)]
+USER_AI_ASK_LIMITS = [(10, 3600), (30, 86400)]
+ADMIN_AI_ASK_LIMITS = [(3000, 86400)]
+LOGIN_LIMITS = [(5, 60), (20, 3600)]
+
+
+@dataclass
+class AiAskRateLimit:
+    """Deferred rate-limit hit for one ask request.
+
+    The dependency only checks the limit; the route records the hit via
+    this handle when the request actually triggers a generation, so cache
+    hits stay free.
+    """
+
+    bucket_key: str
+
+    def record(self, db: Session) -> None:
+        rate_limit_service.record(db, AI_ASK_ACTION, self.bucket_key)
+
+
 def enforce_ai_ask_rate_limit(
     request: Request,
     user: JWTPayload | None = Depends(get_current_user_optional),
-) -> None:
-    if user is not None and user.role == UserRole.ADMIN:
-        limits = [(3000, 86400)]
+    db: Session = Depends(get_db),
+) -> AiAskRateLimit:
+    """Signed-in callers are limited per account; anonymous callers per IP."""
+    if user is None:
+        bucket_key = f"ip:{get_client_ip(request)}"
+        limits = ANONYMOUS_AI_ASK_LIMITS
+    elif user.role == UserRole.ADMIN:
+        bucket_key = f"user:{user.sub}"
+        limits = ADMIN_AI_ASK_LIMITS
     else:
-        limits = [(3, 60), (10, 3600), (30, 86400)]
+        bucket_key = f"user:{user.sub}"
+        limits = USER_AI_ASK_LIMITS
 
     try:
-        ai_ask_rate_limiter.check(get_client_ip(request), limits)
+        rate_limit_service.check(db, AI_ASK_ACTION, bucket_key, limits)
     except RateLimitExceeded:
         raise HTTPException(
             status_code=429,
             detail="Too many requests. Please try again later.",
         ) from None
 
+    return AiAskRateLimit(bucket_key=bucket_key)
 
-def enforce_login_rate_limit(request: Request) -> None:
+
+def enforce_login_rate_limit(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> None:
+    bucket_key = f"ip:{get_client_ip(request)}"
+
     try:
-        login_rate_limiter.check(get_client_ip(request), [(5, 60), (20, 3600)])
+        rate_limit_service.check(db, LOGIN_ACTION, bucket_key, LOGIN_LIMITS)
     except RateLimitExceeded:
         raise HTTPException(
             status_code=429,
             detail="Too many login attempts. Please try again later.",
         ) from None
+
+    # Every login attempt counts, successful or not.
+    rate_limit_service.record(db, LOGIN_ACTION, bucket_key)

@@ -9,8 +9,8 @@ from sqlalchemy import create_engine, make_url, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from alembic import command
+from physics_ai_tutor.api.v1 import admin as admin_router
 from physics_ai_tutor.api.v1 import ai as ai_router
-from physics_ai_tutor.core.rate_limit import ai_ask_rate_limiter, login_rate_limiter
 from physics_ai_tutor.database.base import Base
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.main import app
@@ -163,24 +163,14 @@ def _mock_translate(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _background_translation_uses_test_db(monkeypatch):
-    # The AI router opens its own session for background translation.
-    monkeypatch.setattr(
-        ai_router, "SessionLocal", sessionmaker(bind=engine, expire_on_commit=False)
-    )
+    # The AI router opens its own session for background tasks.
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    monkeypatch.setattr(ai_router, "SessionLocal", factory)
+    monkeypatch.setattr(admin_router, "SessionLocal", factory)
 
 
-@pytest.fixture(autouse=True)
-def _reset_ai_ask_rate_limiter():
-    ai_ask_rate_limiter.reset()
-    yield
-    ai_ask_rate_limiter.reset()
-
-
-@pytest.fixture(autouse=True)
-def _reset_login_rate_limiter():
-    login_rate_limiter.reset()
-    yield
-    login_rate_limiter.reset()
+# Rate-limit counters live in the rate_limit_hits table, which is
+# truncated by the `db` fixture like every other table.
 
 
 @pytest.fixture
@@ -226,3 +216,18 @@ def user_client(client, db):
     assert response.status_code == 200
 
     return user
+
+
+def fake_generation(answer: str):
+    """A stand-in for deepseek_service.generate_answer in ask-flow tests."""
+    from physics_ai_tutor.services.deepseek_service import GenerationResult
+
+    def _generate(system_prompt, user_prompt, temperature=None, **kwargs):
+        return GenerationResult(
+            content=answer,
+            model="mock-model",
+            prompt_tokens=11,
+            completion_tokens=22,
+        )
+
+    return _generate

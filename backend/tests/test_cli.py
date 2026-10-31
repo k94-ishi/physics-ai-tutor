@@ -66,19 +66,35 @@ def test_seed_file_has_no_duplicate_questions():
     entries = _seed_file_entries()
 
     for key in ("question_ja", "question_en"):
-        texts = [entry[key] for entry in entries]
+        texts = [entry[key] for entry in entries if entry.get(key)]
         assert len(texts) == len(set(texts)), key
+
+
+def test_seed_file_mixes_hand_translated_and_production_entries():
+    # 21 hand-translated pairs plus teacher-approved production Q&A (Japanese
+    # only; the other language is machine translated on import).
+    entries = _seed_file_entries()
+
+    assert len(entries) >= 100
+    assert sum(1 for entry in entries if entry.get("question_en")) >= 21
+    assert all(entry["question_ja"] and entry["answer_ja"] for entry in entries)
 
 
 def test_seed_keeps_hand_translations(db, _bind_cli_sessions):
     seed_module.seed()
 
     questions = db.query(Question).all()
+    hand_translated = {
+        entry["question_ja"]
+        for entry in _seed_file_entries()
+        if entry.get("question_en")
+    }
     assert all(q.question_en is not None for q in questions)
-    # The seed file ships hand translations; they must stay HUMAN, and the
-    # Japanese side is the original.
-    assert all(q.en_provenance == "HUMAN" for q in questions)
     assert all(q.ja_provenance == "ORIGINAL" for q in questions)
+    # Hand translations stay HUMAN; production entries get MACHINE ones.
+    for q in questions:
+        expected = "HUMAN" if q.question_ja in hand_translated else "MACHINE"
+        assert q.en_provenance == expected, q.question_ja
 
 
 def test_translate_missing_cli_fills_legacy_rows(db, _bind_cli_sessions, capsys):

@@ -11,6 +11,7 @@ from physics_ai_tutor.core.exceptions import (
 )
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.repositories import (
+    ai_review_repository,
     embedding_repository,
     question_concept_repository,
     question_repository,
@@ -19,6 +20,8 @@ from physics_ai_tutor.repositories import (
 from physics_ai_tutor.schemas.concept import ConceptExtractionResult
 from physics_ai_tutor.schemas.language import Language, TextProvenance
 from physics_ai_tutor.schemas.question import (
+    AiReviewSummary,
+    GenerationMeta,
     QuestionCreate,
     QuestionListResponse,
     QuestionSource,
@@ -102,6 +105,30 @@ def prepare_for_response(
 # --- reads --------------------------------------------------------------------
 
 
+def attach_ai_reviews(db: Session, questions: list[Question]) -> None:
+    """Expose each question's latest AI verdict; call for admins only."""
+    latest = ai_review_repository.latest_for_questions(
+        db, [question.id for question in questions]
+    )
+    for question in questions:
+        row = latest.get(question.id)
+        question.ai_review = (
+            AiReviewSummary.model_validate(row) if row is not None else None
+        )
+
+
+def attach_generation_meta(questions: list[Question]) -> None:
+    """Expose generation metadata to the response; call for admins only."""
+    for question in questions:
+        question.generation = GenerationMeta(
+            model=question.generation_model,
+            prompt_version=question.prompt_version,
+            mode=question.generation_mode,
+            prompt_tokens=question.prompt_tokens,
+            completion_tokens=question.completion_tokens,
+        )
+
+
 def fetch_questions(
     db: Session,
     page: int,
@@ -113,6 +140,9 @@ def fetch_questions(
     search_answer: bool = True,
     language: Language | str = Language.JA,
     only_with_language: bool = False,
+    include_generation: bool = False,
+    sort: str | None = None,
+    ai_verdict: str | None = None,
 ) -> QuestionListResponse:
     offset = (page - 1) * size
     language_filter = Language(language) if only_with_language else None
@@ -127,6 +157,8 @@ def fetch_questions(
         search_question=search_question,
         search_answer=search_answer,
         language=language_filter,
+        sort=sort,
+        ai_verdict=ai_verdict,
     )
 
     total = question_repository.count_questions(
@@ -137,9 +169,16 @@ def fetch_questions(
         search_question=search_question,
         search_answer=search_answer,
         language=language_filter,
+        ai_verdict=ai_verdict,
     )
 
     prepare_for_response(db, questions, language)
+
+    # Generation metadata is admin-only; attach it while the ORM objects are
+    # still in hand (the response models are built from them next).
+    if include_generation:
+        attach_generation_meta(questions)
+        attach_ai_reviews(db, questions)
 
     logger.info(
         "Questions fetched: page=%d size=%d keyword_present=%s results=%d total=%d",
@@ -473,6 +512,7 @@ def review_question(
     reviewer_id: int,
     question: str | None = None,
     answer: str | None = None,
+    reason: str | None = None,
     comment: str | None = None,
     language: Language | str | None = None,
     response_language: Language | str = Language.JA,
@@ -518,6 +558,7 @@ def review_question(
             action=action,
             reviewer_id=reviewer_id,
             language=lang.value,
+            reason=reason,
             before_question=before[0],
             before_answer=before[1],
             after_question=after[0],
@@ -639,6 +680,7 @@ def bulk_review_questions(
     question_ids: list[int],
     action: QuestionReviewAction,
     reviewer_id: int,
+    reason: str | None = None,
     comment: str | None = None,
     response_language: Language | str = Language.JA,
 ) -> tuple[list[Question], list[int]]:
@@ -651,6 +693,7 @@ def bulk_review_questions(
             question_id,
             action=action,
             reviewer_id=reviewer_id,
+            reason=reason,
             comment=comment,
             response_language=response_language,
         )
@@ -670,6 +713,7 @@ def save_ai_question(
     language: Language | str = Language.JA,
     source: str = QuestionSource.AI_GENERATED,
     retrieved_question_ids: list[int] | None = None,
+    generation: GenerationMeta | None = None,
 ) -> Question | None:
     """Best-effort save of an AI answer as a new UNREVIEWED question.
 
@@ -692,6 +736,14 @@ def save_ai_question(
             source=source,
             retrieved_question_ids=retrieved_question_ids,
         )
+
+        if generation is not None:
+            db_question.generation_model = generation.model
+            db_question.prompt_version = generation.prompt_version
+            db_question.generation_mode = generation.mode
+            db_question.prompt_tokens = generation.prompt_tokens
+            db_question.completion_tokens = generation.completion_tokens
+            db.flush()
 
         _embed_language(db, db_question, lang)
 

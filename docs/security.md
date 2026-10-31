@@ -9,10 +9,10 @@ practices contributors are expected to follow. It complements
 
 ## Threat model in brief
 
-- Students use the site anonymously. They can read approved content, run
-  semantic search, and ask the AI. They must never see unreviewed or
-  rejected content, and they must not be able to make the project pay for
-  unbounded LLM usage.
+- Students use the site anonymously or sign in with Google for a larger
+  AI allowance. They can read approved content, run semantic search, and
+  ask the AI. They must never see unreviewed or rejected content, and they
+  must not be able to make the project pay for unbounded LLM usage.
 - Admins (teachers) log in to manage content and users. Their sessions must
   be protected against theft and cross-site abuse.
 - The backend holds third-party API keys and the database credentials.
@@ -22,8 +22,25 @@ practices contributors are expected to follow. It complements
 
 ## Authentication and sessions
 
-- Login is email + password. Passwords are hashed with Argon2id via
-  `pwdlib`; plaintext is never stored or logged.
+- Admins log in with email + password. Passwords are hashed with Argon2id
+  via `pwdlib`; plaintext is never stored or logged.
+- Students log in with Google (OAuth 2.0 authorization code flow, scopes
+  `openid email` only). The backend redirects to Google with a random
+  `state` stored in a short-lived HttpOnly cookie, verifies it on the
+  callback, exchanges the code server-side with the client secret, and
+  checks the ID token's issuer, audience, expiry, and `email_verified`
+  before trusting it. The token comes straight from Google's token
+  endpoint over TLS, so its signature is not re-verified.
+- What is stored about a signed-in student, why, and how to request
+  deletion is published at [`/privacy`](https://ai-tutor.pencil-net.com/privacy)
+  (source: `frontend/src/app/privacy/page.tsx`); the Google consent screen
+  links to it. Keep that page in sync with schema changes. It is the one
+  route `robots.txt` allows (`frontend/src/app/robots.ts`); the rest of the
+  site stays disallowed.
+- Password accounts and Google accounts are strictly separate. A Google
+  sign-in whose e-mail belongs to a password account is rejected rather
+  than linked, and Google accounts cannot use the password endpoints.
+  Linking by e-mail match alone is a known account-takeover path.
 - A successful login sets a JWT in an **HttpOnly** cookie. JavaScript cannot
   read it, which removes the token from XSS reach.
 - Cookie flags come from settings: `COOKIE_SECURE=true` in production
@@ -38,9 +55,10 @@ practices contributors are expected to follow. It complements
 - Tokens carry `iss`, `iat`, `exp`, `jti`, `sub`, and `role`. Signature
   algorithm is fixed to `JWT_ALGORITHM` (HS256); the verifier does not
   accept `alg` from the token.
-- There is no self sign-up. The first admin is created with the CLI; further
-  accounts are created by admins through the API. An admin cannot delete
-  their own account, which prevents locking everyone out by accident.
+- Google sign-in is the only self sign-up and always yields role `user`.
+  The first admin is created with the CLI; further password accounts are
+  created by admins through the API. An admin cannot delete their own
+  account, which prevents locking everyone out by accident.
 
 Secrets:
 
@@ -112,29 +130,51 @@ acceptable.
 
 ## Abuse and cost control
 
-The AI endpoint calls a paid LLM, so it is rate limited per client IP:
+The AI endpoint calls a paid LLM, so it is rate limited. Anonymous callers
+are bucketed by client IP; signed-in callers by account, so a signed-in
+session is not throttled by other students behind the same school IP:
 
-| Caller | Limits |
-| --- | --- |
-| Anonymous or `user` | 3 per minute, 10 per hour, 30 per day |
-| `admin` | 3000 per day |
+| Caller | Bucket | Limits |
+| --- | --- | --- |
+| Anonymous | IP | 3 per hour, 10 per day |
+| `user` | account | 10 per hour, 30 per day |
+| `admin` | account | 3000 per day |
 
 Login attempts are limited to 5 per minute and 20 per hour per IP to slow
 credential stuffing.
 
 Notes:
 
-- The limiter is in-process memory. It resets on restart and is per
-  instance. If the backend is ever scaled horizontally, move it to a shared
-  store such as Redis.
+- Counters are rows in the `rate_limit_hits` table, so they survive
+  restarts and are shared across instances. Expired rows are pruned
+  opportunistically on a small fraction of requests.
+- Only requests that trigger a generation consume quota: the dependency
+  rejects callers already over the limit, and the hit is recorded on a
+  cache miss just before the LLM call. A cache hit is free. Two concurrent
+  requests can both pass the check before either records, so a caller may
+  occasionally get one extra generation; at these limits that is accepted
+  rather than locking.
 - `TRUST_FORWARDED_FOR=true` reads the client IP from `X-Forwarded-For`.
   Only enable it behind a proxy you control (Render sets this header). If
   the backend is ever exposed directly, set it to `false`, otherwise clients
   can spoof their IP and bypass the limit.
+- The answer prompt (v2) restricts the model to high-school physics: any
+  other request is declined with a fixed sentence. The model marks declines
+  with a leading `[OFF_TOPIC]` sentinel; the ask route strips it and returns
+  the message **without saving it**, so off-topic exchanges never enter the
+  knowledge base or the cache. The ask still consumes the caller's quota,
+  and declines are logged with the rate-limit bucket for monitoring.
 - Exact-match lookup and semantic search run before any LLM call, and every
   AI answer is cached as a question row. The ask endpoint returns a cached
   answer (including unreviewed ones, labelled) for an identical question, so
   repeated questions do not cost tokens twice.
+- When `AI_REVIEW_ENABLED=true`, each new AI answer additionally triggers
+  one grading call whose verdict lands in `ai_reviews`; it is advisory only
+  and never changes a question's status. Off by default; cache hits never
+  trigger it. Backlog runs (CLI or admin-triggered) are recorded in
+  `ai_review_runs`, at most one at a time, and every reviewer call counts
+  against a rolling 24h budget (`AI_REVIEW_DAILY_CAP`), so neither a stuck
+  job nor an eager admin can spend unbounded tokens.
 - Each created row also triggers one translation call and one extra
   embedding call for the other language. These run at creation (AI answers
   translate in a background task), so they are bounded by the same ask rate

@@ -134,7 +134,7 @@ def generate_rag_answer(
     question: str,
     retrieved_question_ids: list[int] | None = None,
     language: Language | str = Language.JA,
-) -> tuple[str, list[int]]:
+) -> tuple[deepseek_service.GenerationResult, list[int]]:
     lang = Language(language)
 
     if retrieved_question_ids:
@@ -144,7 +144,7 @@ def generate_rag_answer(
 
     user_prompt = build_context_prompt(question, context, lang)
 
-    answer = deepseek_service.chat_completion(
+    result = deepseek_service.generate_answer(
         prompts.RAG_SYSTEM_PROMPTS[lang], user_prompt
     )
 
@@ -154,4 +154,4 @@ def generate_rag_answer(
         len(context),
     )
 
-    return answer, [item.id for item in context]
+    return result, [item.id for item in context]

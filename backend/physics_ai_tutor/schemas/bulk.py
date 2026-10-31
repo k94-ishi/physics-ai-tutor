@@ -1,7 +1,11 @@
 from pydantic import BaseModel, Field, model_validator
 
 from physics_ai_tutor.schemas.question import QuestionResponse
-from physics_ai_tutor.schemas.question_review import QuestionReviewAction
+from physics_ai_tutor.schemas.question_review import (
+    QuestionReviewAction,
+    QuestionReviewReason,
+    validate_reason,
+)
 
 
 class BulkDeleteRequest(BaseModel):
@@ -16,6 +20,7 @@ class BulkDeleteResponse(BaseModel):
 class BulkReviewRequest(BaseModel):
     question_ids: list[int] = Field(min_length=1, max_length=100)
     action: QuestionReviewAction
+    reason: QuestionReviewReason | None = None
     comment: str | None = None
 
     @model_validator(mode="after")
@@ -26,6 +31,10 @@ class BulkReviewRequest(BaseModel):
                 "edit and approve questions individually instead."
             )
         return self
+
+    @model_validator(mode="after")
+    def _require_reason(self) -> "BulkReviewRequest":
+        return validate_reason(self)
 
 
 class BulkReviewResponse(BaseModel):

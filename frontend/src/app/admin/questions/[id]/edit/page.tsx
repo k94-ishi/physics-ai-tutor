@@ -9,8 +9,10 @@ import {
     updateQuestion,
 } from "@/lib/api";
 import {
+    AiVerdict,
     ContentLanguage,
     Question,
+    ReviewReason,
     UpdateQuestionRequest,
 } from "@/types/question";
 import Card from "@/components/ui/Card";
@@ -19,10 +21,17 @@ import Button from "@/components/ui/Button";
 import LoadingState from "@/components/ui/LoadingState";
 import StatusMessage from "@/components/ui/StatusMessage";
 import { showToast } from "@/components/ui/Toast";
+import ReviewReasonDialog from "@/components/ui/ReviewReasonDialog";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { TranslationKey } from "@/lib/i18n/translations";
 
 const LANGUAGES: ContentLanguage[] = ["ja", "en"];
+
+const AI_VERDICT_LABEL_KEYS: Record<AiVerdict, TranslationKey> = {
+    APPROVE: "admin.aiShortApprove",
+    EDIT: "admin.aiShortEdit",
+    REJECT: "admin.aiShortReject",
+};
 
 const LANGUAGE_LABELS: Record<ContentLanguage, string> = {
     ja: "日本語",
@@ -80,6 +89,8 @@ export default function EditQuestionPage() {
     const [submitting, setSubmitting] = useState(false);
     const [approving, setApproving] = useState(false);
     const [translating, setTranslating] = useState(false);
+    const [reasonDialogOpen, setReasonDialogOpen] = useState(false);
+    const [suggestionApplied, setSuggestionApplied] = useState(false);
     const [errors, setErrors] = useState<Partial<Record<ContentLanguage, string>>>(
         {}
     );
@@ -147,6 +158,20 @@ export default function EditQuestionPage() {
         return changed ? changes : null;
     };
 
+    const changedLanguages = (): ContentLanguage[] => {
+        if (loaded === null) {
+            return [];
+        }
+
+        const original = textsFromQuestion(loaded);
+
+        return LANGUAGES.filter(
+            (lang) =>
+                texts[lang].question.trim() !== original[lang].question.trim() ||
+                texts[lang].answer.trim() !== original[lang].answer.trim()
+        );
+    };
+
     const validate = (): Partial<Record<ContentLanguage, string>> => {
         const nextErrors: Partial<Record<ContentLanguage, string>> = {};
 
@@ -208,20 +233,79 @@ export default function EditQuestionPage() {
     };
 
     const handleSaveAndApprove = async () => {
+        const nextErrors = validate();
+        setErrors(nextErrors);
+
+        if (Object.keys(nextErrors).length > 0) {
+            return;
+        }
+
+        // An edited approval must be labelled with why the text changed;
+        // the dialog's confirm resumes via submitSaveAndApprove.
+        if (changedLanguages().length > 0) {
+            setReasonDialogOpen(true);
+            return;
+        }
+
+        await submitSaveAndApprove(undefined, undefined);
+    };
+
+    const submitSaveAndApprove = async (
+        reason: ReviewReason | undefined,
+        comment: string | undefined
+    ) => {
+        setReasonDialogOpen(false);
         setApproving(true);
 
         try {
-            if (await saveChanges()) {
+            // EDIT_APPROVE stores the teacher's correction as a before/after
+            // diff in the review history; a separate PUT followed by APPROVE
+            // would record the edit as a no-op.
+            const changed = changedLanguages();
+
+            if (changed.length === 0) {
                 await reviewQuestion(id, { action: "APPROVE" });
-                showToast(t("editQuestion.savedAndApproved"));
-                router.push("/admin/questions");
-                return;
+            } else {
+                // Machine-translated languages first: approving the original
+                // regenerates MACHINE counterparts, which would discard a
+                // correction the teacher just made in the other language.
+                const ordered = [...changed].sort(
+                    (a, b) =>
+                        (loaded?.texts[a]?.provenance === "MACHINE" ? 0 : 1) -
+                        (loaded?.texts[b]?.provenance === "MACHINE" ? 0 : 1)
+                );
+
+                for (const lang of ordered) {
+                    await reviewQuestion(id, {
+                        action: "EDIT_APPROVE",
+                        language: lang,
+                        question: texts[lang].question,
+                        answer: texts[lang].answer,
+                        reason,
+                        comment,
+                    });
+                }
             }
+
+            showToast(t("editQuestion.savedAndApproved"));
+            router.push("/admin/questions");
+            return;
         } catch (error) {
             console.error(error);
             showToast(t("editQuestion.actionFailed"), "error");
         }
         setApproving(false);
+    };
+
+    // Copies the AI reviewer's corrected answer into the form; it is only
+    // persisted when the teacher saves or approves, like any other edit.
+    const applySuggestion = () => {
+        const suggestion = loaded?.ai_review?.suggested_answer;
+        if (!loaded || !suggestion) {
+            return;
+        }
+        setField(loaded.original_language as ContentLanguage, "answer", suggestion);
+        setSuggestionApplied(true);
     };
 
     const handleTranslate = async () => {
@@ -258,9 +342,58 @@ export default function EditQuestionPage() {
         (lang) => loaded?.texts[lang] === undefined
     );
 
+    const aiReview = loaded?.ai_review ?? null;
+    const aiVerdictLabel = aiReview?.verdict
+        ? t(AI_VERDICT_LABEL_KEYS[aiReview.verdict])
+        : t("admin.aiShortUnparsed");
+
     return (
         <main className="flex flex-col gap-6">
             <h1 className="text-2xl font-bold text-gray-900">{t("editQuestion.title")}</h1>
+
+            {aiReview && (
+                <Card className="flex flex-col gap-3 border-purple-200 bg-purple-50">
+                    <div className="flex items-center justify-between gap-3">
+                        <h2 className="text-sm font-semibold text-purple-900">
+                            {t("editQuestion.aiSuggestionHeading")}
+                        </h2>
+                        <span className="text-xs text-purple-800">
+                            {t("editQuestion.aiVerdictLine", {
+                                verdict: aiVerdictLabel,
+                                confidence: Math.round((aiReview.confidence ?? 0) * 100),
+                            })}
+                        </span>
+                    </div>
+
+                    {aiReview.rationale && (
+                        <p className="text-sm text-purple-900">{aiReview.rationale}</p>
+                    )}
+
+                    {aiReview.suggested_answer && (
+                        <>
+                            <pre className="whitespace-pre-wrap rounded-md bg-white p-3 text-sm text-gray-800">
+                                {aiReview.suggested_answer}
+                            </pre>
+                            <div className="flex items-center gap-3">
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    disabled={busy || suggestionApplied}
+                                    onClick={applySuggestion}
+                                >
+                                    {t("editQuestion.applySuggestion")}
+                                </Button>
+                                {suggestionApplied && (
+                                    <span className="rounded-full bg-purple-200 px-2 py-0.5 text-xs font-medium text-purple-900">
+                                        {t("editQuestion.suggestionApplied")}
+                                    </span>
+                                )}
+                            </div>
+                        </>
+                    )}
+                </Card>
+            )}
 
             <Card>
                 <form
@@ -336,6 +469,16 @@ export default function EditQuestionPage() {
                     </div>
                 </form>
             </Card>
+            <ReviewReasonDialog
+                open={reasonDialogOpen}
+                title={t("reviewReason.dialogEditTitle")}
+                confirming={approving}
+                defaultReason={aiReview?.reasons[0]}
+                onConfirm={(reason, comment) =>
+                    submitSaveAndApprove(reason, comment)
+                }
+                onCancel={() => setReasonDialogOpen(false)}
+            />
         </main>
     );
 }

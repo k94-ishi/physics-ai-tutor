@@ -197,7 +197,7 @@ def test_get_questions_hides_rejected_from_non_admin(admin_client, client):
     create_response = _post(admin_client, "却下予定質問", "却下予定回答")
     question_id = create_response.json()[Key.ID]
 
-    admin_client.post(f"{PATH}/{question_id}/review", json={"action": "REJECT"})
+    admin_client.post(f"{PATH}/{question_id}/review", json=REJECT_BODY)
 
     admin_list = admin_client.get(PATH, params={"size": 100})
     public_list = client.get(PATH, params={"size": 100})
@@ -239,7 +239,7 @@ def test_get_question_rejected_not_found_for_non_admin(admin_client, client):
     create_response = _post(admin_client, "却下予定質問2", "却下予定回答2")
     question_id = create_response.json()[Key.ID]
 
-    admin_client.post(f"{PATH}/{question_id}/review", json={"action": "REJECT"})
+    admin_client.post(f"{PATH}/{question_id}/review", json=REJECT_BODY)
 
     response = client.get(f"{PATH}/{question_id}")
 
@@ -324,7 +324,7 @@ def test_get_question_hides_unreviewed_from_public(admin_client, client):
 def test_get_exact_match_question_excludes_rejected(admin_client, client):
     create_response = _post(admin_client, "却下済み完全一致質問", "回答")
     question_id = create_response.json()[Key.ID]
-    admin_client.post(f"{PATH}/{question_id}/review", json={"action": "REJECT"})
+    admin_client.post(f"{PATH}/{question_id}/review", json=REJECT_BODY)
 
     response = client.get(
         f"{PATH}/exact-match", params={"question": "却下済み完全一致質問"}
@@ -498,9 +498,7 @@ def test_review_question_reject(admin_client):
     create_response = _post(admin_client, "却下対象", "却下対象回答")
     question_id = create_response.json()[Key.ID]
 
-    response = admin_client.post(
-        f"{PATH}/{question_id}/review", json={"action": "REJECT"}
-    )
+    response = admin_client.post(f"{PATH}/{question_id}/review", json=REJECT_BODY)
 
     assert response.status_code == 200
     assert response.json()[Key.STATUS] == "REJECTED"
@@ -514,6 +512,7 @@ def test_review_question_edit_approve(admin_client):
         f"{PATH}/{question_id}/review",
         json={
             "action": "EDIT_APPROVE",
+            "reason": "INCOMPLETE",
             "question": "編集後質問",
             "answer": "編集後回答",
         },
@@ -554,7 +553,7 @@ def test_get_question_reviews(admin_client):
     create_response = _post(admin_client, "履歴対象", "履歴対象回答")
     question_id = create_response.json()[Key.ID]
 
-    admin_client.post(f"{PATH}/{question_id}/review", json={"action": "REJECT"})
+    admin_client.post(f"{PATH}/{question_id}/review", json=REJECT_BODY)
 
     response = admin_client.get(f"{PATH}/{question_id}/reviews")
 
@@ -763,6 +762,7 @@ def test_get_questions_response_includes_concepts(admin_client):
 
 BULK_DELETE_PATH = f"{PATH}/bulk-delete"
 BULK_REVIEW_PATH = f"{PATH}/bulk-review"
+REJECT_BODY = {"action": "REJECT", "reason": "PHYSICS_ERROR"}
 CONCEPTS_EXTRACT_PATH = f"{PATH}/concepts/extract"
 
 
@@ -824,7 +824,8 @@ def test_bulk_review_questions_reject(admin_client):
     id1 = _post(admin_client, "一括却下1", "回答1").json()[Key.ID]
 
     response = admin_client.post(
-        BULK_REVIEW_PATH, json={"question_ids": [id1], "action": "REJECT"}
+        BULK_REVIEW_PATH,
+        json={"question_ids": [id1], "action": "REJECT", "reason": "OFF_TOPIC"},
     )
 
     assert response.status_code == 200

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import type { ReactNode } from "react";
+import Footer from "@/components/Footer";
 import Header from "@/components/Header";
 import Toaster from "@/components/ui/Toast";
 import { AuthProvider } from "@/lib/auth/AuthContext";
@@ -48,6 +49,7 @@ export default function RootLayout({
             <div className="mx-auto w-full max-w-4xl flex-1 px-3 py-5">
               {children}
             </div>
+            <Footer />
             <Toaster />
           </AuthProvider>
         </LanguageProvider>

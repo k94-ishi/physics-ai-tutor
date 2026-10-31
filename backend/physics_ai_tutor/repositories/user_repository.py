@@ -44,3 +44,11 @@ def delete_user(
 
     db.delete(user)
     db.flush()
+
+
+def get_user_by_google_sub(
+    db: Session,
+    google_sub: str,
+) -> User | None:
+
+    return db.query(User).filter(User.google_sub == google_sub).first()

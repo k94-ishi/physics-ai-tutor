@@ -129,6 +129,11 @@ with its text in each language.
 | `status` | `varchar(20)` | no | `'APPROVED'` | Review state of the physics content. Indexed. Applies to every language. |
 | `source` | `varchar(20)` | no | `'MANUAL'` | How the row was produced. |
 | `retrieved_question_ids` | `integer[]` | no | `'{}'` | IDs of approved questions used as RAG context. Language independent. |
+| `generation_model` | `varchar` | yes | | LLM that generated the answer; `NULL` for manual/imported rows. |
+| `prompt_version` | `varchar(20)` | yes | | `prompts.ANSWER_PROMPT_VERSION` at generation time. |
+| `generation_mode` | `varchar(10)` | yes | | `DIRECT` or `RAG`. |
+| `prompt_tokens` | `integer` | yes | | Usage reported by the API. |
+| `completion_tokens` | `integer` | yes | | Usage reported by the API. |
 | `created_at`, `updated_at` | `timestamptz` | no | `now()` | `updated_at` refreshed by the ORM. |
 
 Constraints: `questions_has_text` (at least one language present),
@@ -240,6 +245,7 @@ Append-only audit log of admin review actions on a question.
 | `id` | `integer` | no | serial | Primary key |
 | `question_id` | `integer` | no | | FK to `questions.id`, `ON DELETE CASCADE` |
 | `action` | `varchar(20)` | no | | `APPROVE`, `EDIT_APPROVE`, or `REJECT` |
+| `reason` | `varchar(30)` | yes | | Why the answer was rejected or edited (`PHYSICS_ERROR`, `OFF_TOPIC`, ...); `NULL` for plain approvals and for all rows created before 2026-10-28. |
 | `language` | `varchar(10)` | no | `'ja'` | Language the reviewer read or edited; the before/after snapshots are in this language. |
 | `before_question` | `text` | yes | | Snapshot before the action |
 | `before_answer` | `text` | yes | | Snapshot before the action |
@@ -254,19 +260,101 @@ Rows are never updated. Query them with `GET /api/v1/questions/{id}/reviews`
 
 ### `users`
 
-Admin and regular user accounts for the management UI.
+Admin accounts (password) and student accounts (Google Sign-In).
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
 | `id` | `integer` | no | serial | Primary key |
 | `email` | `varchar` | no | | Unique, indexed (`ix_users_email`). |
-| `hashed_password` | `varchar` | no | | Argon2 hash via `pwdlib`. |
+| `hashed_password` | `varchar` | yes | | Argon2 hash via `pwdlib`; `NULL` for Google accounts. |
+| `auth_provider` | `varchar` | no | `'password'` | `password` or `google`. |
+| `google_sub` | `varchar` | yes | | Google's stable subject id; unique (`ix_users_google_sub`), `NULL` for password accounts. |
 | `role` | `varchar` | no | `'user'` (ORM default) | `admin` or `user`. Default is applied by SQLAlchemy, not the database. |
 | `created_at` | `timestamp` | no | `now()` | Note: timezone-naive, unlike other tables. |
 
-There is no public sign-up. Create the first admin with the CLI (see
-[Creating an admin user](#creating-an-admin-user)); further users can be
-created by an admin through `POST /api/v1/users`.
+Two check constraints tie the provider to its credential:
+`users_password_provider` (`auth_provider = 'password'` iff
+`hashed_password IS NOT NULL`) and `users_google_provider`
+(`auth_provider = 'google'` iff `google_sub IS NOT NULL`).
+
+Students self-register through Google Sign-In and always get role `user`.
+Create the first admin with the CLI (see
+[Creating an admin user](#creating-an-admin-user)); further password
+accounts can be created by an admin through `POST /api/v1/users`.
+
+### `question_asks`
+
+One row per signed-in ask, cache hit or fresh generation; anonymous asks are
+not recorded. Powers `GET /users/me/questions` and the planned usage counts.
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | `integer` | no | serial | Primary key |
+| `question_id` | `integer` | no | | FK → `questions.id`, `ON DELETE CASCADE`, indexed. |
+| `user_id` | `integer` | yes | | FK → `users.id`, `ON DELETE SET NULL`: deleting the account unlinks the history but keeps aggregate counts. |
+| `cache_hit` | `boolean` | no | `false` | True when the answer came from the cache; set explicitly by the recorder, not inferred from timestamps. |
+| `language` | `varchar(10)` | no | `'ja'` | Language the student asked in. |
+| `created_at` | `timestamptz` | no | `now()` | |
+
+Index `ix_question_asks_user_created` on (`user_id`, `created_at`) serves the
+per-user listing.
+
+Note on review history data: rows created before 2026-10-28 by the admin
+UI's "Save and approve" have `action = 'APPROVE'` with `before_* = after_*`
+even when the teacher edited the text first (the edit went through a
+separate `PUT`). Analyses of corrections should exclude rows from before
+that date.
+
+### `ai_reviews`
+
+Verdicts from the AI pre-reviewer ([13] fills it), kept apart from the human
+history so agreement between the two can be measured ([15]). Advisory only;
+rows here never change a question's status.
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | `integer` | no | serial | Primary key |
+| `question_id` | `integer` | no | | FK → `questions.id`, `ON DELETE CASCADE`. |
+| `language` | `varchar(10)` | no | `'ja'` | Language of the graded text. |
+| `verdict` | `varchar(10)` | yes | | `APPROVE`, `EDIT`, or `REJECT`; `NULL` when the model output could not be parsed (raw text kept in `rationale`). |
+| `confidence` | `float` | yes | | 0–1. |
+| `reasons` | `varchar[]` | no | `{}` | Codes from the human review vocabulary (`question_reviews.reason`). |
+| `rationale` | `text` | yes | | Free-text justification. |
+| `suggested_answer` | `text` | yes | | Proposed correction, if any. |
+| `rubric` | `jsonb` | yes | | Per-criterion scores; JSONB so criteria can evolve without migrations. |
+| `model`, `prompt_version` | `varchar` | no | | Which reviewer produced the verdict. |
+| `prompt_tokens`, `completion_tokens` | `integer` | yes | | Usage. |
+| `created_at` | `timestamptz` | no | `now()` | Indexed with `question_id` (`ix_ai_reviews_question_created`). |
+
+`question_reviews` additionally gained `reviewer_kind` (`human` default,
+`ai`, `policy`) and a nullable `policy_name`, so when a policy is later
+allowed to act, its status changes are ordinary review rows that remain
+distinguishable from a teacher's.
+
+### `ai_review_runs`
+
+One row per AI reviewer invocation (scheduled, manual, or CLI): scope,
+the fixed list of question ids chosen at start, requested/reviewed/failed
+counts (updated per question so progress can be polled), token totals,
+status (`running`/`done`/`failed`/`cancelled`), timestamps, and the admin
+who started it (`SET NULL` on account deletion). A partial unique index
+(`uq_ai_review_runs_single_running`) allows at most one `running` row;
+runs stuck beyond 30 minutes are marked failed by the next start.
+
+### `rate_limit_hits`
+
+One row per counted request for the sliding-window rate limiter (see
+[docs/security.md](security.md#abuse-and-cost-control)).
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | `integer` | no | serial | Primary key |
+| `action` | `varchar` | no | | `ai_ask` or `login`. |
+| `bucket_key` | `varchar` | no | | `ip:<address>` for anonymous callers, `user:<id>` for signed-in callers. |
+| `created_at` | `timestamp` | no | `now()` | Compared against the database clock. |
+
+Rows older than one day are pruned opportunistically on about 1% of
+record calls, so the table stays small without a scheduled job.
 
 ---
 
@@ -285,6 +373,14 @@ created by an admin through `POST /api/v1/users`.
 | `question_reviews_pkey` | `question_reviews` | PK (`id`) |
 | `users_pkey` | `users` | PK (`id`) |
 | `ix_users_email` | `users` | UNIQUE btree (`email`) |
+| `ix_users_google_sub` | `users` | UNIQUE btree (`google_sub`) |
+| `users_password_provider` | `users` | CHECK provider/password pairing |
+| `question_asks_pkey` | `question_asks` | PK (`id`) |
+| `ix_question_asks_question_id` | `question_asks` | btree (`question_id`) |
+| `ix_question_asks_user_created` | `question_asks` | btree (`user_id`, `created_at`) |
+| `users_google_provider` | `users` | CHECK provider/google_sub pairing |
+| `rate_limit_hits_pkey` | `rate_limit_hits` | PK (`id`) |
+| `ix_rate_limit_hits_window` | `rate_limit_hits` | btree (`action`, `bucket_key`, `created_at`) |
 
 Foreign keys:
 
@@ -295,6 +391,9 @@ Foreign keys:
 | `question_concepts.concept_id` | `concepts.id` | CASCADE |
 | `question_reviews.question_id` | `questions.id` | CASCADE |
 | `question_reviews.reviewer_id` | `users.id` | SET NULL |
+| `question_asks.question_id` | `questions.id` | CASCADE |
+| `question_asks.user_id` | `users.id` | SET NULL |
+| `ai_reviews.question_id` | `questions.id` | CASCADE |
 
 Deleting a question therefore removes its embeddings, concept links, and
 review history. Concepts themselves are never deleted automatically, even if
@@ -348,7 +447,15 @@ Revisions in order from the first to the current head:
 | `2c62a31a9031` | 2026-08-14 | Add `language` to `questions` |
 | `7f3b1c9d4e21` | 2026-08-16 | Add `retrieved_question_ids` to `questions` |
 | `a1d2e3f4b5c6` | 2026-10-24 | Make `question_reviews.reviewer_id` nullable with `ON DELETE SET NULL` |
-| `b2c3d4e5f6a7` | 2026-10-25 | Bilingual rows: `question`/`answer` become `question_ja`/`answer_ja` (`text`), add `*_en` and provenance columns, `original_language`, `question_embeddings.language`, `concepts.name_ja`/`name_en`, `question_reviews.language` (**head**). Downgrade deletes English-only rows. |
+| `b2c3d4e5f6a7` | 2026-10-25 | Bilingual rows: `question`/`answer` become `question_ja`/`answer_ja` (`text`), add `*_en` and provenance columns, `original_language`, `question_embeddings.language`, `concepts.name_ja`/`name_en`, `question_reviews.language`. Downgrade deletes English-only rows. |
+| `c8d9e0f1a2b3` | 2026-10-27 | Create `rate_limit_hits` for the Postgres-backed rate limiter |
+| `d9e0f1a2b3c4` | 2026-10-27 | Google Sign-In: `users.hashed_password` nullable, add `auth_provider` and unique `google_sub`, provider check constraints. Downgrade deletes Google accounts. |
+| `e0f1a2b3c4d5` | 2026-10-28 | Create `question_asks`: per-user ask history for signed-in callers |
+| `f1a2b3c4d5e6` | 2026-10-28 | Add `question_asks.cache_hit` for the usage dashboard |
+| `a2b3c4d5e6f7` | 2026-10-28 | Add `question_reviews.reason`: labelled reject/edit codes |
+| `b3c4d5e6f7a8` | 2026-10-28 | Add generation metadata to `questions` (model, prompt version, mode, token usage) |
+| `c4d5e6f7a8b9` | 2026-10-29 | Create `ai_reviews`; add `reviewer_kind` and `policy_name` to `question_reviews` |
+| `d5e6f7a8b9c0` | 2026-10-30 | Create `ai_review_runs`: recorded reviewer runs with a single-running guard (**head**) |
 
 The chain is linear with a single head. Verify with:
 
@@ -462,6 +569,12 @@ docker compose exec backend uv run python -m physics_ai_tutor.database.seed
 
 ### Seed data
 
+`seed.json` holds 144 entries: 21 hand-translated bilingual pairs plus 123
+teacher-approved Q&A exported from production on 2026-10-30 (Japanese
+only; the English side is machine translated on import). Refresh the
+production part by exporting `questions` with `status = 'APPROVED'` again
+after a review pass.
+
 `backend/physics_ai_tutor/database/seed.py` loads
 `backend/physics_ai_tutor/database/seed.json` and inserts each entry as an
 `APPROVED` / `MANUAL` question with embeddings in every language. Entries
@@ -547,6 +660,34 @@ automatically:
 Set `TEST_DATABASE_URL` explicitly to use a specific database (CI pins it
 to `physics_ai_tutor_test`; `docker compose exec backend uv run pytest`
 uses the in-network URL set in `docker-compose.yml`).
+
+---
+
+## Review dataset export
+
+`physics_ai_tutor/cli/export_reviews.py` (and `GET /admin/reviews/export`)
+emit one JSON object per `question_reviews` row, oldest first, with these
+fields in order:
+
+| Field | From | Notes |
+| --- | --- | --- |
+| `review_id`, `question_id` | ids | |
+| `language` | `question_reviews.language` | Text the reviewer looked at or edited. |
+| `source` | `questions.source` | `MANUAL`, `AI_GENERATED`, `RAG_RESULT`. |
+| `generation_model`, `prompt_version`, `generation_mode` | `questions` | `null` for manual rows and rows generated before 2026-10-28. |
+| `retrieved_question_ids` | `questions` | RAG grounding ids. |
+| `concepts` | `question_concepts` | Names in `language`. |
+| `question_before`, `answer_before`, `question_after`, `answer_after` | `question_reviews` | Equal for plain approvals. |
+| `action`, `reason`, `comment` | `question_reviews` | `reason` is `null` for approvals and for rows before 2026-10-28. |
+| `reviewer_kind`, `policy_name` | `question_reviews` | `human` for everything so far. |
+| `reviewer_hash` | derived | HMAC-SHA256 of the reviewer id keyed with `JWT_SECRET_KEY`, first 16 hex chars; `null` when the reviewer account was deleted. No user id or e-mail is exported. |
+| `reviewed_at` | `question_reviews.created_at` | ISO 8601. |
+| `ai_verdict`, `ai_confidence`, `ai_reasons`, `ai_prompt_version`, `ai_reviewed_at` | `ai_reviews` | The latest AI verdict created *before* the human review (what the teacher could see); all `null` when there was none. Lets `review_metrics --from-file` reproduce the agreement report offline. |
+
+The default start date is the **2026-10-28 data cutoff**: before it, rows
+lack the correction diff ([07]), the reason code ([08]), and generation
+metadata ([09]), so they would read as "approved unchanged, no reason,
+unknown prompt". Pass `--all` (or `all=true`) to include them anyway.
 
 ---
 

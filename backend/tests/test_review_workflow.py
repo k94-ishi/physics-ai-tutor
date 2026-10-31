@@ -6,15 +6,14 @@ hidden from students, reviewed by an admin, then published or rejected.
 
 from physics_ai_tutor.models import QuestionEmbedding
 from physics_ai_tutor.services import deepseek_service
+from tests.conftest import fake_generation
 
 QUESTIONS = "/api/v1/questions"
 ASK = "/api/v1/ai/ask"
 
 
 def _ask(client, monkeypatch, question: str, answer: str = "AIの回答") -> None:
-    monkeypatch.setattr(
-        deepseek_service, "chat_completion", lambda system, user: answer
-    )
+    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation(answer))
     assert client.post(ASK, json={"question": question}).status_code == 200
 
 
@@ -50,7 +49,11 @@ def test_rejected_answer_stays_hidden_and_is_filterable_by_admin(
 
     reject = admin_client.post(
         f"{QUESTIONS}/{question_id}/review",
-        json={"action": "REJECT", "comment": "内容が不正確"},
+        json={
+            "action": "REJECT",
+            "reason": "PHYSICS_ERROR",
+            "comment": "内容が不正確",
+        },
     )
 
     assert reject.status_code == 200
@@ -75,6 +78,7 @@ def test_edit_approve_records_before_and_after_and_reembeds(
         f"{QUESTIONS}/{question_id}/review",
         json={
             "action": "EDIT_APPROVE",
+            "reason": "INCOMPLETE",
             "question": "編集されるAI質問ですか？",
             "answer": "修正された回答",
         },

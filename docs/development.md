@@ -154,8 +154,9 @@ Layout of `backend/tests/`:
 
 | File | Covers |
 | --- | --- |
-| `conftest.py` | Database lifecycle, `client` / `admin_client` / `user_client` fixtures, mocks for embeddings and concept extraction, rate limiter reset |
+| `conftest.py` | Database lifecycle, `client` / `admin_client` / `user_client` fixtures, mocks for embeddings and concept extraction |
 | `test_questions.py`, `test_users.py`, `test_auth.py`, `test_ai.py`, `test_health.py` | HTTP API, one file per router: status codes, auth rules, validation |
+| `test_rate_limit.py` | Postgres-backed rate limiter: window counting, pruning, check/record split |
 | `test_review_workflow.py` | End-to-end review flow: AI answer saved as unreviewed, hidden from students, approved / edited / rejected by an admin, history recorded |
 | `test_*_service.py` | Service layer: RAG context, embeddings, concepts, recommendations, question lifecycle |
 | `test_*_repository.py` | Repository queries against a real PostgreSQL + pgvector |
@@ -266,6 +267,11 @@ Backend (`backend/.env`):
 | `SAME_SITE` | no | `lax`, `strict`, or `none` |
 | `EMBEDDING_MODEL`, `DEEPSEEK_CHAT_MODEL`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MAX_TOKENS` | no | Model overrides, see `core/config.py` |
 | `TRUST_FORWARDED_FOR` | no | Use `X-Forwarded-For` for rate limiting (default `true`) |
+| `AI_REVIEW_ENABLED` | no | Grade each new AI answer into `ai_reviews` (default `false`; one extra DeepSeek call per generation) |
+| `AI_REVIEW_DAILY_CAP` | no | Rolling 24h budget of reviewer calls across all runs (default `200`) |
+| `AI_REVIEW_MAX_TOKENS` | no | Output budget for reviewer calls (default `3000`); below ~2500 the JSON with a full suggested answer gets truncated |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | no | Enable Google Sign-In for students; all three must be set (see below) |
+| `FRONTEND_URL` | no | Where the Google callback redirects the browser (default `http://localhost:3000`) |
 
 Frontend (`frontend/.env.local`):
 
@@ -273,6 +279,143 @@ Frontend (`frontend/.env.local`):
 | --- | --- |
 | `NEXT_PUBLIC_API_URL` | Backend URL used by the browser, e.g. `http://localhost:8000` |
 | `INTERNAL_API_URL` | Backend URL used by server-side rendering inside Docker, e.g. `http://backend:8000` |
+
+### Google Sign-In setup
+
+Students sign in with Google; admins keep email + password. The Google
+button only appears when the backend reports it as configured
+(`GET /api/v1/auth/providers`).
+
+1. In the Google Cloud console create a project, configure the OAuth
+   consent screen (external, scopes `openid` and `email` only, privacy
+   policy URL required for publishing), and create an OAuth client of type
+   "Web application".
+2. Add the backend callback as an authorized redirect URI, e.g.
+   `http://localhost:8000/api/v1/auth/google/callback` locally and the
+   Render URL in production. It must match `GOOGLE_REDIRECT_URI` exactly.
+3. Put the client ID and secret in `backend/.env` together with
+   `GOOGLE_REDIRECT_URI` and `FRONTEND_URL`.
+
+Students on under-18 Google Workspace for Education accounts may see
+"Access blocked" until their school's admin allows the app; the login page
+tells them to use a personal Google account instead.
+
+### Prompts
+
+All prompt texts are data: `backend/physics_ai_tutor/core/prompt_library.yaml`,
+a list of records with `family`, `name`, `language` (`null` for texts shared
+by both languages), `version`, `description`, and `text` (a YAML block scalar,
+so the prose keeps real line breaks). The `prompts` module
+and `concept_service` build their strings from it at import.
+
+```bash
+uv run python -m physics_ai_tutor.cli.show_prompts                 # read it
+uv run python -m physics_ai_tutor.cli.show_prompts --family answer
+```
+
+To change wording: edit the YAML record, bump the family's `version`, run
+the tests, and record the new fingerprint that `tests/test_prompts.py`
+reports. Versions are stored on generated rows (`questions.prompt_version`,
+`question_concepts.extraction_prompt_version`), which is what makes review
+outcomes comparable across prompt changes.
+
+### AI pre-review
+
+With `AI_REVIEW_ENABLED=true`, every new AI answer is graded in the same
+background task that translates it: a rubric prompt (family `ai_review` in
+the prompt library, per-language) returns a JSON verdict stored in
+`ai_reviews`. It is advisory only. Backfill the existing queue with:
+
+```bash
+uv run python -m physics_ai_tutor.cli.review_pending --limit 20            # no review yet
+uv run python -m physics_ai_tutor.cli.review_pending --scope stale         # older rubric version
+```
+
+Every invocation is recorded as a run (`ai_review_runs`): scope, counts,
+token totals, status. Only one run may execute at a time, and all runs
+share a rolling 24h budget (`AI_REVIEW_DAILY_CAP`, default 200 calls).
+Admins can start and watch runs from the API (`/admin/ai-review/runs`);
+each question costs one DeepSeek call regardless of `AI_REVIEW_ENABLED`.
+
+### Measuring AI-reviewer agreement
+
+Each human review on a question that already had an AI verdict forms a
+pair (the latest `ai_reviews` row created *before* the human review; the
+backlog case where a teacher reviewed first is excluded). The admin stats
+page shows the agreement section; the same tables print from:
+
+```bash
+uv run python -m physics_ai_tutor.cli.review_metrics            # since the data cutoff
+uv run python -m physics_ai_tutor.cli.review_metrics --all
+uv run python -m physics_ai_tutor.cli.review_metrics --from-file reviews.jsonl   # offline, from an export
+```
+
+The export carries each review's paired AI verdict (`ai_*` fields), so
+`--from-file` on an `export_reviews` snapshot gives the same numbers as the
+database path - handy for sharing a reproducible snapshot or analysing a
+production export on a laptop.
+
+Read it like this: **exact agreement** is AI `APPROVE`/`EDIT`/`REJECT`
+matching teacher `APPROVE`/`EDIT_APPROVE`/`REJECT` one-to-one;
+**publish agreement** collapses that to publish-vs-withhold. **Reject
+precision** is how often an AI reject was confirmed by the teacher (the
+number that decides whether auto-reject is safe); **reject recall** is how
+many teacher rejects the AI caught. The **calibration table** shows
+agreement per confidence decile - a policy should only act in buckets with
+enough pairs and very high agreement. Unparsed AI output counts as
+disagreement everywhere. Under 30 pairs every block is marked too small.
+
+### DeepSeek pricing notes (checked 2026-10-30)
+
+DeepSeek offers no Batch API: `GET /batches` on the live endpoint returns
+404 (`/models` and `/files` exist). Cheaper reviewing therefore means
+running the backlog in the off-peak discount window (UTC 16:30-00:30, JST
+01:30-09:30) and relying on context caching of the long rubric prefix;
+see the AI review run issues ([25]-[28]) for the scheduler and admin
+triggers. Re-check DeepSeek's pricing page before relying on the window.
+
+### Prompt regression check (golden set)
+
+`backend/eval/golden.jsonl` is a hand-labelled set of Q&A pairs (see
+`backend/eval/README.md`; the starter set is labelled by construction and
+should grow to 50-100 teacher-verified cases). The check grades every case
+with the current reviewer prompt at temperature 0 and compares the
+agreement metrics against the committed baseline for the same prompt
+versions:
+
+```bash
+uv run python -m physics_ai_tutor.cli.eval_prompts --dry-run        # validate only, no API
+uv run python -m physics_ai_tutor.cli.eval_prompts                  # grade + compare (12+ DeepSeek calls)
+uv run python -m physics_ai_tutor.cli.eval_prompts --regenerate     # also regenerate answers (2x calls)
+uv run python -m physics_ai_tutor.cli.eval_prompts --save-baseline  # pin the current numbers
+```
+
+Exit code 1 means a metric dropped more than the tolerance (default 0.05)
+below the baseline - the prompt change regressed. Add `--verbose` to print
+the reviewer's rationale on every disagreement; that is what a teacher
+needs to decide whether the label or the model is right. Runs are not
+bit-reproducible (about 3 of 69 verdicts flip between identical runs), so
+re-run once before trusting a change near the tolerance. The "Prompt Eval" GitHub
+Actions workflow (`workflow_dispatch`) runs the same thing with the
+repository's `DEEPSEEK_API_KEY`; no database is needed. Run it before
+merging changes to the `answer` or `ai_review` prompt families (rule in
+`AGENTS.md`).
+
+### Exporting the review dataset
+
+One JSONL line per human review, for offline analysis and prompt
+evaluation. Rows before the 2026-10-28 data cutoff (no correction diff,
+reason, or generation metadata) are skipped unless `--all`:
+
+```bash
+uv run python -m physics_ai_tutor.cli.export_reviews --out reviews.jsonl
+uv run python -m physics_ai_tutor.cli.export_reviews --since 2026-11-01 --out nov.jsonl
+uv run python -m physics_ai_tutor.cli.export_reviews --all > everything.jsonl
+```
+
+Admins can fetch the same file from `GET /api/v1/admin/reviews/export`
+when the CLI has no database access. The line schema is documented in
+[docs/database.md](database.md#review-dataset-export).
 
 ## Pull Request Checks
 
@@ -296,4 +439,59 @@ npm run build
 - [docs/database.md](database.md): schema, Alembic migrations, seed data
 - [docs/api.md](api.md): endpoint reference and access rules
 - [docs/security.md](security.md): security model and dependency policy
+
+## Issues and Roadmap
+
+Issues live in the repository itself via [git-bug](https://github.com/git-bug/git-bug)
+(`brew install git-bug`). They are stored as git objects under `refs/bugs`,
+separate from the file history, and are **not** pushed unless you run
+`git bug push` explicitly. Work locally; do not push bug refs to the remote
+unless that is intended.
+
+The store sits in the repository's common `.git`, so **all worktrees share
+the same bugs and identities**. Never run `git bug wipe`: it deletes every
+bug and identity for every worktree. Use `git bug bug rm <id>` for a single
+mistaken bug.
+
+One-time setup on a new machine:
+
+```bash
+git bug user new --name "<name>" --email "<email>" --non-interactive
+```
+
+Everyday use:
+
+```bash
+git bug termui                 # browse, comment, label, close
+git bug bug                    # list open issues
+git bug bug -l P0              # by priority label
+git bug bug -l M2              # by milestone label
+git bug bug -l epic            # the roadmap issue
+git bug bug show <id>          # one issue
+```
+
+Creating an issue: copy `docs/issues/TEMPLATE_task.md` (or
+`TEMPLATE_bug.md`), fill it in, then
+
+```bash
+git bug bug new -t "<title>" -F <your-copy>.md
+git bug bug label new <id> P1 M2 feature backend
+```
+
+Label conventions:
+
+| Label | Meaning |
+| --- | --- |
+| `P0` … `P3` | P0 blocks deployment, P1 next, P2 planned, P3 later |
+| `M0` … `M4` | Milestone: M0 Deploy Google Sign-In, M1 Student value, M2 Review data foundation, M3 AI-assisted review (advisory), M4 Partial automation and regression safety |
+| `epic` | A tracking issue that links others (the roadmap) |
+| topical | `backend`, `frontend`, `cli`, `prompt`, `review`, `ai-review`, `data-quality`, `observability`, `security`, `privacy`, `deploy`, `ops`, `testing`, `bug`, `feature` |
+
+Cross-references inside an issue body are git-bug short ids (`#a1b2c3d`).
+
+`docs/issues/NN-*.md` are the seed drafts (the roadmap is `00-roadmap.md`,
+imported as the `epic`). `scripts/import_issues.py [dir] [--apply]` imports
+them, skips titles that already exist, and rewrites `#NN` draft references
+to real ids. After the import, git-bug is the source of truth; the drafts
+are kept only so the tracker can be re-seeded in a fresh clone.
 - [AGENTS.md](../AGENTS.md): project rules for contributors and coding agents

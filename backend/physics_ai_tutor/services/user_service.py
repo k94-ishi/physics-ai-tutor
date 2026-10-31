@@ -74,6 +74,12 @@ def change_password(
     new_password: str,
 ) -> bool:
 
+    if user.hashed_password is None:
+        logger.warning(
+            "Password change rejected: user_id=%s reason=no_password", user.id
+        )
+        return False
+
     if not verify_password(current_password, user.hashed_password):
         logger.warning(
             "Password change rejected: user_id=%s reason=current_password_mismatch",

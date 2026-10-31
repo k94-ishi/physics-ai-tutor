@@ -1,7 +1,7 @@
-from sqlalchemy import or_
+from sqlalchemy import func, nullslast, or_
 from sqlalchemy.orm import Query, Session
 
-from physics_ai_tutor.models.question import Question
+from physics_ai_tutor.models import AiReview, Question, QuestionAsk
 from physics_ai_tutor.schemas.language import Language, TextProvenance
 from physics_ai_tutor.schemas.question import QuestionCreate, QuestionUpdate
 
@@ -54,6 +54,74 @@ def _filter_by_language(query: Query, language: Language | str | None) -> Query:
     return query.filter(getattr(Question, f"question_{Language(language)}").isnot(None))
 
 
+def _with_latest_ai_review(db: Session, query):
+    """Outer-join each question's newest ai_reviews row (one per question)."""
+    latest = (
+        db.query(AiReview.question_id, func.max(AiReview.id).label("latest_id"))
+        .group_by(AiReview.question_id)
+        .subquery()
+    )
+
+    return query.outerjoin(latest, latest.c.question_id == Question.id).outerjoin(
+        AiReview, AiReview.id == latest.c.latest_id
+    )
+
+
+def _filter_by_ai_verdict(query, ai_verdict: str | None):
+    if ai_verdict is None:
+        return query
+    if ai_verdict == "NONE":
+        return query.filter(AiReview.id.is_(None))
+
+    return query.filter(AiReview.verdict == ai_verdict)
+
+
+def _apply_sort(db: Session, query, sort: str | None):
+    if sort == "oldest":
+        return query.order_by(Question.created_at.asc(), Question.id.asc())
+
+    if sort == "ai_confidence":
+        return query.order_by(nullslast(AiReview.confidence.desc()), Question.id.asc())
+
+    if sort == "asked_count":
+        asks = (
+            db.query(
+                QuestionAsk.question_id,
+                func.count(QuestionAsk.id).label("asked"),
+            )
+            .group_by(QuestionAsk.question_id)
+            .subquery()
+        )
+        return query.outerjoin(asks, asks.c.question_id == Question.id).order_by(
+            func.coalesce(asks.c.asked, 0).desc(), Question.id.asc()
+        )
+
+    return query.order_by(Question.id)
+
+
+def _list_query(
+    db: Session,
+    keyword: str | None,
+    status: str | None,
+    exclude_statuses: list[str] | None,
+    search_question: bool,
+    search_answer: bool,
+    language: Language | str | None,
+    ai_verdict: str | None,
+    join_ai_review: bool,
+):
+    query = db.query(Question)
+
+    if join_ai_review or ai_verdict is not None:
+        query = _with_latest_ai_review(db, query)
+
+    query = _filter_by_keyword(query, keyword, search_question, search_answer)
+    query = _filter_by_status(query, status, exclude_statuses)
+    query = _filter_by_language(query, language)
+
+    return _filter_by_ai_verdict(query, ai_verdict)
+
+
 def get_questions(
     db: Session,
     offset: int,
@@ -64,14 +132,22 @@ def get_questions(
     search_question: bool = True,
     search_answer: bool = True,
     language: Language | str | None = None,
+    sort: str | None = None,
+    ai_verdict: str | None = None,
 ) -> list[Question]:
-    query = _filter_by_keyword(
-        db.query(Question), keyword, search_question, search_answer
+    query = _list_query(
+        db,
+        keyword,
+        status,
+        exclude_statuses,
+        search_question,
+        search_answer,
+        language,
+        ai_verdict,
+        join_ai_review=sort == "ai_confidence",
     )
-    query = _filter_by_status(query, status, exclude_statuses)
-    query = _filter_by_language(query, language)
 
-    return query.order_by(Question.id).offset(offset).limit(limit).all()
+    return _apply_sort(db, query, sort).offset(offset).limit(limit).all()
 
 
 def count_questions(
@@ -82,12 +158,19 @@ def count_questions(
     search_question: bool = True,
     search_answer: bool = True,
     language: Language | str | None = None,
+    ai_verdict: str | None = None,
 ) -> int:
-    query = _filter_by_keyword(
-        db.query(Question), keyword, search_question, search_answer
+    query = _list_query(
+        db,
+        keyword,
+        status,
+        exclude_statuses,
+        search_question,
+        search_answer,
+        language,
+        ai_verdict,
+        join_ai_review=False,
     )
-    query = _filter_by_status(query, status, exclude_statuses)
-    query = _filter_by_language(query, language)
 
     return query.count()
 

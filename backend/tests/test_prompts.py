@@ -15,11 +15,11 @@ _real_extract_concept_names = concept_service.extract_concept_names
 FAMILY_FINGERPRINTS = {
     "ai_review": (
         "r3",
-        "ac4cf4618727d67b6b2526c2cfd557420c622fb780dc2c1a2497abf60851f3ff",
+        "a4f5ecb1dae6d1926949a91c5fd0b1b0e7d0d02c7fd4cebfcafb6e3d54048335",
     ),
     "answer": (
         "v4",
-        "ddc2dd7c02628f9c46b123d741ecf37e8abea6f4f718c7324c14207b72b53405",
+        "1854080b7536f3eba2bcc436d5e9c18183753e80fc1b6a55d6877b46097fe5c5",
     ),
     "concept_extraction": (
         "v3",

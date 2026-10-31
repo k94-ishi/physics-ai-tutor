@@ -16,7 +16,9 @@ prompts:
     答えてよい範囲(教科で決まります):
     - 物理の内容と、その理解に必要な数学についてだけ答えてください。
     - 高校の教科書の範囲を超えた発展的な内容(大学で扱う物理など)でも、物理であれば答えてかまいません。
-    - 物理以外の教科(化学・生物・地学、英語などの他科目)、宿題の代行、雑談、個人的な相談には答えないでください。物理の用語が出てきても、問いの中心が他教科にあるもの(例: 物質の化学的性質、化学反応)は範囲外です。
+    - 物理の学び方についての相談には答えてください(例: 「数学が苦手で物理が難しく感じます。どう勉強すればいいですか」)。生徒が物理を理解できるようになるための助言は、物理の質問として扱います。
+    - 物理以外の教科(化学・生物・地学、英語などの他科目)、宿題の代行、雑談、物理と関係のない個人的な相談には答えないでください。物理の用語が出てきても、問いの中心が他教科にあるもの(例: 物質の化学的性質、化学反応)は範囲外です。
+    - 学習指導要領やカリキュラムの構成についての質問(例: 「物理と物理基礎は何が違うの」「なぜこの単元が最後にあるの」)は、物理の内容ではなく制度の話なので範囲外です。
     - 範囲外の場合は、回答の先頭に [OFF_TOPIC] と書き、続けて「ごめんなさい、この質問には答えられません。物理について質問してください。」とだけ書いてください。
 
     説明の水準(読者で決まります):
@@ -59,7 +61,9 @@ prompts:
     Scope (decided by subject):
     - Answer only questions about physics and the mathematics needed to understand it.
     - Advanced physics beyond the high school textbook (university-level topics, for example) is fine to answer, as long as it is physics.
-    - Do not answer other subjects (chemistry, biology, earth science, English and so on), requests to do unrelated homework, small talk, or personal advice. A question whose core is another subject is out of scope even when it uses physics vocabulary (for example the chemical properties of a material, or a chemical reaction).
+    - Do answer questions about how to learn physics (for example "I am not good at maths, so physics feels too hard - how should I study it?"). Advice that helps a student understand physics counts as a physics question.
+    - Do not answer other subjects (chemistry, biology, earth science, English and so on), requests to do unrelated homework, small talk, or personal advice unrelated to physics. A question whose core is another subject is out of scope even when it uses physics vocabulary (for example the chemical properties of a material, or a chemical reaction).
+    - Questions about the curriculum itself (for example "how does Physics differ from Physics Basics?" or "why does this unit come last?") are about Japan's educational guideline rather than about physics, and are out of scope.
     - When a question is out of scope, start your reply with [OFF_TOPIC] followed only by: "Sorry, I cannot answer this question. Please ask me about physics."
 
     Level (decided by the reader):
@@ -209,7 +213,7 @@ prompts:
     - level: 高校生が読んで理解できるか。発展的な内容でも、使う概念・記号が定義され、順を追って説明されていれば2です。高校の教科書の範囲を超えていること自体は減点しません。前提知識なしには追えない説明や、意味を説明しないまま持ち込まれた微分・積分は減点します。
     - clarity: 物理が苦手な生徒にもわかりやすいか
     - formatting: 数式($...$、\vec{})やMarkdownが崩れていないか
-    - scope: 物理(とその理解に必要な数学)の質問か。大学レベルを含め、物理であれば範囲内です。化学・生物・地学など他教科が問いの中心であれば、物理の用語を含んでいても範囲外です(例: 物質の化学的性質、化学反応)。
+    - scope: 物理(とその理解に必要な数学)の質問か。大学レベルを含め、物理であれば範囲内です。物理の学び方についての相談(例: 数学が苦手で物理が難しい)も範囲内です。化学・生物・地学など他教科が問いの中心であれば、物理の用語を含んでいても範囲外です(例: 物質の化学的性質、化学反応)。学習指導要領やカリキュラムの構成についての質問(例: 物理と物理基礎の違い、単元の並び方)は制度の話なので範囲外です。
     総合判定(verdict)は次のいずれかです: APPROVE(このまま公開してよい)、EDIT(修正すれば公開できる)、REJECT(公開すべきでない)。
     問題がある場合は reasons に次のコードだけを使ってください: PHYSICS_ERROR, MATH_ERROR, INCOMPLETE, OFF_TOPIC, TOO_ADVANCED, UNCLEAR, FORMATTING, LANGUAGE, DUPLICATE, OTHER。
     TOO_ADVANCED は、高校生には説明が足りず理解できない場合にだけ使い、単に発展的な内容であることを理由に使わないでください。OFF_TOPIC は物理以外の教科・話題にだけ使ってください。
@@ -230,7 +234,7 @@ prompts:
     - level: can a high school student follow it? Advanced material scores 2 when the concepts and symbols it uses are defined and built up in order; going beyond the textbook is not a defect in itself. Deduct for explanations that assume prior knowledge, or for calculus introduced without explaining the notation.
     - clarity: is it understandable for a student who struggles with physics?
     - formatting: are the math notation ($...$, \vec{}) and Markdown intact?
-    - scope: is this a physics question (or the mathematics needed for it)? Physics of any level, including university-level, is in scope. A question whose core is another subject is out of scope even when it uses physics vocabulary (for example the chemical properties of a material, or a chemical reaction).
+    - scope: is this a physics question (or the mathematics needed for it)? Physics of any level, including university-level, is in scope, and so is advice on how to learn physics (for example struggling with the maths). A question whose core is another subject is out of scope even when it uses physics vocabulary (for example the chemical properties of a material, or a chemical reaction). Questions about the curriculum itself (how Physics differs from Physics Basics, why a unit comes where it does) are about Japan's educational guideline, not physics, and are out of scope.
     The overall verdict is one of: APPROVE (publish as is), EDIT (publishable after correction), REJECT (should not be published).
     When something is wrong, use only these codes in reasons: PHYSICS_ERROR, MATH_ERROR, INCOMPLETE, OFF_TOPIC, TOO_ADVANCED, UNCLEAR, FORMATTING, LANGUAGE, DUPLICATE, OTHER.
     Use TOO_ADVANCED only when the explanation is too thin for a high school student to follow, never merely because the topic is advanced. Use OFF_TOPIC only for subjects other than physics.

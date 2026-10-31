@@ -40,8 +40,10 @@ they are meant to stay apart:
   order. Being beyond the textbook is no longer a defect by itself, and
   `TOO_ADVANCED` now means "too thin to follow", not "beyond the course".
 
-**Before the eval can be trusted again, the golden set needs your verdict
-on six reject cases** whose labels predate this policy - see 5.2a.
+Two further rules came from the teacher on 2026-11-01: **how to learn
+physics** is in scope ("I am bad at maths, how should I study physics?"),
+while **the curriculum itself** is not (物理 vs 物理基礎, why a unit comes
+where it does) - that is Japan's educational guideline, not physics.
 
 ### 1.2 Judge the seven flagged answers - issue [30] `4ef75f5` (30 min)
 
@@ -256,35 +258,24 @@ rejects). Look at the `[DIFF]` lines with `why:` before deciding. Two
 identical runs differ by about 3 verdicts of 69, so re-run once if you are
 near the threshold.
 
-### 5.2a Decide six golden reject cases, then re-pin (one sitting)
+### 5.2a Golden set and the v4/r3 baseline - done 2026-11-01
 
-The v4/r3 policy ([33]) re-admits physics above the curriculum but keeps
-other subjects out. Six `p-reject-*` cases were labelled REJECT under the
-old, narrower policy and need your verdict before the next baseline means
-anything. For each, open it in the admin queue (`#id` search, [31]) and
-decide APPROVE / EDIT / REJECT:
+Settled, no action left:
 
-| case | question | why it is in doubt |
-| --- | --- | --- |
-| `p-reject-1070` | 放射性廃棄物の処理が難しいのは？ | half-life, shielding = physics above the course, but the answer drifts into policy and geology |
-| `p-reject-47` | 剛体のつり合いの実験 | core 物理基礎; the 2026-08 reject recorded no reason |
-| `p-reject-25` | 重心の位置と安定性 | plain physics; reason recorded as OTHER |
-| `p-reject-37` | 平面内の運動の例 | plain physics; reason recorded as OTHER |
-| `p-reject-3` | 「物理」と「物理基礎」の違い | about the course, not about physics |
-| `p-reject-201` | 単元構成の理由 | about the course, not about physics |
+- `p-reject-1070`, `p-reject-47`, `p-reject-25`, `p-reject-37` were
+  rejected with no reason in the service's initial phase, so they were
+  **removed** from the golden set rather than relabelled. They are physics
+  questions; re-add them only after a real review gives them a verdict.
+- `p-reject-3` and `p-reject-201` stay REJECT: they are about the
+  educational guideline, not about physics.
+- `g13` was added for the new in-scope case, study advice.
+- `baseline-v4-r3.json` is pinned on the resulting 66-case set.
 
-The last two are the real policy question: *is "how is this course
-organised?" a physics question?* Today's prompts say no (the subject rule
-names other subjects, not meta-questions); if you disagree, say so and the
-rule gets a clause instead.
-
-Cases that stay REJECT under the new policy and need no decision: `g05`
-(English homework), `p-reject-1229`, `p-reject-1235`, `p-reject-1242`
-(chemistry / materials).
-
-Then run 5.2 with `--save-baseline` to write `baseline-v4-r3.json`. The
-older baselines were measured on a different set and on different prompts;
-do not compare across them (`backend/eval/README.md`).
+One known miss to keep an eye on: `p-reject-201` still grades APPROVE,
+because its *answer* is full of correct physics even though the *question*
+is about curriculum structure. It is 1 of the 9 reject cases, so it costs
+about 11 points of recall. Worth revisiting only if [18] needs the recall;
+chasing a single case risks overfitting the wording to the eval.
 
 ### 5.3 Grow the golden set from your new reviews (quarterly)
 

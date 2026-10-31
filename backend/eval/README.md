@@ -9,12 +9,12 @@ regression check (`physics_ai_tutor.cli.eval_prompts`). Each line:
  "note": "why this label is correct"}
 ```
 
-Two kinds of cases (69 total as of 2026-10-30):
+Two kinds of cases (66 total as of 2026-11-01):
 
-- `g*` (12): labelled **by construction** - the APPROVE answers are correct
+- `g*` (13): labelled **by construction** - the APPROVE answers are correct
   and well-formatted, and every EDIT/REJECT case was written with exactly
   one deliberate defect (see `note`).
-- `p-*` (57): taken from the production review history (teacher decisions
+- `p-*` (53): taken from the production review history (teacher decisions
   of 2026-08, texts as of 2026-10-21). `p-approve-*` are teacher-approved
   answers; `p-edit-*` are the *pre-edit* texts of substantive teacher
   edits; `p-reject-*` are rejected answers. Ids are stable and never
@@ -24,6 +24,13 @@ Two kinds of cases (69 total as of 2026-10-30):
   texts became true edits. **The verdict is the teacher's;
   the reason code was inferred from the diff** (the old history stored no
   reasons), so reason overlap is a weak signal on these cases.
+
+Four production cases (`p-reject-1070`, `p-reject-47`, `p-reject-25`,
+`p-reject-37`) were **removed** on 2026-11-01: the teacher confirmed they
+were rejected with no recorded reason in the service's initial phase, so
+their REJECT labels were not real judgements and were mis-measuring the
+reviewer. They are physics questions and can come back once they have been
+re-reviewed with a real verdict - do not re-add them as REJECT.
 
 Keep expanding it with reviews made after 2026-10-28, which carry real
 reason codes; keep the verdict balance roughly even.
@@ -38,15 +45,23 @@ as `baseline-<answer_version>-<reviewer_version>.json` and are written by
 `--save-baseline` after a run a human has eyeballed.
 
 Each baseline records the `set_sha256` it was measured on; `eval_prompts`
-warns when the set has changed since. Both committed baselines predate the
-2026-11-01 relabelling ([32]) and so carry stale hashes:
+warns when the set has changed since.
 
 | baseline | measured on | status |
 | --- | --- | --- |
-| `baseline-v2-r1.json` | the set before the [30] notes landed | stale; kept as the historical v2/r1 reference point |
-| `baseline-v3-r2.json` | the set before p-approve-15/26/194/768 became EDIT | stale; the numbers understate the prompts, since four cases were labelled APPROVE that the teacher had in fact corrected |
+| `baseline-v2-r1.json` | the set before the [30] notes landed | stale hash; historical reference only |
+| `baseline-v3-r2.json` | the set before p-approve-15/26/194/768 became EDIT | stale hash; understates the prompts, since four cases were labelled APPROVE that the teacher had in fact corrected |
+| `baseline-v4-r3.json` | the current 66-case set | **current** |
 
-Neither was re-measured, because [33] bumps both prompt versions and so
-writes a fresh `baseline-v4-r3.json` anyway - one eval run instead of two.
-Do not compare across these files: a baseline is only meaningful against a
-run of the same prompt versions on the same set.
+Do not compare across these files as if they were runs of one experiment:
+the prompts *and* the set differ. In particular the v4/r3 jump in reject
+recall (0.231 -> 0.778) is partly the prompt fix and partly the removal of
+four cases that had been rejected without a reason (see above).
+
+`--save-baseline` re-runs the whole set, so pinning costs another ~66
+calls. v4/r3 was measured twice: exact agreement 66.7 % then 72.7 %,
+publish agreement 95.5 % then 93.9 %, with reject precision (87.5 %) and
+recall (77.8 %) identical in both. The pinned file deliberately carries the
+*lower* observation of each varying metric, so that an unchanged prompt
+does not trip the gate on run noise alone; it is not a verbatim copy of
+either run's output.

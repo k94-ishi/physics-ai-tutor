@@ -24,6 +24,11 @@ import {
     User,
 } from "@/types/auth";
 import { ContentLanguage, TranslationBatchResponse } from "@/types/question";
+import {
+    AiReviewPendingCount,
+    AiReviewRun,
+    AiReviewRunScope,
+} from "@/types/aiReviewRun";
 import { AskAiResponse } from "@/types/ai";
 import {
     AdminStatsResponse,
@@ -405,4 +410,36 @@ export async function extractConcepts(
             body: JSON.stringify({ question_ids: questionIds }),
         }
     );
+}
+
+export async function fetchAiReviewPendingCount(): Promise<AiReviewPendingCount> {
+    return apiFetch<AiReviewPendingCount>(
+        `${getApiUrl()}/api/v1/admin/ai-review/pending-count`
+    );
+}
+
+export async function fetchAiReviewRuns(limit = 10): Promise<AiReviewRun[]> {
+    return apiFetch<AiReviewRun[]>(
+        `${getApiUrl()}/api/v1/admin/ai-review/runs?limit=${limit}`
+    );
+}
+
+export async function fetchAiReviewRun(id: number): Promise<AiReviewRun> {
+    return apiFetch<AiReviewRun>(
+        `${getApiUrl()}/api/v1/admin/ai-review/runs/${id}`
+    );
+}
+
+export async function startAiReviewRun(params: {
+    scope: AiReviewRunScope;
+    questionIds?: number[];
+}): Promise<AiReviewRun> {
+    return apiFetch<AiReviewRun>(`${getApiUrl()}/api/v1/admin/ai-review/runs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            scope: params.scope,
+            question_ids: params.questionIds,
+        }),
+    });
 }

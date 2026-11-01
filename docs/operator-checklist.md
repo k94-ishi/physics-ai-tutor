@@ -201,8 +201,11 @@ can execute at a time, and a run that goes silent for 30 minutes is freed
 by the next start - the measure is silence, not total duration, so a long
 full-cap run is safe. The command exits non-zero if the run does not
 finish, which is what a scheduled run ([26]) needs to alert on.
-Issue [26] `e0594f1` is the automated nightly version; until it exists this
-is a manual command.
+Since [27], the **AIレビュー実行** panel on `/admin/stats` does the same
+thing without a shell: it shows the backlog and the remaining budget,
+quotes the number of DeepSeek calls before starting, and tracks progress.
+Issue [26] `e0594f1` is the automated nightly version; until it exists the
+run is started by hand (panel or CLI).
 
 ### 3.3 Decide what to do with the backlog itself
 

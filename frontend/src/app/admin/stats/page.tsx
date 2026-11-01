@@ -8,6 +8,7 @@ import LoadingState from "@/components/ui/LoadingState";
 import StatusMessage from "@/components/ui/StatusMessage";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import ReviewAgreementSection from "@/components/admin/ReviewAgreementSection";
+import AiReviewRunsPanel from "@/components/admin/AiReviewRunsPanel";
 
 const DAY_OPTIONS = [7, 14, 30, 90];
 
@@ -26,6 +27,8 @@ export default function AdminStatsPage() {
     const [days, setDays] = useState(14);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
+    // ラン完了時に合意率セクションを作り直して最新の数字を出す。
+    const [agreementKey, setAgreementKey] = useState(0);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -150,7 +153,14 @@ export default function AdminStatsPage() {
                 {t("adminStats.generationsHint")}
             </p>
 
-            <ReviewAgreementSection />
+            <AiReviewRunsPanel
+                onRunFinished={() => {
+                    load();
+                    setAgreementKey((key) => key + 1);
+                }}
+            />
+
+            <ReviewAgreementSection key={agreementKey} />
         </main>
     );
 }

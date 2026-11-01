@@ -94,7 +94,7 @@ export default function QuestionSearchAndAsk({
     children,
 }: QuestionSearchAndAskProps) {
     const router = useRouter();
-    const { language, t } = useLanguage();
+    const { language, resolved: languageResolved, t } = useLanguage();
     const [queryState, setQueryState] = useQueryState(SEARCH_QUERY_DEFAULTS);
     const [query, setQuery] = useState(queryState.similar);
     const [searched, setSearched] = useState(false);
@@ -219,10 +219,17 @@ export default function QuestionSearchAndAsk({
     }, [t, contentLanguage]);
 
     // URLの?similar=が真実: 直リンク・リロード・戻る/進むで検索を一度だけ
-    // 復元する。実行済みの値を覚えておき、自分のsubmitによる変更では再実行しない。
+    // 復元する。実行済みキーは言語込み([50]): 言語を切り替えたら同じ検索文を
+    // 新しい言語の埋め込みに対して実行し直す(オーナー決定 2026-11-02)。
     const lastExecutedRef = useRef<string | null>(null);
 
     useEffect(() => {
+        // 言語解決前に走ると、既定のjaで検索してから保存言語で検索し直す
+        // 二重実行になる([50]で顕在化)。解決を待ってから一度だけ復元する。
+        if (!languageResolved) {
+            return;
+        }
+
         const target = queryState.similar.trim();
         if (target === "") {
             // URLが実際に空になってから解除する(再レンダリング中の古い
@@ -230,14 +237,16 @@ export default function QuestionSearchAndAsk({
             lastExecutedRef.current = null;
             return;
         }
-        if (lastExecutedRef.current === target) {
+
+        const executionKey = `${contentLanguage}:${target}`;
+        if (lastExecutedRef.current === executionKey) {
             return;
         }
 
-        lastExecutedRef.current = target;
+        lastExecutedRef.current = executionKey;
         setQuery(target);
         runSearch(target, { skipExactRedirect: true });
-    }, [queryState.similar, runSearch]);
+    }, [queryState.similar, contentLanguage, languageResolved, runSearch]);
 
     function handleQueryChange(value: string) {
         setQuery(value);
@@ -258,7 +267,7 @@ export default function QuestionSearchAndAsk({
             return;
         }
 
-        lastExecutedRef.current = trimmed;
+        lastExecutedRef.current = `${contentLanguage}:${trimmed}`;
         setQueryState({ similar: trimmed });
         runSearch(trimmed);
     }

@@ -227,9 +227,18 @@ Conventions:
 
 ### URL parameters on the student list
 
-Three ways into the question list are URL-addressable and compose with
-pagination: `?keyword=` (lexical, written debounced), `?concept=` (chip
-navigation, [41]), and `?similar=` (vector search, [49]). `similar` is
+Four parameters shape the student list and compose with pagination:
+`?keyword=` (lexical, written debounced), `?concept=` (chip navigation,
+[41]), `?similar=` (vector search, [49]), and `?lang=ja|en` ([50]).
+`lang` makes a shared link mean the same thing for every recipient - the
+vector search is language-scoped, so without it a `?similar=` link
+searches the recipient's stored language and can quietly return nothing.
+URL wins over the stored preference but never overwrites it; the header
+switcher updates `lang` only when the URL already carries it, and a
+language switch keeps a `similar=` query and re-runs it against the new
+language's embeddings (owner's decision, 2026-11-02). Language-dependent
+effects must wait for `useLanguage().resolved`, or they run once under
+the default `ja` and again under the resolved language. `similar` is
 written only on submit - unlike a keyword it costs an embedding call to
 restore - and the restore path skips the exact-match redirect so the back
 button never bounces forward. Query embeddings are cached server-side in

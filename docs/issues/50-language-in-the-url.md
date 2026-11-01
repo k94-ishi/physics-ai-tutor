@@ -73,3 +73,25 @@ links the help page ([21]) will carry.
 - [ ] Frontend checks pass; vitest for URL-wins-over-storage and for the
       no-parameter default
 - [ ] `docs/development.md` lists `lang` with the other list parameters
+
+## Log
+
+- **2026-11-02** Implemented. Priority: `?lang=` > localStorage > `ja`;
+  a link's language is ephemeral (never overwrites the stored
+  preference; only the explicit switcher stores). The switcher updates
+  `lang` when the URL carries it and never adds it otherwise;
+  back/forward re-applies a link's language via popstate. Owner's
+  decision applied: switching language **keeps** a `similar=` query and
+  re-runs it - the restore guard is keyed by language. Implementation
+  note: `useSearchParams` was deliberately avoided in the root provider
+  (it would force Suspense/dynamic rendering on every page); the URL is
+  read where language was already resolved, in the client mount effect,
+  and the switcher uses the officially supported shallow
+  `history.replaceState`.
+- Found and fixed while testing: the `?similar=` restore used to run
+  before the language resolved, so a stored-`en` user opening a link
+  searched the `ja` embeddings first and then again in `en` - two
+  embedding-scoped searches for one load. The provider now exposes
+  `resolved` and the restore waits for it; a regression test pins
+  one-search-in-`en`. Left open for the owner to verify; flip the row in
+  status.md when satisfied.

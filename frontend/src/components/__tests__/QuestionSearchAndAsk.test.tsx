@@ -33,7 +33,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
 
 import * as api from "@/lib/api";
 import QuestionSearchAndAsk from "@/components/QuestionSearchAndAsk";
-import { LanguageProvider } from "@/lib/i18n/LanguageContext";
+import { LanguageProvider, useLanguage } from "@/lib/i18n/LanguageContext";
 
 const mocked = vi.mocked(api);
 
@@ -54,6 +54,7 @@ function renderSearch() {
 }
 
 beforeEach(() => {
+    localStorage.clear();
     navigation.params = new URLSearchParams();
     navigation.replace.mockReset();
     navigation.push.mockReset();
@@ -100,6 +101,62 @@ describe("?similar= in the URL", () => {
         await screen.findByText("斜方投射とは？");
         expect(mocked.fetchQuestionByExactText).not.toHaveBeenCalled();
         expect(navigation.push).not.toHaveBeenCalled();
+    });
+
+    it("a stored-en user restoring a link searches once, in en", async () => {
+        // Regression: the restore used to run before the language resolved,
+        // searching the ja embeddings first and the stored language second.
+        localStorage.setItem("language", "en");
+        navigation.params = new URLSearchParams("similar=projectile motion");
+        renderSearch();
+
+        await screen.findByText("斜方投射とは？");
+        expect(mocked.searchQuestions).toHaveBeenCalledTimes(1);
+        expect(mocked.searchQuestions).toHaveBeenCalledWith(
+            expect.objectContaining({ language: "en" })
+        );
+    });
+
+    it("keeps and re-runs the query when the language switches ([50])", async () => {
+        // Owner's decision 2026-11-02: the search is language-scoped, so a
+        // switch re-runs the same text against the other language's
+        // embeddings instead of clearing it.
+        function SwitchLanguage() {
+            const { setLanguage } = useLanguage();
+            return (
+                <button type="button" onClick={() => setLanguage("en")}>
+                    switch-en
+                </button>
+            );
+        }
+
+        navigation.params = new URLSearchParams("similar=projectile motion");
+        const user = userEvent.setup();
+        render(
+            <LanguageProvider>
+                <QuestionSearchAndAsk />
+                <SwitchLanguage />
+            </LanguageProvider>
+        );
+
+        await waitFor(() =>
+            expect(mocked.searchQuestions).toHaveBeenCalledTimes(1)
+        );
+        expect(mocked.searchQuestions).toHaveBeenLastCalledWith(
+            expect.objectContaining({ language: "ja" })
+        );
+
+        await user.click(screen.getByRole("button", { name: "switch-en" }));
+
+        await waitFor(() =>
+            expect(mocked.searchQuestions).toHaveBeenCalledTimes(2)
+        );
+        expect(mocked.searchQuestions).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                query: "projectile motion",
+                language: "en",
+            })
+        );
     });
 
     it("emptying the box clears the parameter without spending a search", async () => {

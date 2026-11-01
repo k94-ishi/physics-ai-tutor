@@ -1,5 +1,5 @@
 ---
-title: "[49] Put the vector search in the URL (?q=...) and cache query embeddings"
+title: "[49] Put the vector search in the URL (?similar=...) and cache query embeddings"
 labels: [feature, frontend, backend, student]
 milestone: M1 Student value
 priority: P2
@@ -29,16 +29,18 @@ searches too.
 
 ## Scope
 
-- `?q=<text>` drives the similarity search and implies the similarity
-  tab; `keyword` keeps meaning the keyword tab, `concept` the chip list.
-- On load with `q` present, run the search **once** (the tab already uses
-  an explicit button, not a debounce, so restore mirrors a click).
-- Searching writes `q` via the existing `useQueryState` pattern; clearing
-  the box removes it. Never write `q` per keystroke.
+- `?similar=<text>` drives the similarity search and implies the
+  similarity tab; `keyword` keeps meaning the keyword tab, `concept` the
+  chip list.
+- On load with `similar` present, run the search **once** (the tab
+  already uses an explicit button, not a debounce, so restore mirrors a
+  click).
+- Searching writes `similar` via the existing `useQueryState` pattern;
+  clearing the box removes it. Never write it per keystroke.
 
 ## Embedding cache (owner's go-ahead, 2026-11-02)
 
-Unlike `keyword` (a SQL `LIKE`), restoring `q` costs an embedding call.
+Unlike `keyword` (a SQL `LIKE`), restoring `similar` costs an embedding call.
 The owner approved storing query embeddings, which makes a restored or
 shared search almost free:
 
@@ -60,7 +62,7 @@ shared search almost free:
 
 ## Acceptance criteria
 
-- [ ] Opening `/?q=斜方投射` shows the similarity results without any click.
+- [ ] Opening `/?similar=斜方投射` shows the similarity results without any click.
 - [ ] Back/forward restores both tab and results; reload does not lose them.
 - [ ] The search runs exactly once per restore (no double call in tests).
 - [ ] A repeated query embeds nothing: the second search for the same
@@ -83,3 +85,15 @@ shared search almost free:
       restore-from-URL and submit-only; pytest for the cache hit path
 - [ ] `docs/api.md` and `docs/development.md` note the parameter and the
       cache
+
+## Log
+
+- **2026-11-02** Implemented in commit 2513d20; all acceptance criteria
+  pass (frontend vitest: write-on-submit, restore-once, clear-without-
+  spending; backend pytest: second search embeds nothing, model change
+  misses, RAG ask reuses a searched vector). One behaviour decided during
+  implementation: a restored `?similar=` link **skips the exact-match
+  redirect**, because restoring it on back-navigation would immediately
+  push the student forward again - a restored link always shows the
+  similarity results instead. Left open for the owner to verify in the
+  UI; flip the row in status.md when satisfied.

@@ -24,6 +24,9 @@ const LIST_QUERY_DEFAULTS = {
     keyword: "",
     // 概念チップ([41])からの絞り込み。空文字なら絞り込みなし。
     concept: "",
+    // ベクトル検索([49])。値はQuestionSearchAndAskが管理し、ここでは
+    // 初期タブの選択にだけ使う。
+    similar: "",
 };
 
 function modeButtonClassName(active: boolean): string {
@@ -39,10 +42,16 @@ const inputClassName =
 
 function QuestionListInner() {
     const { language, t } = useLanguage();
-    const [mode, setMode] = useState<Mode>("similarity");
 
     // 一覧(pagination + keyword filter、page/size/keywordはURLで管理)
     const [queryState, setQueryState] = useQueryState(LIST_QUERY_DEFAULTS);
+    // 共有リンクが正しいタブで開くよう、初期タブはURLから決める:
+    // ?similar=はベクトル検索、?keyword=だけならキーワード検索。
+    const [mode, setMode] = useState<Mode>(() =>
+        queryState.keyword !== "" && queryState.similar === ""
+            ? "keyword"
+            : "similarity"
+    );
     const page = Number(queryState.page);
     const size = Number(queryState.size);
     const [keywordInput, setKeywordInput] = useState(queryState.keyword);

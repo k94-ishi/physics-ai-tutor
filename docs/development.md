@@ -225,6 +225,18 @@ Conventions:
   behaviour a user can observe. `async` Server Components are out of scope
   for Vitest; use a browser check against the local stack for those.
 
+### URL parameters on the student list
+
+Three ways into the question list are URL-addressable and compose with
+pagination: `?keyword=` (lexical, written debounced), `?concept=` (chip
+navigation, [41]), and `?similar=` (vector search, [49]). `similar` is
+written only on submit - unlike a keyword it costs an embedding call to
+restore - and the restore path skips the exact-match redirect so the back
+button never bounces forward. Query embeddings are cached server-side in
+`query_embeddings`, keyed by (normalised-text hash, embedding model); a
+model upgrade misses the cache by construction instead of mixing
+incompatible vectors.
+
 ### Markdown rendering
 
 `MarkdownContent` composes remark-gfm, remark-math, rehype-katex and

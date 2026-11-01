@@ -44,6 +44,33 @@ import { TranslationKey } from "@/lib/i18n/translations";
 type Mode = "ai" | "keyword";
 type BulkAction = "delete" | "approve" | "reject" | "extract" | "translate";
 type ConceptFilter = "" | "extracted" | "unextracted";
+
+// URL由来の値は何でもあり得るので、候補と突き合わせてから型に入れる。
+// 候補外(?sort=garbage等)は既定値扱いにし、APIへ渡して422にしない。
+function fromUrl<T extends string>(value: string, allowed: readonly T[]): T | "" {
+    return (allowed as readonly string[]).includes(value) ? (value as T) : "";
+}
+
+const STATUS_VALUES: readonly QuestionStatus[] = [
+    "UNREVIEWED",
+    "APPROVED",
+    "REJECTED",
+];
+const CONCEPT_FILTER_VALUES: readonly ConceptFilter[] = [
+    "extracted",
+    "unextracted",
+];
+const SORT_VALUES: readonly QuestionSort[] = [
+    "oldest",
+    "ai_confidence",
+    "asked_count",
+];
+const AI_VERDICT_VALUES: readonly AiVerdictFilter[] = [
+    "APPROVE",
+    "EDIT",
+    "REJECT",
+    "NONE",
+];
 type ExtractionStatus = "processing" | "done" | "error";
 type ReviewAction = "APPROVE" | "REJECT";
 type ReviewActionState = { action: ReviewAction; state: "processing" | "error" };
@@ -124,10 +151,10 @@ function AdminQuestionsPageInner() {
     const [queryState, setQueryState] = useQueryState(ADMIN_QUERY_DEFAULTS);
     const page = Number(queryState.page);
     const size = Number(queryState.size);
-    const statusFilter = queryState.status as QuestionStatus | "";
-    const conceptFilter = queryState.conceptFilter as ConceptFilter;
-    const sortOption = queryState.sort as QuestionSort | "";
-    const aiVerdictFilter = queryState.aiVerdict as AiVerdictFilter | "";
+    const statusFilter = fromUrl(queryState.status, STATUS_VALUES);
+    const conceptFilter = fromUrl(queryState.conceptFilter, CONCEPT_FILTER_VALUES);
+    const sortOption = fromUrl(queryState.sort, SORT_VALUES);
+    const aiVerdictFilter = fromUrl(queryState.aiVerdict, AI_VERDICT_VALUES);
     const [keywordInput, setKeywordInput] = useState(queryState.keyword);
     const [listItems, setListItems] = useState<Question[]>([]);
     const [listTotal, setListTotal] = useState(0);

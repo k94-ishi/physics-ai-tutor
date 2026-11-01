@@ -108,6 +108,47 @@ describe("AI suggestion", () => {
         });
     });
 
+    it("clears the applied badge when the texts are reloaded from the server", async () => {
+        // The en text is missing so the translate button is shown.
+        mocked.fetchQuestion.mockResolvedValue({
+            ...WITH_SUGGESTION,
+            texts: { ja: WITH_SUGGESTION.texts.ja },
+        } as unknown as Question);
+        mocked.translateQuestions.mockResolvedValue({ results: [] });
+        const user = userEvent.setup();
+        await renderPage();
+
+        await user.click(screen.getByRole("button", { name: "修正案を回答に反映" }));
+        expect(screen.getByText("AI提案を反映済み(未保存)")).toBeInTheDocument();
+
+        // Translating reloads the question, which discards the unsaved
+        // suggestion - the badge and the disabled Apply must follow.
+        await user.click(screen.getByRole("button", { name: "不足言語を自動翻訳" }));
+
+        await waitFor(() =>
+            expect(
+                screen.queryByText("AI提案を反映済み(未保存)")
+            ).not.toBeInTheDocument()
+        );
+        expect(
+            screen.getByRole("button", { name: "修正案を回答に反映" })
+        ).toBeEnabled();
+    });
+
+    it("hides the confidence instead of showing 0% when it is null", async () => {
+        mocked.fetchQuestion.mockResolvedValue({
+            ...WITH_SUGGESTION,
+            ai_review: {
+                ...(WITH_SUGGESTION as unknown as { ai_review: object }).ai_review,
+                confidence: null,
+            },
+        } as unknown as Question);
+        await renderPage();
+
+        expect(screen.getByText(/判定:/)).toBeInTheDocument();
+        expect(screen.queryByText(/確信度/)).not.toBeInTheDocument();
+    });
+
     it("shows no panel when there is no AI review", async () => {
         await renderPage();
 

@@ -161,3 +161,42 @@ def test_non_admin_user_cannot_review(user_client, admin_client, client, monkeyp
 
     assert response.status_code == 403
     assert client.get(f"{QUESTIONS}/{question_id}").status_code == 404
+
+
+def test_review_response_keeps_the_ai_verdict_and_generation_meta(
+    client, admin_client, db, monkeypatch
+):
+    """[35]: the queue replaces its card with this response; the AI badge
+    and generation metadata must survive the swap like on the list."""
+    from physics_ai_tutor.repositories import ai_review_repository
+    from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
+    from physics_ai_tutor.schemas.language import Language
+
+    _ask(client, monkeypatch, "承認後もAIバッジが残りますか？")
+    question_id = _find_id_as_admin(admin_client, "承認後もAIバッジ")
+
+    ai_review_repository.create(
+        db,
+        AiReviewCreate(
+            question_id=question_id,
+            language=Language.JA,
+            verdict=AiReviewVerdict.APPROVE,
+            confidence=0.9,
+            model="mock",
+            prompt_version="r3",
+        ),
+    )
+    db.commit()
+
+    listed = admin_client.get(QUESTIONS, params={"ids": str(question_id)})
+    before = listed.json()["items"][0]
+    assert before["ai_review"]["verdict"] == "APPROVE"
+
+    reviewed = admin_client.post(
+        f"{QUESTIONS}/{question_id}/review", json={"action": "APPROVE"}
+    )
+
+    assert reviewed.status_code == 200
+    body = reviewed.json()
+    assert body["ai_review"] == before["ai_review"]
+    assert body["generation"] == before["generation"]

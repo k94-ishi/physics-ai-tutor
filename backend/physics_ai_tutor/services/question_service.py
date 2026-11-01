@@ -570,6 +570,11 @@ def review_question(
         )
 
         prepare_for_response(db, [current], response_language)
+        # Reviewing is admin-only, and the queue replaces its row with this
+        # response, so it must carry the same admin fields as the list and
+        # detail endpoints or the AI badge vanishes from the card.
+        attach_generation_meta([current])
+        attach_ai_reviews(db, [current])
 
         db.commit()
 

@@ -104,6 +104,8 @@ export default function EditQuestionPage() {
             const data = await fetchQuestion(id);
             setLoaded(data);
             setTexts(textsFromQuestion(data));
+            // サーバの本文で上書きしたので「AI修正案を適用済み(未保存)」は無効。
+            setSuggestionApplied(false);
         } catch (error) {
             console.error(error);
             setLoadError(true);
@@ -305,7 +307,7 @@ export default function EditQuestionPage() {
         if (!loaded || !suggestion) {
             return;
         }
-        setField(loaded.original_language as ContentLanguage, "answer", suggestion);
+        setField(loaded.original_language, "answer", suggestion);
         setSuggestionApplied(true);
     };
 
@@ -364,10 +366,16 @@ export default function EditQuestionPage() {
                             {t("editQuestion.aiSuggestionHeading")}
                         </h2>
                         <span className="text-xs text-purple-800">
-                            {t("editQuestion.aiVerdictLine", {
-                                verdict: aiVerdictLabel,
-                                confidence: Math.round((aiReview.confidence ?? 0) * 100),
-                            })}
+                            {aiReview.confidence !== null
+                                ? t("editQuestion.aiVerdictLine", {
+                                      verdict: aiVerdictLabel,
+                                      confidence: Math.round(
+                                          aiReview.confidence * 100
+                                      ),
+                                  })
+                                : t("editQuestion.aiVerdictLineNoConfidence", {
+                                      verdict: aiVerdictLabel,
+                                  })}
                         </span>
                     </div>
 

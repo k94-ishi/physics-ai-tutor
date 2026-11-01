@@ -253,6 +253,30 @@ list, and cover any new renderer with
 - Apply migrations to production (`alembic upgrade head` with the Supabase
   `DATABASE_URL`) before deploying backend code that needs the new schema.
 
+### Nightly AI review (`.github/workflows/ai-review-nightly.yml`)
+
+Runs `review_pending --scope both --trigger scheduled` every day at
+17:00 UTC (02:00 JST). The runner is GitHub Actions rather than a Render
+cron job or an in-process scheduler ([26]): no new infrastructure, the
+logs live next to the repo, and the Supabase *pooler* URL is reachable
+from Actions. The trade-off is that the production `DATABASE_URL` lives
+in a GitHub secret.
+
+Pricing assumptions (checked 2026-10-30; DeepSeek changes them, re-check
+before relying on the numbers): no Batch API (`/batches` returns 404),
+but requests in UTC 16:30-00:30 are discounted, and the long shared
+rubric prefix is cheap on repeated calls thanks to context caching - a
+dense nightly run maximises both. The window lives in
+`AI_REVIEW_OFFPEAK_START/END`; the CLI refuses to start outside it
+without `--force`, so a mis-set cron fails loudly (exit 2) instead of
+paying full price. A failed run exits 1 and fails the job, which triggers
+GitHub's failure e-mail; results are also on `/admin/stats`.
+
+Required repository secrets: `DATABASE_URL` (Supabase pooler) and
+`DEEPSEEK_API_KEY`. With the nightly in place, `AI_REVIEW_ENABLED` can
+stay `false` in production: teachers find fresh verdicts in the morning
+and generation never pays for an inline review call.
+
 ## Environment Variables
 
 Copy the templates and fill in the values. Do this before `docker compose up`,

@@ -35,6 +35,19 @@ re-reviewed with a real verdict - do not re-add them as REJECT.
 Keep expanding it with reviews made after 2026-10-28, which carry real
 reason codes; keep the verdict balance roughly even.
 
+Known exceptions in the production history (owner's decision 2026-11-01:
+keep the rows as they are, but never treat them as real edits when
+sampling or measuring):
+
+- `question_reviews` **#104** (question 807, 2026-08-16): the edit only
+  removed `**` markers to work around the CommonMark CJK rendering bug
+  fixed in [36]; the text was never wrong.
+- `question_reviews` **#12** (question 10, 2026-08-15): mostly the same
+  workaround (spaces inserted before closing `**`) plus one glyph change.
+
+Do not sample either into the golden set as an EDIT case, and exclude
+them from any "how often did the teacher edit" analysis.
+
 EDIT vs REJECT is genuinely fuzzy (e.g. a calculus-heavy answer could be
 either); that is fine. The check compares against a *baseline* of the same
 prompts, so what matters is drift, not absolute scores. Note that DeepSeek

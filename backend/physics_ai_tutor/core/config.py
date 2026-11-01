@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     # Reviewer output includes a full suggested answer, so it needs more
     # room than a student answer or its JSON gets truncated.
     ai_review_max_tokens: int = 3000
+    # DeepSeek's discounted window, UTC "HH:MM" (JST 01:30-09:30); the
+    # window wraps midnight. The review CLI refuses to start outside it
+    # unless --force, so bulk runs land on the cheap tariff.
+    ai_review_offpeak_start: str = "16:30"
+    ai_review_offpeak_end: str = "00:30"
     # JWT
     jwt_secret_key: str
     jwt_algorithm: str

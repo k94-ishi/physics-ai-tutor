@@ -204,8 +204,10 @@ finish, which is what a scheduled run ([26]) needs to alert on.
 Since [27], the **AIレビュー実行** panel on `/admin/stats` does the same
 thing without a shell: it shows the backlog and the remaining budget,
 quotes the number of DeepSeek calls before starting, and tracks progress.
-Issue [26] `e0594f1` is the automated nightly version; until it exists the
-run is started by hand (panel or CLI).
+Since [26], the nightly workflow (`AI Review Nightly`, 02:00 JST) does it
+automatically once its two secrets are set - see 5.1. Note the CLI now
+refuses to run outside the discount window (01:30-09:30 JST); add
+`--force` for a daytime manual run.
 
 ### 3.3 Decide what to do with the backlog itself
 
@@ -240,12 +242,21 @@ table** (which confidence bucket is trustworthy).
 
 ## Phase 5 - Keep the evaluation honest
 
-### 5.1 GitHub secret for the Prompt Eval workflow (5 min, optional)
+### 5.1 GitHub secrets for the workflows (5 min)
 
-Repository -> Settings -> Secrets -> Actions -> `DEEPSEEK_API_KEY`. Then
-**Actions -> Prompt Eval -> Run workflow** runs the golden set against the
-committed baseline without a database. Without the secret, the dry-run
-step still validates the set.
+Repository -> Settings -> Secrets -> Actions:
+
+| Secret | Used by |
+| --- | --- |
+| `DEEPSEEK_API_KEY` | Prompt Eval, AI Review Nightly |
+| `DATABASE_URL` | AI Review Nightly (use the Supabase **pooler** URL) |
+
+With both set, **AI Review Nightly** reviews the backlog every night at
+02:00 JST inside the discount window and fails loudly (e-mail from
+GitHub) when a run fails; **Actions -> Prompt Eval -> Run workflow** runs
+the golden set against the committed baseline without a database. Without
+the secrets, the nightly does nothing useful and the eval's dry-run step
+still validates the set.
 
 ### 5.2 After any prompt change (10 min + ~70 DeepSeek calls)
 

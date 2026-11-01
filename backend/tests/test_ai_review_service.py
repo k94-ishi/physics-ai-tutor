@@ -186,6 +186,15 @@ def test_reviewer_prompt_matches_the_questions_language(
 def _bind_review_cli(monkeypatch, db):
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     monkeypatch.setattr(review_pending_cli, "SessionLocal", factory)
+    # Pin the clock inside the off-peak window so these tests do not
+    # depend on the wall-clock time they happen to run at.
+    from datetime import UTC, datetime
+
+    monkeypatch.setattr(
+        review_pending_cli,
+        "_now",
+        lambda: datetime(2026, 11, 1, 20, 0, tzinfo=UTC),
+    )
 
 
 def test_cli_backfills_only_pending_questions(
@@ -666,3 +675,99 @@ def test_hopeless_output_is_still_reported_unparsed():
 
     assert service._parse_output('{"verdict": "EDIT", ') is None
     assert service._parse_output("not json at all") is None
+
+
+def test_offpeak_window_wraps_midnight():
+    from datetime import UTC, datetime
+
+    inside = [
+        datetime(2026, 11, 1, 16, 30, tzinfo=UTC),
+        datetime(2026, 11, 1, 20, 0, tzinfo=UTC),
+        datetime(2026, 11, 1, 0, 29, tzinfo=UTC),
+    ]
+    outside = [
+        datetime(2026, 11, 1, 0, 30, tzinfo=UTC),
+        datetime(2026, 11, 1, 12, 0, tzinfo=UTC),
+        datetime(2026, 11, 1, 16, 29, tzinfo=UTC),
+    ]
+    for now in inside:
+        assert review_pending_cli.within_offpeak(now, "16:30", "00:30"), now
+    for now in outside:
+        assert not review_pending_cli.within_offpeak(now, "16:30", "00:30"), now
+    # A window that does not wrap behaves as a plain interval.
+    assert review_pending_cli.within_offpeak(
+        datetime(2026, 11, 1, 10, 0, tzinfo=UTC), "09:00", "11:00"
+    )
+    assert not review_pending_cli.within_offpeak(
+        datetime(2026, 11, 1, 11, 0, tzinfo=UTC), "09:00", "11:00"
+    )
+
+
+def test_cli_refuses_outside_the_window_and_force_overrides(
+    client, db, monkeypatch, _bind_review_cli
+):
+    """[26]: outside the window the CLI reviews nothing; --force proceeds."""
+    from datetime import UTC, datetime
+
+    _three_pending(client, monkeypatch)
+    monkeypatch.setattr(
+        deepseek_service,
+        "generate_answer",
+        fake_generation(json.dumps(VALID_REVIEW)),
+    )
+    # Midday UTC is well outside the 16:30-00:30 window.
+    monkeypatch.setattr(
+        review_pending_cli,
+        "_now",
+        lambda: datetime(2026, 11, 1, 12, 0, tzinfo=UTC),
+    )
+
+    assert review_pending_cli.main(limit=10) == 2
+    assert db.query(AiReview).count() == 0, "refusal must review nothing"
+
+    assert review_pending_cli.main(limit=10, force=True) == 0
+    assert db.query(AiReview).count() == 3
+
+
+def test_cli_scheduled_both_reviews_pending_then_stale(
+    client, db, monkeypatch, _bind_review_cli
+):
+    """[26]: the nightly call records trigger=scheduled and covers both scopes."""
+    from physics_ai_tutor.models import AiReviewRun
+    from physics_ai_tutor.repositories import ai_review_repository
+    from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
+    from physics_ai_tutor.schemas.language import Language
+
+    ids = _three_pending(client, monkeypatch)
+    # One question already has a verdict from an older prompt: stale.
+    ai_review_repository.create(
+        db,
+        AiReviewCreate(
+            question_id=ids[0],
+            language=Language.JA,
+            verdict=AiReviewVerdict.APPROVE,
+            confidence=0.9,
+            model="mock",
+            prompt_version="r0-old",
+        ),
+    )
+    db.commit()
+
+    monkeypatch.setattr(
+        deepseek_service,
+        "generate_answer",
+        fake_generation(json.dumps(VALID_REVIEW)),
+    )
+
+    assert review_pending_cli.main(limit=10, scope="both", trigger="scheduled") == 0
+
+    runs = db.query(AiReviewRun).order_by(AiReviewRun.id).all()
+    assert [run.scope for run in runs] == ["pending", "stale"]
+    assert all(run.trigger == "scheduled" for run in runs)
+    assert all(run.status == "done" for run in runs)
+    assert runs[0].reviewed_count == 2
+    assert runs[1].reviewed_count == 1
+
+    # Nothing left in either scope: the next night starts no empty runs.
+    assert review_pending_cli.main(limit=10, scope="both", trigger="scheduled") == 0
+    assert db.query(AiReviewRun).count() == 2

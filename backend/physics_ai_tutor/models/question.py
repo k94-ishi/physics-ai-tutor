@@ -1,6 +1,14 @@
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Integer, String, Text, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Integer,
+    SmallInteger,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -71,6 +79,19 @@ class Question(Base):
         server_default="{}",
         nullable=False,
     )
+
+    # Two-axis difficulty, 0-3 per axis ([40]), question and answer rated
+    # separately: the gap between them is the "was this machinery
+    # necessary?" signal. LLM-assigned during concept extraction,
+    # advisory, teacher-correctable; NULL = not rated yet.
+    question_physics_level: Mapped[int | None] = mapped_column(
+        SmallInteger, nullable=True
+    )
+    question_math_level: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    answer_physics_level: Mapped[int | None] = mapped_column(
+        SmallInteger, nullable=True
+    )
+    answer_math_level: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

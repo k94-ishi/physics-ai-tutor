@@ -31,6 +31,10 @@ function makeQuestion(overrides: Partial<Question> = {}): Question {
         source: "MANUAL",
         concepts: [],
         retrieved_questions: [],
+        question_physics_level: null,
+        question_math_level: null,
+        answer_physics_level: null,
+        answer_math_level: null,
         ...overrides,
     };
 }

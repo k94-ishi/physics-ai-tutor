@@ -3,6 +3,7 @@
 import { SyntheticEvent, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import QuestionIdBadge from "@/components/ui/QuestionIdBadge";
+import SelectField from "@/components/ui/SelectField";
 import {
     fetchQuestion,
     reviewQuestion,
@@ -27,6 +28,22 @@ import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { TranslationKey } from "@/lib/i18n/translations";
 
 const LANGUAGES: ContentLanguage[] = ["ja", "en"];
+
+const LEVEL_FIELDS = [
+    "question_physics_level",
+    "question_math_level",
+    "answer_physics_level",
+    "answer_math_level",
+] as const;
+
+type LevelField = (typeof LEVEL_FIELDS)[number];
+
+const LEVEL_LABEL_KEYS: Record<LevelField, TranslationKey> = {
+    question_physics_level: "levels.questionPhysics",
+    question_math_level: "levels.questionMath",
+    answer_physics_level: "levels.answerPhysics",
+    answer_math_level: "levels.answerMath",
+};
 
 const AI_VERDICT_LABEL_KEYS: Record<AiVerdict, TranslationKey> = {
     APPROVE: "admin.aiShortApprove",
@@ -92,6 +109,13 @@ export default function EditQuestionPage() {
     const [translating, setTranslating] = useState(false);
     const [reasonDialogOpen, setReasonDialogOpen] = useState(false);
     const [suggestionApplied, setSuggestionApplied] = useState(false);
+    // 難易度(物理・数学、質問と回答で別評価)。LLMの推定値を教員が上書きできる。
+    const [levels, setLevels] = useState<Record<LevelField, number | null>>({
+        question_physics_level: null,
+        question_math_level: null,
+        answer_physics_level: null,
+        answer_math_level: null,
+    });
     const [errors, setErrors] = useState<Partial<Record<ContentLanguage, string>>>(
         {}
     );
@@ -104,6 +128,12 @@ export default function EditQuestionPage() {
             const data = await fetchQuestion(id);
             setLoaded(data);
             setTexts(textsFromQuestion(data));
+            setLevels({
+                question_physics_level: data.question_physics_level,
+                question_math_level: data.question_math_level,
+                answer_physics_level: data.answer_physics_level,
+                answer_math_level: data.answer_math_level,
+            });
             // サーバの本文で上書きしたので「AI修正案を適用済み(未保存)」は無効。
             setSuggestionApplied(false);
         } catch (error) {
@@ -156,6 +186,14 @@ export default function EditQuestionPage() {
             changes[`question_${lang}`] = next.question;
             changes[`answer_${lang}`] = next.answer;
             changed = true;
+        }
+
+        for (const field of LEVEL_FIELDS) {
+            const next = levels[field];
+            if (next !== null && next !== loaded[field]) {
+                changes[field] = next;
+                changed = true;
+            }
         }
 
         return changed ? changes : null;
@@ -451,6 +489,51 @@ export default function EditQuestionPage() {
                             />
                         </fieldset>
                     ))}
+
+                    <fieldset className="flex flex-col gap-2">
+                        <legend className="text-sm font-medium text-gray-700">
+                            {t("levels.heading")}
+                        </legend>
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                            {LEVEL_FIELDS.map((field) => (
+                                <SelectField
+                                    key={field}
+                                    id={field}
+                                    label={t(LEVEL_LABEL_KEYS[field])}
+                                    value={
+                                        levels[field] === null
+                                            ? ""
+                                            : String(levels[field])
+                                    }
+                                    onChange={(e) =>
+                                        setLevels((prev) => ({
+                                            ...prev,
+                                            [field]:
+                                                e.target.value === ""
+                                                    ? null
+                                                    : Number(e.target.value),
+                                        }))
+                                    }
+                                    options={[
+                                        ...(levels[field] === null
+                                            ? [
+                                                  {
+                                                      value: "",
+                                                      label: t("levels.unrated"),
+                                                  },
+                                              ]
+                                            : []),
+                                        ...[0, 1, 2, 3].map((n) => ({
+                                            value: String(n),
+                                            label: t(
+                                                `levels.${field.includes("physics") ? "physics" : "math"}${n}` as TranslationKey
+                                            ),
+                                        })),
+                                    ]}
+                                />
+                            ))}
+                        </div>
+                    </fieldset>
 
                     <div className="flex flex-wrap gap-2">
                         <Button type="submit" disabled={busy}>

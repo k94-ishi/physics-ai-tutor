@@ -280,6 +280,7 @@ def _attach_concepts_best_effort(db: Session, question: Question) -> None:
         concept_service.attach_concepts_to_question(
             db, question.id, names, language=question.original_language
         )
+        concept_service.apply_levels_to_question(question, names)
     except ConceptExtractionError:
         logger.warning(
             "Concept extraction failed; question saved without concepts: "
@@ -479,6 +480,10 @@ def update_question(
         if question is None:
             return None
 
+        # The teacher's word on difficulty beats the LLM's advisory rating.
+        for field, value in question_data.levels().items():
+            setattr(question, field, value)
+
         edited = question_data.texts()
 
         for lang, (q, a) in edited.items():
@@ -620,6 +625,7 @@ def reextract_concepts_for_questions(
             concepts = concept_service.attach_concepts_to_question(
                 db, question_id, names, language=question.original_language
             )
+            concept_service.apply_levels_to_question(question, names)
             db.commit()
 
             results.append(

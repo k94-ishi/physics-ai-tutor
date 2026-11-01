@@ -44,6 +44,10 @@ const QUESTION = {
     source: "AI_GENERATED",
     concepts: [],
     retrieved_questions: [],
+    question_physics_level: null,
+    question_math_level: null,
+    answer_physics_level: null,
+    answer_math_level: null,
 } as unknown as Question;
 
 async function renderPage() {
@@ -155,6 +159,47 @@ describe("AI suggestion", () => {
         expect(screen.queryByText("AIレビューの修正案")).not.toBeInTheDocument();
     });
 });
+
+describe("Difficulty levels", () => {
+    it("sends only the changed level and keeps the text untouched", async () => {
+        const user = userEvent.setup();
+        await renderPage();
+
+        await user.selectOptions(
+            screen.getByLabelText("質問: 物理"),
+            "2"
+        );
+        mocked.updateQuestion.mockResolvedValue(QUESTION);
+        await user.click(screen.getByRole("button", { name: "保存" }));
+
+        await waitFor(() => expect(mocked.updateQuestion).toHaveBeenCalled());
+        expect(mocked.updateQuestion).toHaveBeenCalledWith({
+            id: 7,
+            question_physics_level: 2,
+        });
+    });
+
+    it("shows the LLM rating and does not resend it unchanged", async () => {
+        mocked.fetchQuestion.mockResolvedValue({
+            ...QUESTION,
+            question_physics_level: 1,
+            question_math_level: 0,
+            answer_physics_level: 1,
+            answer_math_level: 1,
+        } as unknown as Question);
+        const user = userEvent.setup();
+        await renderPage();
+
+        expect(screen.getByLabelText("質問: 物理")).toHaveValue("1");
+
+        // Nothing changed: saving goes straight back without a PUT.
+        await user.click(screen.getByRole("button", { name: "保存" }));
+        await waitFor(() =>
+            expect(mocked.updateQuestion).not.toHaveBeenCalled()
+        );
+    });
+});
+
 
 describe("Save and approve", () => {
     it("sends EDIT_APPROVE with the edited text so the diff is recorded", async () => {

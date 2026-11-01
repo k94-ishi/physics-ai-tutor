@@ -306,6 +306,28 @@ the `golden.jsonl` schema (`backend/eval/README.md`), keep APPROVE / EDIT
 2026-10-28 carry real reason codes, unlike the 57 production cases that
 are in the set today.
 
+### 5.3a Difficulty levels: backfill once, then validate ([40])
+
+New questions get two-axis difficulty (physics/math, question and answer
+rated separately) when they are approved. The existing APPROVED rows need
+one backfill pass, which also refreshes their concepts under the v4
+extraction prompt ([39]):
+
+```bash
+cd backend && export DATABASE_URL='<production url>'
+uv run python -m physics_ai_tutor.cli.backfill_levels --limit 200
+unset DATABASE_URL
+```
+
+Restartable: re-run until it prints "backfill done" (one DeepSeek call per
+question; refuses outside the discount window without `--force`).
+
+Then the validation gate before anything is built on the axes: pick ~30
+rated questions, rate them yourself on the same 0-3 scales, and record
+the agreement as a comment on [40] `785a7e9`. If the model cannot separate
+物理基礎 from 物理, we collapse the scale instead of building [38]/[42] on
+noise.
+
 ### 5.4 Refresh the seed data occasionally
 
 After a review pass, export the approved questions again and replace the

@@ -1104,6 +1104,26 @@ function AdminQuestionsPageInner() {
                                                             </span>
                                                         )}
 
+                                                        {question.question_physics_level !==
+                                                            null && (
+                                                            <span
+                                                                className="shrink-0 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700"
+                                                                title={t("levels.badgeTitle", {
+                                                                    qp: question.question_physics_level,
+                                                                    qm: question.question_math_level ?? "-",
+                                                                    ap: question.answer_physics_level ?? "-",
+                                                                    am: question.answer_math_level ?? "-",
+                                                                })}
+                                                            >
+                                                                {t("levels.badge", {
+                                                                    qp: question.question_physics_level,
+                                                                    qm: question.question_math_level ?? "-",
+                                                                    ap: question.answer_physics_level ?? "-",
+                                                                    am: question.answer_math_level ?? "-",
+                                                                })}
+                                                            </span>
+                                                        )}
+
                                                         {aiReviewingIds.has(
                                                             question.id
                                                         ) && (

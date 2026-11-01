@@ -98,21 +98,33 @@ prompts:
 - family: concept_extraction
   name: system
   language: null
-  version: v3
-  description: 'Instruction kept in English for both languages: the parser relies on one identical output format (''<ja> | <en>'' lines).'
-  text: 'You are an expert in physics education. Your output is processed automatically: print only the required format, one concept per line as ''<Japanese name> | <English name>'', and nothing else.'
+  version: v4
+  description: 'Instruction kept in English for both languages: the parser relies on one identical output format (''<ja> | <en>'' lines plus one LEVELS line).'
+  text: 'You are an expert in physics education. Your output is processed automatically: print only the required format - one concept per line as ''<Japanese name> | <English name>'', then exactly one final line ''LEVELS: question physics=N math=N | answer physics=N math=N'' - and nothing else.'
 - family: concept_extraction
   name: user_template
   language: null
-  version: v3
+  version: v4
   description: 'Placeholders: example, language_name, glossary, question, answer.'
   text: |
     ---Example---
 
     {example}---End of example---
-    As in the example, extract the physics concepts from the following question
-    and answer (written in {language_name}). Print one concept per line as
-    '<Japanese name> | <English name>', newline separated, and nothing else.
+    As in the example, extract the concepts from the following question and
+    answer (written in {language_name}). Physics concepts and the mathematical
+    tools the answer relies on are both concepts: if the answer uses a
+    differential equation, a vector derivative, or a trigonometric ratio,
+    extract 微分方程式 | differential equation and so on - these are the links
+    a stuck student follows. Print one concept per line as
+    '<Japanese name> | <English name>', newline separated.
+
+    Then rate the question and the answer separately, each on two axes from
+    0 to 3. physics: 0 = 中学理科, 1 = 物理基礎, 2 = 物理, 3 = 発展 (university).
+    math: 0 = up to 中学数学, 1 = 数I・数A, 2 = 数II・数B, 3 = calculus or
+    vector analysis (university). Rate the question by what the asker must
+    already know to pose it, and the answer by what a reader needs to follow
+    it. Finish with exactly one line in this form and nothing after it:
+    LEVELS: question physics=N math=N | answer physics=N math=N
     {glossary}
     Question:
     {question}
@@ -124,7 +136,7 @@ prompts:
 - family: concept_extraction
   name: example
   language: ja
-  version: v3
+  version: v4
   description: Worked example shown when the row's text is Japanese.
   text: |
     Question:
@@ -147,10 +159,11 @@ prompts:
     v-tグラフ | v-t graph
     接線の傾き | slope of the tangent
     微分 | differentiation
+    LEVELS: question physics=1 math=0 | answer physics=1 math=1
 - family: concept_extraction
   name: example
   language: en
-  version: v3
+  version: v4
   description: Worked example shown when the row's text is English; same output lines as the Japanese example so extractions stay comparable.
   text: |
     Question:
@@ -174,6 +187,7 @@ prompts:
     v-tグラフ | v-t graph
     接線の傾き | slope of the tangent
     微分 | differentiation
+    LEVELS: question physics=1 math=0 | answer physics=1 math=1
 - family: translation
   name: system
   language: null

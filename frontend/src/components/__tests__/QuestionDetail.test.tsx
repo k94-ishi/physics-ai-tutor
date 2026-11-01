@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Question } from "@/types/question";
 
@@ -63,7 +64,7 @@ describe("QuestionDetail", () => {
             expect(screen.getByText("速度ってなに？")).toBeInTheDocument()
         );
         expect(mocked.fetchQuestion).toHaveBeenCalledWith(1, "ja");
-        expect(mocked.fetchRelatedQuestions).toHaveBeenCalledWith(1, 5, "ja");
+        expect(mocked.fetchRelatedQuestions).toHaveBeenCalledWith(1, 20, "ja");
         expect(screen.queryByText("自動翻訳")).not.toBeInTheDocument();
         expect(screen.queryByText("管理者未チェック")).not.toBeInTheDocument();
     });
@@ -130,6 +131,67 @@ describe("concept chips", () => {
         await screen.findByText("速度ってなに？");
         expect(
             screen.queryByText("この回答に出てくる概念")
+        ).not.toBeInTheDocument();
+    });
+});
+
+describe("related questions", () => {
+    function makeRelated(count: number) {
+        return Array.from({ length: count }, (_, i) =>
+            makeQuestion({
+                id: 100 + i,
+                question: `関連質問${String(i).padStart(2, "0")}`,
+                answer: `関連回答${i}`,
+            })
+        );
+    }
+
+    it("asks for the API maximum and shows ten before expanding", async () => {
+        mocked.fetchQuestion.mockResolvedValue(makeQuestion({}));
+        mocked.fetchRelatedQuestions.mockResolvedValue(makeRelated(14));
+        const user = userEvent.setup();
+        renderDetail();
+
+        await screen.findByText("関連質問00");
+        expect(mocked.fetchRelatedQuestions).toHaveBeenCalledWith(1, 20, "ja");
+        expect(screen.queryByText("関連質問10")).not.toBeInTheDocument();
+
+        // Expanding costs no extra request: the rest is already loaded.
+        await user.click(
+            screen.getByRole("button", { name: "関連する質問をもっと見る" })
+        );
+        expect(screen.getByText("関連質問13")).toBeInTheDocument();
+        expect(mocked.fetchRelatedQuestions).toHaveBeenCalledTimes(1);
+    });
+
+    it("previews a related question without leaving the page", async () => {
+        mocked.fetchQuestion.mockResolvedValue(makeQuestion({}));
+        mocked.fetchRelatedQuestions.mockResolvedValue(makeRelated(1));
+        const user = userEvent.setup();
+        renderDetail();
+
+        await user.click(await screen.findByRole("button", { name: /関連質問00/ }));
+
+        const dialog = screen.getByRole("dialog");
+        expect(dialog).toHaveTextContent("関連質問00");
+        // The original question is still mounted behind the modal.
+        expect(screen.getByText("速度ってなに？")).toBeInTheDocument();
+        expect(
+            screen.getByRole("link", { name: "この質問のページを開く" })
+        ).toHaveAttribute("href", "/questions/100");
+
+        await user.click(screen.getByRole("button", { name: "閉じる" }));
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("offers no expansion when ten or fewer are related", async () => {
+        mocked.fetchQuestion.mockResolvedValue(makeQuestion({}));
+        mocked.fetchRelatedQuestions.mockResolvedValue(makeRelated(3));
+        renderDetail();
+
+        await screen.findByText("関連質問00");
+        expect(
+            screen.queryByRole("button", { name: "関連する質問をもっと見る" })
         ).not.toBeInTheDocument();
     });
 });

@@ -225,6 +225,19 @@ Conventions:
   behaviour a user can observe. `async` Server Components are out of scope
   for Vitest; use a browser check against the local stack for those.
 
+### Markdown rendering
+
+`MarkdownContent` composes remark-gfm, remark-math, rehype-katex and
+**remark-cjk-friendly**. The last one is not optional: CommonMark counts
+fullwidth punctuation (`」）。、`) as punctuation, so a `**` between `」`
+and a kana can only *open* emphasis, never close it, and
+`**「重心の位置」**と...` renders with literal asterisks. Japanese has no
+spaces to rescue the delimiter classification. The plugin implements the
+CJK-friendly flanking amendment and fixes it at render time, so stored
+answers never need editing for it (issue [36]). Keep it in the plugin
+list, and cover any new renderer with
+`src/components/ui/__tests__/MarkdownContent.test.tsx`.
+
 ### What is not covered
 
 - No end-to-end browser tests. Pages, routing and the Mermaid / KaTeX

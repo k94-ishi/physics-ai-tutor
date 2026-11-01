@@ -16,8 +16,7 @@ Text like
 ```
 
 renders with only と emphasized and the outer `**` visible as literal
-asterisks. Teachers have been fixing these by hand as FORMATTING
-edit-approves, but the Markdown is not malformed — the renderer is.
+asterisks. The Markdown is not malformed — the renderer is.
 
 CommonMark's emphasis flanking rules classify a delimiter by its
 neighbours, and fullwidth brackets/punctuation (「」（）。、) count as
@@ -57,12 +56,9 @@ no teacher ever edits an answer only to work around the renderer.
 - Leave the stored answers and `seed.json` untouched; do not add prompt
   rules telling the model to avoid the pattern (unreliable, bloats the
   prompt, and the data is fine).
-- Process note for the review loop: stop recording FORMATTING
-  edit-approves whose only change is this pattern — after the fix they
-  record a text change that was never needed, which pollutes the review
-  dataset and the golden set. Check whether any existing golden EDIT case
-  (e.g. p-edit-150 FORMATTING) is actually this renderer artifact and
-  relabel if so.
+- No data repair is needed. Checked 2026-11-01: no review in the
+  available history was made only to work around this pattern, and no
+  golden case needs relabelling (see "Review-data check" below).
 
 ## Acceptance criteria
 
@@ -72,6 +68,29 @@ no teacher ever edits an answer only to work around the renderer.
       changing.
 - [ ] KaTeX, GFM tables, and Mermaid blocks still render (existing tests
       pass).
+
+## Review-data check (2026-11-01)
+
+The worry was that teachers had been hand-fixing this as FORMATTING
+edit-approves, which would put phantom "the text needed changing" labels
+into the training data. They had not:
+
+- Every FORMATTING case in the golden set has a real, documented reason —
+  Mermaid diagram removal (p-edit-17/49/115/150/224/918) or missing `$`
+  delimiters (p-edit-721). None is a stray-asterisk fix.
+- Of the 18 before/after pairs that can be reconstructed (golden pre-edit
+  text vs the current approved text in `seed.json`), **none** differs only
+  in emphasis markers.
+- In the 4 pairs where the pre-edit text contained the pattern
+  (p-edit-49/115/215/1225), it is still present after the teacher's edit —
+  it was simply left alone.
+- 21 of 144 approved answers in `seed.json` still contain it.
+
+So the dataset is clean and the renderer fix makes those 21 answers
+display correctly with no data changes. Limit of the check: the full
+production `question_reviews` history was not reachable (the supplied URL
+points at the local compose database, which holds no review rows), so
+this covers the 57 production cases sampled into the golden set.
 
 ## Out of scope
 

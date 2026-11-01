@@ -38,3 +38,27 @@ without scrolling back - the chat-like reading position.
 ## Definition of done
 
 - [ ] Frontend checks pass; a vitest on the layout component where practical
+
+## Log
+
+- **2026-11-02** Implemented on the **question detail page** in commit
+  (see below). `StickyAskBar` fixes `AskAiBox` to the bottom, measures
+  its own height with a ResizeObserver, and uses that height twice: an
+  in-flow spacer so the end of an answer is never hidden, and a
+  `--ask-bar-height` CSS variable that `Toaster` offsets by, so toasts
+  sit above the bar instead of under it. Height is capped at `70svh`
+  with internal scrolling, `env(safe-area-inset-bottom)` keeps it clear
+  of the iOS home indicator, and the root layout now sets
+  `interactiveWidget: "resizes-content"` so the soft keyboard pushes the
+  page instead of covering the bar.
+- **Not done, deliberately: the home page.** There the search component
+  *wraps the question list as its children* (the list is its pre-search
+  fallback), so making it sticky would pin the whole list to the bottom.
+  Restructuring that is real work and is not what this issue asked for;
+  on the home page the search box is already the first thing on screen.
+  If a sticky bar is wanted there too, it needs
+  `QuestionSearchAndAsk` split into "the form" and "the results" first -
+  worth its own issue.
+- The bar did not need the planned collapse-on-blur: the component only
+  renders results after a search, so its resting height already is one
+  input line.

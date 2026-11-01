@@ -237,6 +237,15 @@ button never bounces forward. Query embeddings are cached server-side in
 model upgrade misses the cache by construction instead of mixing
 incompatible vectors.
 
+### The sticky ask bar
+
+`StickyAskBar` ([43]) fixes the ask box to the bottom of the question
+detail page. It measures itself and publishes `--ask-bar-height`; any
+other bottom-fixed element must offset by that variable (`Toaster`
+already does) or it will sit underneath the bar. The root layout sets
+`interactiveWidget: "resizes-content"` so a soft keyboard resizes the
+page rather than covering the bar.
+
 ### Markdown rendering
 
 `MarkdownContent` composes remark-gfm, remark-math, rehype-katex and

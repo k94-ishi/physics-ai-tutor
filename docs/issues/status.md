@@ -70,6 +70,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 47 | open | 47-track-c-housekeeping.md | Track C: housekeeping | b904b3d |
 | 48 | open | 48-track-d-owner-queue.md | Track D: owner's queue - console, judgement, and go-aheads | 26476f8 |
 | 49 | open | 49-similarity-search-in-the-url.md | Put the vector search in the URL (?similar=...) and cache query embeddings | 4444d02 |
+| 50 | open | 50-language-in-the-url.md | Put the content language in the URL so shared links mean the same thing for everyone | — (file-era issue) |
 
 ## Notes on the archive column
 

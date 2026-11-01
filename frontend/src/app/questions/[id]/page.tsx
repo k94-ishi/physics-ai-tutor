@@ -1,4 +1,5 @@
 import AskAiBox from "@/components/AskAiBox";
+import StickyAskBar from "@/components/StickyAskBar";
 import QuestionDetail from "@/components/QuestionDetail";
 
 export default async function QuestionPage({
@@ -15,7 +16,9 @@ export default async function QuestionPage({
         <main className="flex flex-col gap-6">
             <QuestionDetail id={Number(id)} matched={matched} />
 
-            <AskAiBox />
+            <StickyAskBar>
+                <AskAiBox />
+            </StickyAskBar>
         </main>
     );
 }

@@ -97,3 +97,9 @@ shared search almost free:
   push the student forward again - a restored link always shows the
   similarity results instead. Left open for the owner to verify in the
   UI; flip the row in status.md when satisfied.
+- **2026-11-02** Owner asked whether the URL needs a language parameter.
+  It does, and the reason is sharper than consistency: the vector search
+  is language-scoped, so a shared `?similar=` link searches the
+  *recipient's* language embeddings and can quietly return nothing.
+  Filed as [50]; not folded in here because it touches the language
+  provider and every page, not just this parameter.

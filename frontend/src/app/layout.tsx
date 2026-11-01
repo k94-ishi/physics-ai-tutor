@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import type { ReactNode } from "react";
 import Footer from "@/components/Footer";
@@ -32,6 +32,12 @@ export const metadata: Metadata = {
       noimageindex: true,
     },
   },
+};
+
+// 下部固定の質問バー([43])がソフトキーボードに隠れないよう、
+// キーボード表示時はコンテンツ側をリサイズさせる。
+export const viewport: Viewport = {
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({

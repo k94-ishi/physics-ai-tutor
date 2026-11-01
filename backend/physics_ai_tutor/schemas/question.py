@@ -95,10 +95,10 @@ class QuestionCreate(BaseModel):
 
 class QuestionUpdate(QuestionCreate):
     # Teacher corrections to the advisory LLM difficulty ratings ([40]).
-    question_physics_level: int | None = Field(default=None, ge=0, le=3)
-    question_math_level: int | None = Field(default=None, ge=0, le=3)
-    answer_physics_level: int | None = Field(default=None, ge=0, le=3)
-    answer_math_level: int | None = Field(default=None, ge=0, le=3)
+    question_physics_level: int | None = Field(default=None, ge=0, le=4)
+    question_math_level: int | None = Field(default=None, ge=0, le=4)
+    answer_physics_level: int | None = Field(default=None, ge=0, le=4)
+    answer_math_level: int | None = Field(default=None, ge=0, le=4)
 
     def _allows_empty_texts(self) -> bool:
         # A levels-only correction is a legitimate update.

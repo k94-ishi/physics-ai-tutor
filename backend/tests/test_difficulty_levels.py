@@ -78,7 +78,7 @@ def test_levels_are_validated_on_update(admin_client):
 
     assert (
         admin_client.put(
-            f"{QUESTIONS}/{created['id']}", json={"question_math_level": 4}
+            f"{QUESTIONS}/{created['id']}", json={"question_math_level": 5}
         ).status_code
         == 422
     )

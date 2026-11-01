@@ -64,17 +64,18 @@ warns when the set has changed since.
 | --- | --- | --- |
 | `baseline-v2-r1.json` | the set before the [30] notes landed | stale hash; historical reference only |
 | `baseline-v3-r2.json` | the set before p-approve-15/26/194/768 became EDIT | stale hash; understates the prompts, since four cases were labelled APPROVE that the teacher had in fact corrected |
-| `baseline-v4-r3.json` | the current 66-case set | **current** |
+| `baseline-v4-r3.json` | the 66-case set of 2026-11-01 | superseded by v5-r4 |
+| `baseline-v5-r4.json` | the current 68-case set (g14/g15 added for the [37] necessity policy) | **current** |
 
 Do not compare across these files as if they were runs of one experiment:
 the prompts *and* the set differ. In particular the v4/r3 jump in reject
 recall (0.231 -> 0.778) is partly the prompt fix and partly the removal of
 four cases that had been rejected without a reason (see above).
 
-`--save-baseline` re-runs the whole set, so pinning costs another ~66
-calls. v4/r3 was measured twice: exact agreement 66.7 % then 72.7 %,
-publish agreement 95.5 % then 93.9 %, with reject precision (87.5 %) and
-recall (77.8 %) identical in both. The pinned file deliberately carries the
-*lower* observation of each varying metric, so that an unchanged prompt
-does not trip the gate on run noise alone; it is not a verbatim copy of
-either run's output.
+`--save-baseline` re-runs the whole set, so pinning costs another full
+pass. Both pinned baselines carry the *lower* observation of each metric
+that varied between their two measurement runs, so an unchanged prompt
+does not trip the gate on run noise alone; they are not verbatim copies
+of a single run. v4/r3 measured exact 66.7/72.7 %, publish 95.5/93.9 %;
+v5/r4 measured exact 72.1/79.4 %, publish 94.1/95.6 %; reject precision
+(87.5 %) and recall (77.8 %) were identical in every run.

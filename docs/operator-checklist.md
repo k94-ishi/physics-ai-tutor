@@ -12,7 +12,7 @@ minutes, Phase 4 ongoing (minutes per day), Phase 5 one hour once.
 
 ## Phase 1 - Decisions and judgement calls (no deployment yet)
 
-### 1.1 Read the v4 answer prompt and the r3 reviewer rubric (15 min)
+### 1.1 Read the v5 answer prompt and the r4 reviewer rubric (15 min)
 
 ```bash
 cd backend
@@ -24,21 +24,24 @@ What you are checking: tone and wording a teacher would use, the two
 separate axes (below), the length targets. If you change any text:
 
 1. edit `backend/physics_ai_tutor/core/prompt_library.yaml`,
-2. bump that family's `version` (`v3` -> `v4`, `r2` -> `r3`),
+2. bump that family's `version` (`v5` -> `v6`, `r4` -> `r5`),
 3. run `uv run pytest tests/test_prompts.py` - it prints the new
    fingerprint to paste into `FAMILY_FINGERPRINTS`,
 4. run the eval (Phase 5.2) before relying on the new prompt.
 
 Since v4/r3 ([33]) the prompts keep **subject** and **level** apart, and
-they are meant to stay apart:
+since v5/r4 ([37]) the level rule is **necessity**:
 
 - *Subject* decides what gets answered at all: physics and the maths it
   needs, at any level including university. Other subjects are OFF_TOPIC
   even when they use physics words (chemistry of materials, corrosion).
-- *Level* decides how it is explained: the reader is a high school
-  student, so advanced material must define its concepts and build up in
-  order. Being beyond the textbook is no longer a defect by itself, and
-  `TOO_ADVANCED` now means "too thin to follow", not "beyond the course".
+- *Level* is decided by the question: the asker's wording signals their
+  level, and the answer uses the tools the question genuinely needs - a
+  vector ODE for air resistance is APPROVE, limits on a v-t-graph
+  question are not. Advanced tools must be *named* (微分方程式) so the
+  related-QA graph can scaffold them; deriving everything inline is not
+  required. `TOO_ADVANCED` means "machinery the question never needed or
+  an unnamed, unlookupable concept", never "beyond the course".
 
 Two further rules came from the teacher on 2026-11-01: **how to learn
 physics** is in scope ("I am bad at maths, how should I study physics?"),
@@ -323,9 +326,9 @@ Restartable: re-run until it prints "backfill done" (one DeepSeek call per
 question; refuses outside the discount window without `--force`).
 
 Then the validation gate before anything is built on the axes: pick ~30
-rated questions, rate them yourself on the same 0-3 scales, and record
+rated questions, rate them yourself on the same 0-4 content-based scales, and record
 the agreement as a comment on [40] `785a7e9`. If the model cannot separate
-物理基礎 from 物理, we collapse the scale instead of building [38]/[42] on
+adjacent levels, we collapse the scale instead of building [38]/[42] on
 noise.
 
 ### 5.4 Refresh the seed data occasionally

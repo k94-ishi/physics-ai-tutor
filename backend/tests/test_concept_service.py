@@ -133,9 +133,9 @@ def test_parse_levels_line_reads_the_required_format():
 def test_parse_levels_line_clamps_and_rejects_garbage():
     # The scale is ordinal; an overshoot means "at least the top".
     clamped = concept_service.parse_levels_line(
-        "LEVELS: question physics=9 math=4 | answer physics=5 math=3"
+        "LEVELS: question physics=9 math=5 | answer physics=7 math=4"
     )
-    assert clamped == concept_service.ExtractionLevels(3, 3, 3, 3)
+    assert clamped == concept_service.ExtractionLevels(4, 4, 4, 4)
 
     for junk in (
         "LEVELS: physics=1 math=0",

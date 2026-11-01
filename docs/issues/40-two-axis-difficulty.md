@@ -9,12 +9,21 @@ priority: P1
 
 ## Summary
 
-Give every question two coarse difficulty levels, one per axis:
+Give every question two difficulty levels per axis, 0-4, rated by the
+**nature of the content itself**, not a school curriculum (owner's
+policy, 2026-11-01: curricula change and do not translate; abstraction
+does):
 
-| axis | 0 | 1 | 2 | 3 |
-| --- | --- | --- | --- | --- |
-| physics | 中学理科 | 物理基礎 | 物理 | 発展(大学) |
-| math | 算数・中学数学 | 数I・数A | 数II・数B・数III | 微積・ベクトル解析(大学) |
+| level | physics (distance from direct experience) | math (nature of the tool) |
+| --- | --- | --- |
+| 0 | everyday phenomena anyone can see and feel | everyday arithmetic |
+| 1 | visible motion/phenomena with named quantities in a concrete situation | relations you can draw as a graph or figure |
+| 2 | invisible quantities still felt in daily life (energy, pressure, current) | symbolic algebra over several variables |
+| 3 | classical abstractions with no sensory handle (wave phase, fields, entropy) | functions as objects, vectors, basic probability |
+| 4 | modern/theoretical physics (relativity, quantum, statistical, analytical mechanics) | calculus, differential equations, vector analysis, linear algebra |
+
+The owner reviews this rubric once ratings exist; the wording is a first
+draft and deliberately not precious.
 
 Assigned by the LLM **in the same call as concept extraction** (one
 prompt, no extra API cost), stored on `questions`, editable by the

@@ -523,7 +523,7 @@ export default function EditQuestionPage() {
                                                   },
                                               ]
                                             : []),
-                                        ...[0, 1, 2, 3].map((n) => ({
+                                        ...[0, 1, 2, 3, 4].map((n) => ({
                                             value: String(n),
                                             label: t(
                                                 `levels.${field.includes("physics") ? "physics" : "math"}${n}` as TranslationKey

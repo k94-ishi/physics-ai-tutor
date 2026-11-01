@@ -39,9 +39,11 @@ class ConceptName:
         return name
 
 
-# Two-axis difficulty ([40]). Question and answer are rated separately:
-# the gap between them is the "was this machinery necessary?" signal.
-MAX_LEVEL = 3
+# Two-axis difficulty ([40]), 0-4, rated by the nature of the content
+# itself rather than a school curriculum (owner's policy, 2026-11-01).
+# Question and answer are rated separately: the gap between them is the
+# "was this machinery necessary?" signal.
+MAX_LEVEL = 4
 
 _LEVELS_LINE = re.compile(
     r"^levels:\s*question\s+physics\s*=\s*(\d+)\s+math\s*=\s*(\d+)"

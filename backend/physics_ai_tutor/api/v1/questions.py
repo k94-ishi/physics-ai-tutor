@@ -118,6 +118,12 @@ def get_questions(
         max_length=800,
         description="Admin only: comma-separated question ids, at most 100.",
     ),
+    concept: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description="Questions linked to this concept (name in either language).",
+    ),
     db: Session = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
@@ -140,6 +146,7 @@ def get_questions(
         sort=sort.value if sort and is_admin else None,
         ai_verdict=ai_verdict.value if ai_verdict and is_admin else None,
         ids=_parse_ids(ids) if is_admin else None,
+        concept=concept,
     )
 
 

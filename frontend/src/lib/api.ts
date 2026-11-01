@@ -135,6 +135,9 @@ export async function fetchQuestions(
     if (params.ids?.length) {
         searchParams.set("ids", params.ids.join(","));
     }
+    if (params.concept) {
+        searchParams.set("concept", params.concept);
+    }
 
     const query = searchParams.toString();
 

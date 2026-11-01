@@ -86,6 +86,8 @@ export type FetchQuestionsParams = {
     aiVerdict?: AiVerdictFilter;
     /** Admin only: list exactly these question ids. */
     ids?: number[];
+    /** Questions linked to this concept (name in either language). */
+    concept?: string;
 };
 
 export type SearchQuestionsParams = {

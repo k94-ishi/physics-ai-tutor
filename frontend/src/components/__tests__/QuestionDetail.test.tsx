@@ -106,3 +106,30 @@ describe("QuestionDetail", () => {
         );
     });
 });
+
+describe("concept chips", () => {
+    it("shows the answer's concepts as links to the shared-concept list", async () => {
+        mocked.fetchQuestion.mockResolvedValue(
+            makeQuestion({ concepts: ["微分方程式", "終端速度"] })
+        );
+        mocked.fetchRelatedQuestions.mockResolvedValue([]);
+        renderDetail();
+
+        const chip = await screen.findByRole("link", { name: "微分方程式" });
+        expect(chip).toHaveAttribute(
+            "href",
+            "/?concept=%E5%BE%AE%E5%88%86%E6%96%B9%E7%A8%8B%E5%BC%8F"
+        );
+    });
+
+    it("shows no concept section when the question has none", async () => {
+        mocked.fetchQuestion.mockResolvedValue(makeQuestion({ concepts: [] }));
+        mocked.fetchRelatedQuestions.mockResolvedValue([]);
+        renderDetail();
+
+        await screen.findByText("速度ってなに？");
+        expect(
+            screen.queryByText("この回答に出てくる概念")
+        ).not.toBeInTheDocument();
+    });
+});

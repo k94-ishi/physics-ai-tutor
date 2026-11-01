@@ -7,6 +7,7 @@ import { Question } from "@/types/question";
 import Card from "@/components/ui/Card";
 import LoadingState from "@/components/ui/LoadingState";
 import MarkdownContent from "@/components/ui/MarkdownContent";
+import ConceptChips from "@/components/ui/ConceptChips";
 import ReferencedQuestions from "@/components/ui/ReferencedQuestions";
 import StatusMessage from "@/components/ui/StatusMessage";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
@@ -132,6 +133,8 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
                 </div>
 
                 <MarkdownContent content={question.answer} variant="full" />
+
+                <ConceptChips concepts={question.concepts} />
 
                 <ReferencedQuestions items={question.retrieved_questions} />
             </Card>

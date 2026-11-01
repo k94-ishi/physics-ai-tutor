@@ -1,5 +1,5 @@
 ---
-title: "[33] Align the golden scope cases and the eval gate with the broadened v3/r2 scope policy"
+title: "[33] Separate the subject and level axes in the v3/r2 prompts; realign the golden scope cases"
 labels: [eval, ai-review, prompt]
 milestone: M4 Partial automation and regression safety
 priority: P2

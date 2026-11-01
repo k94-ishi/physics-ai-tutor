@@ -479,56 +479,35 @@ npm run build
 
 ## Issues and Roadmap
 
-Issues live in the repository itself via [git-bug](https://github.com/git-bug/git-bug)
-(`brew install git-bug`). They are stored as git objects under `refs/bugs`,
-separate from the file history, and are **not** pushed unless you run
-`git bug push` explicitly. Work locally; do not push bug refs to the remote
-unless that is intended.
+Since 2026-11-02 issues are **markdown files** under `docs/issues/`
+(owner's decision): one `NN-short-slug.md` per issue with front matter
+(title, labels, milestone, priority), and **`docs/issues/status.md`** as
+the single index of open/closed status plus the workflow rules. Plain
+files mean the tracker is versioned, diffable, and fully controllable by
+the agents working on the repo.
 
-The store sits in the repository's common `.git`, so **all worktrees share
-the same bugs and identities**. Never run `git bug wipe`: it deletes every
-bug and identity for every worktree. Use `git bug bug rm <id>` for a single
-mistaken bug.
+- Open an issue: add the file, add a row to `status.md`.
+- Close/reopen: flip the Status cell in `status.md` (status lives only
+  there; the files carry the body).
+- Progress: append a dated `## Log` section to the issue file.
+- The track issues `[45]`-`[48]` are ordered queues over the others;
+  the roadmap history is `00-roadmap.md`.
+- Priorities `P0`-`P3` and milestones `M0`-`M4` keep their old meanings
+  (see the front matter of any issue).
 
-One-time setup on a new machine:
+### The git-bug archive (read-only)
 
-```bash
-git bug user new --name "<name>" --email "<email>" --non-interactive
-```
+Until 2026-11-02 the tracker was [git-bug](https://github.com/git-bug/git-bug);
+it remains in the repository as a **read-only archive** holding all
+discussion comments from that era. Browse with `git bug bug`,
+`git bug bug comment <id>` or `git bug termui`; the archive ids are listed
+per issue in `status.md`. **Do not write to it** - no new bugs, comments,
+labels or status changes - and never run `git bug wipe` (it would destroy
+the archive for every worktree). The store once broke when a comment
+referenced an author identity missing from the shared `.git`
+(repaired by the owner on 2026-11-02), which is part of why files won.
 
-Everyday use:
+`scripts/import_issues.py` belongs to the git-bug era and is kept only as
+history; do not re-run it.
 
-```bash
-git bug termui                 # browse, comment, label, close
-git bug bug                    # list open issues
-git bug bug -l P0              # by priority label
-git bug bug -l M2              # by milestone label
-git bug bug -l epic            # the roadmap issue
-git bug bug show <id>          # one issue
-```
-
-Creating an issue: copy `docs/issues/TEMPLATE_task.md` (or
-`TEMPLATE_bug.md`), fill it in, then
-
-```bash
-git bug bug new -t "<title>" -F <your-copy>.md
-git bug bug label new <id> P1 M2 feature backend
-```
-
-Label conventions:
-
-| Label | Meaning |
-| --- | --- |
-| `P0` … `P3` | P0 blocks deployment, P1 next, P2 planned, P3 later |
-| `M0` … `M4` | Milestone: M0 Deploy Google Sign-In, M1 Student value, M2 Review data foundation, M3 AI-assisted review (advisory), M4 Partial automation and regression safety |
-| `epic` | A tracking issue that links others (the roadmap) |
-| topical | `backend`, `frontend`, `cli`, `prompt`, `review`, `ai-review`, `data-quality`, `observability`, `security`, `privacy`, `deploy`, `ops`, `testing`, `bug`, `feature` |
-
-Cross-references inside an issue body are git-bug short ids (`#a1b2c3d`).
-
-`docs/issues/NN-*.md` are the seed drafts (the roadmap is `00-roadmap.md`,
-imported as the `epic`). `scripts/import_issues.py [dir] [--apply]` imports
-them, skips titles that already exist, and rewrites `#NN` draft references
-to real ids. After the import, git-bug is the source of truth; the drafts
-are kept only so the tracker can be re-seeded in a fresh clone.
 - [AGENTS.md](../AGENTS.md): project rules for contributors and coding agents

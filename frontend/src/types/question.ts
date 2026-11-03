@@ -103,7 +103,7 @@ export const REVIEW_REASONS = [
     "MATH_ERROR",
     "INCOMPLETE",
     "OFF_TOPIC",
-    "TOO_ADVANCED",
+    "UNNEEDED_TOOLS",
     "UNCLEAR",
     "FORMATTING",
     "LANGUAGE",
@@ -111,7 +111,8 @@ export const REVIEW_REASONS = [
     "OTHER",
 ] as const;
 
-export type ReviewReason = (typeof REVIEW_REASONS)[number];
+// Legacy codes appear in stored reviews but are no longer offered as choices.
+export type ReviewReason = (typeof REVIEW_REASONS)[number] | "TOO_ADVANCED";
 
 export type AiVerdict = "APPROVE" | "EDIT" | "REJECT";
 

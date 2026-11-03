@@ -30,11 +30,11 @@ describe("ReviewReasonDialog", () => {
         const user = userEvent.setup();
         renderDialog();
 
-        await user.selectOptions(screen.getByLabelText("理由"), "TOO_ADVANCED");
+        await user.selectOptions(screen.getByLabelText("理由"), "UNNEEDED_TOOLS");
         await user.type(screen.getByRole("textbox"), " 微積分を使用 ");
         await user.click(screen.getByRole("button", { name: "確定" }));
 
-        expect(onConfirm).toHaveBeenCalledWith("TOO_ADVANCED", "微積分を使用");
+        expect(onConfirm).toHaveBeenCalledWith("UNNEEDED_TOOLS", "微積分を使用");
     });
 
     it("blocks OTHER without a comment, mirroring the API rule", async () => {

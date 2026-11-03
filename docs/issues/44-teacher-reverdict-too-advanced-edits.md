@@ -50,3 +50,14 @@ machinery the question never needed).
 ## Definition of done
 
 - [ ] Backend checks pass; `eval/README.md` notes the decision
+
+## Log
+
+### 2026-11-03 - owner decision
+
+The two cases should stay edits. The reason code is renamed
+TOO_ADVANCED -> UNNEEDED_TOOLS ([51]); the criterion (machinery the
+question clearly never needed, or an unnamed concept the student cannot
+look up) is kept and is deliberately separate from the [40] difficulty
+axes. Stored rows keep the old code and render with a "(legacy code)"
+label.

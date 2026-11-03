@@ -14,8 +14,8 @@ _real_extract_concept_names = concept_service.extract_concept_names
 # answer texts themselves did not change, so its version stayed v2.)
 FAMILY_FINGERPRINTS = {
     "ai_review": (
-        "r4",
-        "e0562f8587db5e89a4f621c2f5a6dd0d182090dd0e8c3fc0376f7c39dfd07829",
+        "r5",
+        "24a873cb1de232f1cda2e90cf96a2173a9f568c18e54cc217db257303c6b47e1",
     ),
     "answer": (
         "v5",

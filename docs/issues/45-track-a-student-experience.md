@@ -10,7 +10,7 @@ priority: P1
 Ordered queue; details live in each issue.
 
 1. [39] `2c422f9` extract maths-tool concepts (same prompt bump as 2.)
-2. [40] `785a7e9` two-axis difficulty, question and answer rated separately
+2. [40] `785a7e9` two-axis difficulty, one rating per QA pair
 3. [37] `e00868e` accept necessary advanced content; answer at the asker's level
 4. [41] `796163b` concept chips for students
 5. [38] `1b4f7a1` prerequisite links, not just similar
@@ -19,5 +19,5 @@ Ordered queue; details live in each issue.
 8. [21] `ef104ba` /help page
 
 Gate between 2. and 5./6.: the teacher's ~30-question validation of the
-difficulty ratings (see [40]) - do not build ranking or the grid on
+difficulty ratings (process in [52]) - do not build ranking or the grid on
 unvalidated axes.

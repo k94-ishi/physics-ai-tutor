@@ -14,7 +14,7 @@ ASK = "/api/v1/ai/ask"
 
 RATED = [
     "加速度 | acceleration",
-    "LEVELS: question physics=1 math=0 | answer physics=1 math=1",
+    "LEVELS: physics=1 math=1",
 ]
 
 
@@ -38,20 +38,15 @@ def test_approval_stores_levels_and_payload_carries_them(
     client.post(ASK, json={"question": "難易度が付く質問ですか？"})
 
     row = db.query(Question).one()
-    assert row.question_physics_level is None, "unreviewed rows are not rated yet"
+    assert row.physics_level is None, "unreviewed rows are not rated yet"
 
     admin_client.post(f"{QUESTIONS}/{row.id}/review", json={"action": "APPROVE"})
     db.refresh(row)
-    assert (
-        row.question_physics_level,
-        row.question_math_level,
-        row.answer_physics_level,
-        row.answer_math_level,
-    ) == (1, 0, 1, 1)
+    assert (row.physics_level, row.math_level) == (1, 1)
 
     body = admin_client.get(f"{QUESTIONS}/{row.id}").json()
-    assert body["question_physics_level"] == 1
-    assert body["answer_math_level"] == 1
+    assert body["physics_level"] == 1
+    assert body["math_level"] == 1
     assert "LEVELS" not in " ".join(body["concepts"])
 
 
@@ -61,14 +56,14 @@ def test_teacher_can_correct_a_level_without_touching_the_text(admin_client, db)
     ).json()
 
     response = admin_client.put(
-        f"{QUESTIONS}/{created['id']}", json={"question_physics_level": 3}
+        f"{QUESTIONS}/{created['id']}", json={"physics_level": 3}
     )
 
     assert response.status_code == 200
-    assert response.json()["question_physics_level"] == 3
+    assert response.json()["physics_level"] == 3
     row = db.get(Question, created["id"])
-    assert row.question_physics_level == 3
-    assert row.question_math_level is None, "unset axes stay untouched"
+    assert row.physics_level == 3
+    assert row.math_level is None, "unset axes stay untouched"
 
 
 def test_levels_are_validated_on_update(admin_client):
@@ -78,7 +73,7 @@ def test_levels_are_validated_on_update(admin_client):
 
     assert (
         admin_client.put(
-            f"{QUESTIONS}/{created['id']}", json={"question_math_level": 5}
+            f"{QUESTIONS}/{created['id']}", json={"math_level": 5}
         ).status_code
         == 422
     )
@@ -97,7 +92,7 @@ def test_backfill_cli_is_restartable_and_window_guarded(admin_client, db, monkey
             QUESTIONS, json={"question": f"未評価の質問{index}", "answer": "回答"}
         )
     assert (
-        db.query(Question).filter(Question.question_physics_level.isnot(None)).count()
+        db.query(Question).filter(Question.physics_level.isnot(None)).count()
         == 0
     )
 
@@ -113,13 +108,13 @@ def test_backfill_cli_is_restartable_and_window_guarded(admin_client, db, monkey
     )
     assert backfill_cli.main(limit=10) == 2
     assert (
-        db.query(Question).filter(Question.question_physics_level.isnot(None)).count()
+        db.query(Question).filter(Question.physics_level.isnot(None)).count()
         == 0
     )
 
     # --force rates up to the limit; a second run continues where it stopped.
     assert backfill_cli.main(limit=1, force=True) == 0
-    rated = db.query(Question).filter(Question.question_physics_level.isnot(None))
+    rated = db.query(Question).filter(Question.physics_level.isnot(None))
     assert rated.count() == 1
 
     assert backfill_cli.main(limit=10, force=True) == 0

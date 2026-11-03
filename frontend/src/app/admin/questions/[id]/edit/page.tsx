@@ -29,20 +29,13 @@ import { TranslationKey } from "@/lib/i18n/translations";
 
 const LANGUAGES: ContentLanguage[] = ["ja", "en"];
 
-const LEVEL_FIELDS = [
-    "question_physics_level",
-    "question_math_level",
-    "answer_physics_level",
-    "answer_math_level",
-] as const;
+const LEVEL_FIELDS = ["physics_level", "math_level"] as const;
 
 type LevelField = (typeof LEVEL_FIELDS)[number];
 
 const LEVEL_LABEL_KEYS: Record<LevelField, TranslationKey> = {
-    question_physics_level: "levels.questionPhysics",
-    question_math_level: "levels.questionMath",
-    answer_physics_level: "levels.answerPhysics",
-    answer_math_level: "levels.answerMath",
+    physics_level: "levels.physics",
+    math_level: "levels.math",
 };
 
 const AI_VERDICT_LABEL_KEYS: Record<AiVerdict, TranslationKey> = {
@@ -109,12 +102,10 @@ export default function EditQuestionPage() {
     const [translating, setTranslating] = useState(false);
     const [reasonDialogOpen, setReasonDialogOpen] = useState(false);
     const [suggestionApplied, setSuggestionApplied] = useState(false);
-    // 難易度(物理・数学、質問と回答で別評価)。LLMの推定値を教員が上書きできる。
+    // QAペアの難易度(物理・数学)。LLMの推定値を教員が上書きできる。
     const [levels, setLevels] = useState<Record<LevelField, number | null>>({
-        question_physics_level: null,
-        question_math_level: null,
-        answer_physics_level: null,
-        answer_math_level: null,
+        physics_level: null,
+        math_level: null,
     });
     const [errors, setErrors] = useState<Partial<Record<ContentLanguage, string>>>(
         {}
@@ -129,10 +120,8 @@ export default function EditQuestionPage() {
             setLoaded(data);
             setTexts(textsFromQuestion(data));
             setLevels({
-                question_physics_level: data.question_physics_level,
-                question_math_level: data.question_math_level,
-                answer_physics_level: data.answer_physics_level,
-                answer_math_level: data.answer_math_level,
+                physics_level: data.physics_level,
+                math_level: data.math_level,
             });
             // サーバの本文で上書きしたので「AI修正案を適用済み(未保存)」は無効。
             setSuggestionApplied(false);
@@ -494,7 +483,7 @@ export default function EditQuestionPage() {
                         <legend className="text-sm font-medium text-gray-700">
                             {t("levels.heading")}
                         </legend>
-                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                        <div className="grid grid-cols-2 gap-3">
                             {LEVEL_FIELDS.map((field) => (
                                 <SelectField
                                     key={field}

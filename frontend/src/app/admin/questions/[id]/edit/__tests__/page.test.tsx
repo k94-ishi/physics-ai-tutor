@@ -44,10 +44,8 @@ const QUESTION = {
     source: "AI_GENERATED",
     concepts: [],
     retrieved_questions: [],
-    question_physics_level: null,
-    question_math_level: null,
-    answer_physics_level: null,
-    answer_math_level: null,
+    physics_level: null,
+    math_level: null,
 } as unknown as Question;
 
 async function renderPage() {
@@ -166,7 +164,7 @@ describe("Difficulty levels", () => {
         await renderPage();
 
         await user.selectOptions(
-            screen.getByLabelText("質問: 物理"),
+            screen.getByLabelText("物理"),
             "2"
         );
         mocked.updateQuestion.mockResolvedValue(QUESTION);
@@ -175,22 +173,20 @@ describe("Difficulty levels", () => {
         await waitFor(() => expect(mocked.updateQuestion).toHaveBeenCalled());
         expect(mocked.updateQuestion).toHaveBeenCalledWith({
             id: 7,
-            question_physics_level: 2,
+            physics_level: 2,
         });
     });
 
     it("shows the LLM rating and does not resend it unchanged", async () => {
         mocked.fetchQuestion.mockResolvedValue({
             ...QUESTION,
-            question_physics_level: 1,
-            question_math_level: 0,
-            answer_physics_level: 1,
-            answer_math_level: 1,
+            physics_level: 1,
+            math_level: 1,
         } as unknown as Question);
         const user = userEvent.setup();
         await renderPage();
 
-        expect(screen.getByLabelText("質問: 物理")).toHaveValue("1");
+        expect(screen.getByLabelText("物理")).toHaveValue("1");
 
         // Nothing changed: saving goes straight back without a PUT.
         await user.click(screen.getByRole("button", { name: "保存" }));

@@ -41,16 +41,13 @@ should land close to it.
     cheap, explainable proxy beats a learned one: count of advanced
     markers (calculus notation, vector derivatives), concept count, or a
     stored difficulty field set at generation time.
-- Ranking rule (owner, 2026-11-03), replacing the "cheap proxy" above
-  now that [40] is rated: a QA's node level for placement and ranking is
-  **max(question level, answer level)** per axis — in the seeded data the
-  question never exceeds the answer, so in practice this is the answer
-  level. A **prerequisite candidate** is an APPROVED QA whose *answer*
-  level falls **between the current QA's question level and answer
-  level** on the axis with the larger question-to-answer gap (76 of 144
-  seed rows have such a gap on the math axis). The gap is where the
-  asker stands below the answer they received, so that is where the
-  "read this first" link belongs.
+- Ranking rule (owner, 2026-11-03/04), replacing the "cheap proxy"
+  above now that [40] rates every QA: a **prerequisite candidate** is an
+  APPROVED QA that shares a concept with the current QA and whose level
+  is **lower on the axis the student is likely stuck on** (the axis
+  where the current QA is highest). Prefer the candidate whose question
+  reads as a definition of that concept ("〜とは"). The level is the one
+  [40] rating per QA pair; there is no separate question level.
 - UI: a separate block from 関連する質問 (a different question: "what
   should I read first?"), on the question detail page.
 - Honest gaps: when no APPROVED QA defines a concept, show the concept

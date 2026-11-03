@@ -27,11 +27,9 @@ export type Question = {
     status: QuestionStatus;
     source: QuestionSource;
     concepts: string[];
-    // Two-axis difficulty (0-4), question and answer rated separately; null = unrated.
-    question_physics_level: number | null;
-    question_math_level: number | null;
-    answer_physics_level: number | null;
-    answer_math_level: number | null;
+    // Two-axis difficulty of the QA pair (0-4); null = unrated.
+    physics_level: number | null;
+    math_level: number | null;
     retrieved_questions: RetrievedQuestionRef[];
     generation?: GenerationMeta | null;
     ai_review?: AiReviewSummary | null;
@@ -57,10 +55,8 @@ export type UpdateQuestionRequest = {
     question_en?: string;
     answer_en?: string;
     // Teacher corrections to the advisory difficulty ratings.
-    question_physics_level?: number;
-    question_math_level?: number;
-    answer_physics_level?: number;
-    answer_math_level?: number;
+    physics_level?: number;
+    math_level?: number;
 };
 
 export type SimilarQuestion = {

@@ -95,10 +95,8 @@ class QuestionCreate(BaseModel):
 
 class QuestionUpdate(QuestionCreate):
     # Teacher corrections to the advisory LLM difficulty ratings ([40]).
-    question_physics_level: int | None = Field(default=None, ge=0, le=4)
-    question_math_level: int | None = Field(default=None, ge=0, le=4)
-    answer_physics_level: int | None = Field(default=None, ge=0, le=4)
-    answer_math_level: int | None = Field(default=None, ge=0, le=4)
+    physics_level: int | None = Field(default=None, ge=0, le=4)
+    math_level: int | None = Field(default=None, ge=0, le=4)
 
     def _allows_empty_texts(self) -> bool:
         # A levels-only correction is a legitimate update.
@@ -106,12 +104,7 @@ class QuestionUpdate(QuestionCreate):
 
     def levels(self) -> dict[str, int]:
         """Only the axes the request actually set."""
-        fields = (
-            "question_physics_level",
-            "question_math_level",
-            "answer_physics_level",
-            "answer_math_level",
-        )
+        fields = ("physics_level", "math_level")
         return {
             name: value for name in fields if (value := getattr(self, name)) is not None
         }
@@ -178,10 +171,8 @@ class QuestionResponse(BaseModel):
     retrieved_questions: list[QuestionRefSummary] = Field(default_factory=list)
     # Two-axis difficulty ([40]); None = not rated yet. Public on purpose:
     # the student-facing grid and prerequisite ranking read these.
-    question_physics_level: int | None = None
-    question_math_level: int | None = None
-    answer_physics_level: int | None = None
-    answer_math_level: int | None = None
+    physics_level: int | None = None
+    math_level: int | None = None
     # Populated only for admin callers; see attach_generation_meta.
     generation: GenerationMeta | None = None
     # Latest AI verdict; admin callers only (attach_ai_reviews).

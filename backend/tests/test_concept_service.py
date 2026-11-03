@@ -117,30 +117,30 @@ def test_attach_concepts_to_question_dedupes_within_same_call(db):
     assert len(concept_repository.list_all(db)) == 1
 
 
-LEVELS_LINE = "LEVELS: question physics=1 math=0 | answer physics=1 math=1"
+LEVELS_LINE = "LEVELS: physics=1 math=1"
 
 
 def test_parse_levels_line_reads_the_required_format():
     levels = concept_service.parse_levels_line(LEVELS_LINE)
 
-    assert levels == concept_service.ExtractionLevels(1, 0, 1, 1)
+    assert levels == concept_service.ExtractionLevels(1, 1)
     # Tolerant of case and spacing; the model is not a formatter.
     assert concept_service.parse_levels_line(
-        "levels: question physics = 3 math = 2 | answer physics = 3 math = 3"
+        "levels: physics = 3 math = 2"
     ) == concept_service.ExtractionLevels(3, 2, 3, 3)
 
 
 def test_parse_levels_line_clamps_and_rejects_garbage():
     # The scale is ordinal; an overshoot means "at least the top".
     clamped = concept_service.parse_levels_line(
-        "LEVELS: question physics=9 math=5 | answer physics=7 math=4"
+        "LEVELS: physics=9 math=5"
     )
-    assert clamped == concept_service.ExtractionLevels(4, 4, 4, 4)
+    assert clamped == concept_service.ExtractionLevels(4, 4)
 
     for junk in (
-        "LEVELS: physics=1 math=0",
+        "LEVELS: question physics=1 math=0 | answer physics=1 math=1",
         "question physics=1 math=0 | answer physics=1 math=1",
-        "LEVELS: question physics=a math=0 | answer physics=1 math=1",
+        "LEVELS: physics=a math=0",
         "概念A | concept A",
         "",
     ):
@@ -164,12 +164,10 @@ def test_apply_levels_to_question_stores_and_tolerates_absence(db):
     question = _create_question(db)
 
     concept_service.apply_levels_to_question(question, ["概念A | concept A"])
-    assert question.question_physics_level is None, "no line, no change"
+    assert question.physics_level is None, "no line, no change"
 
     concept_service.apply_levels_to_question(
         question, ["概念A | concept A", LEVELS_LINE]
     )
-    assert question.question_physics_level == 1
-    assert question.question_math_level == 0
-    assert question.answer_physics_level == 1
-    assert question.answer_math_level == 1
+    assert question.physics_level == 1
+    assert question.math_level == 1

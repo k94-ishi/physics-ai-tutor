@@ -15,6 +15,6 @@ docs/operator-checklist.md.
 2. Verify [27] `0d50e7e` and [28] `c03d036` in the admin UI; close when satisfied
 3. Production rollout 7f3b1c9d4e21 -> a1b2c3d4e5f6 (backup first; checklist Phase 2)
 4. Go-ahead for the [37] eval re-run (~70 DeepSeek calls)
-5. [40] `785a7e9` validation: rate ~30 questions and compare with the model's levels
+5. [52] difficulty validation: rate ~30 QAs on `/admin/manage/levels` and compare with the model
 6. [44] `fd0b3e9` re-verdict on p-edit-250 and p-edit-4 (TOO_ADVANCED labels predate the policy)
 7. [30] `4ef75f5` close when nothing further is wanted

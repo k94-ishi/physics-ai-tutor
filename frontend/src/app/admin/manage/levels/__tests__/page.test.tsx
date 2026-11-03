@@ -9,12 +9,12 @@ vi.mock("@/lib/api", async (importOriginal) => {
 
 import * as api from "@/lib/api";
 import { LanguageProvider } from "@/lib/i18n/LanguageContext";
-import AdminLevelsPage, { agreementByField, STORAGE_KEY } from "../page";
+import AdminLevelsPage, { agreementByField, pickSample, SAMPLE_KEY, STORAGE_KEY } from "../page";
 
 const mocked = vi.mocked(api);
 
 function question(id: number, levels: (number | null)[]): Question {
-    const [qp, qm, ap, am] = levels;
+    const [p, m] = levels;
     return {
         id,
         question: `質問${id}`,
@@ -27,15 +27,13 @@ function question(id: number, levels: (number | null)[]): Question {
         status: "APPROVED",
         source: "MANUAL",
         concepts: ["速度"],
-        question_physics_level: qp,
-        question_math_level: qm,
-        answer_physics_level: ap,
-        answer_math_level: am,
+        physics_level: p,
+        math_level: m,
         retrieved_questions: [],
     };
 }
 
-const ROWS = [question(1, [1, 0, 1, 1]), question(2, [3, 3, 3, 3]), question(3, [null, null, null, null])];
+const ROWS = [question(1, [1, 1]), question(2, [3, 3]), question(3, [null, null])];
 
 beforeEach(() => {
     window.localStorage.clear();
@@ -51,14 +49,21 @@ beforeEach(() => {
 describe("agreementByField", () => {
     it("counts exact and within-one matches only where both ratings exist", () => {
         const stats = agreementByField(ROWS, {
-            1: { question_physics_level: 1, question_math_level: 1 },
-            2: { question_physics_level: 1 },
-            3: { question_physics_level: 2 },
+            1: { physics_level: 1, math_level: 2 },
+            2: { physics_level: 1 },
+            3: { physics_level: 2 },
         });
 
-        expect(stats.question_physics_level).toEqual({ n: 2, exact: 1, within1: 1, meanOffset: 1 });
-        expect(stats.question_math_level).toEqual({ n: 1, exact: 0, within1: 1, meanOffset: -1 });
-        expect(stats.answer_math_level.n).toBe(0);
+        expect(stats.physics_level).toEqual({ n: 2, exact: 1, within1: 1, meanOffset: 1 });
+        expect(stats.math_level).toEqual({ n: 1, exact: 0, within1: 1, meanOffset: -1 });
+    });
+
+    it("draws a fixed-size sample without duplicates", () => {
+        const ids = Array.from({ length: 50 }, (_, i) => i + 1);
+        const sample = pickSample(ids, 30);
+        expect(sample).toHaveLength(30);
+        expect(new Set(sample).size).toBe(30);
+        expect(pickSample([1, 2], 30)).toEqual([1, 2]);
     });
 });
 
@@ -76,18 +81,21 @@ describe("AdminLevelsPage", () => {
         );
         expect(screen.getByText("まだ自分の評価がありません。")).toBeInTheDocument();
 
-        fireEvent.change(screen.getByLabelText("自分 質問 物理 #1"), { target: { value: "2" } });
+        fireEvent.change(screen.getByLabelText("自分 物理 #1"), { target: { value: "2" } });
 
         expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}")).toEqual({
-            1: { question_physics_level: 2 },
+            1: { physics_level: 2 },
         });
+
+        fireEvent.click(screen.getByRole("button", { name: "ランダムに30件選ぶ" }));
+        expect(JSON.parse(window.localStorage.getItem(SAMPLE_KEY) ?? "[]")).toHaveLength(3);
         expect(screen.getByText("一致率(自分の評価があるものだけ)")).toBeInTheDocument();
         expect(screen.getByText("±1以内")).toBeInTheDocument();
     });
 
     it("saves my rating as a teacher correction through the update endpoint", async () => {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ 2: { answer_math_level: 4 } }));
-        mocked.updateQuestion.mockResolvedValue(question(2, [3, 3, 3, 4]));
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ 2: { math_level: 4 } }));
+        mocked.updateQuestion.mockResolvedValue(question(2, [3, 4]));
 
         render(
             <LanguageProvider>
@@ -102,6 +110,6 @@ describe("AdminLevelsPage", () => {
 
         fireEvent.click(enabled[0]);
 
-        expect(mocked.updateQuestion).toHaveBeenCalledWith({ id: 2, answer_math_level: 4 });
+        expect(mocked.updateQuestion).toHaveBeenCalledWith({ id: 2, math_level: 4 });
     });
 });

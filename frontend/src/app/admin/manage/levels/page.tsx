@@ -14,23 +14,20 @@ import StatusMessage from "@/components/ui/StatusMessage";
 import QuestionIdBadge from "@/components/ui/QuestionIdBadge";
 import { showToast } from "@/components/ui/Toast";
 
-export const LEVEL_FIELDS = [
-    "question_physics_level",
-    "question_math_level",
-    "answer_physics_level",
-    "answer_math_level",
-] as const;
+export const LEVEL_FIELDS = ["physics_level", "math_level"] as const;
 
 export type LevelField = (typeof LEVEL_FIELDS)[number];
 export type MyRating = Partial<Record<LevelField, number>>;
 export type MyRatings = Record<number, MyRating>;
 
-type Filter = "all" | "mine" | "unrated" | "disagree" | "modelUnrated";
+type Filter = "all" | "sample" | "mine" | "unrated" | "disagree" | "modelUnrated";
 
 const LEVELS = [0, 1, 2, 3, 4];
 const PAGE_SIZE = 120;
 // Own ratings live in the browser only; see the intro text on the page.
 export const STORAGE_KEY = "levelsReview.myRatings";
+export const SAMPLE_KEY = "levelsReview.sampleIds";
+export const SAMPLE_SIZE = 30;
 
 export type AxisAgreement = {
     n: number;
@@ -79,13 +76,23 @@ function disagrees(question: Question, own: MyRating | undefined): boolean {
     );
 }
 
-function loadMyRatings(): MyRatings {
-    if (typeof window === "undefined") return {};
+function loadJson<T>(key: string, fallback: T): T {
+    if (typeof window === "undefined") return fallback;
     try {
-        return JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}");
+        return JSON.parse(window.localStorage.getItem(key) ?? "") ?? fallback;
     } catch {
-        return {};
+        return fallback;
     }
+}
+
+/** A fixed random sample so the evaluation covers the corpus, not the top of the list. */
+export function pickSample(ids: number[], size: number): number[] {
+    const pool = [...ids];
+    for (let i = pool.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    return pool.slice(0, size).sort((a, b) => a - b);
 }
 
 async function fetchAllApproved(lang: "ja" | "en"): Promise<Question[]> {
@@ -149,9 +156,7 @@ function SummaryTable({
     const total = LEVEL_FIELDS.reduce((sum, field) => sum + stats[field].n, 0);
 
     const fieldLabel = (field: LevelField) =>
-        `${t(field.startsWith("question") ? "levelsReview.q" : "levelsReview.a")} / ${t(
-            field.includes("physics") ? "levelsReview.physics" : "levelsReview.math"
-        )}`;
+        t(field === "physics_level" ? "levelsReview.physics" : "levelsReview.math");
 
     const pct = (part: number, n: number) => (n ? `${Math.round((100 * part) / n)}%` : "-");
 
@@ -287,8 +292,8 @@ function QuestionRow({
 
     const fieldLabel = (field: LevelField) =>
         `${t("levelsReview.colMine")} ${t(
-            field.startsWith("question") ? "levelsReview.q" : "levelsReview.a"
-        )} ${t(field.includes("physics") ? "levelsReview.physics" : "levelsReview.math")} #${question.id}`;
+            field === "physics_level" ? "levelsReview.physics" : "levelsReview.math"
+        )} #${question.id}`;
 
     return (
         <>
@@ -332,7 +337,7 @@ function QuestionRow({
             </tr>
             {open && (
                 <tr className="bg-gray-50">
-                    <td colSpan={10} className="p-3">
+                    <td colSpan={6} className="p-3">
                         <div className="flex flex-col gap-3 text-sm">
                             <div>
                                 <div className="mb-1 text-xs font-semibold text-gray-500">
@@ -372,6 +377,7 @@ export default function AdminLevelsPage() {
     const { language, t } = useLanguage();
     const [questions, setQuestions] = useState<Question[]>([]);
     const [mine, setMine] = useState<MyRatings>({});
+    const [sampleIds, setSampleIds] = useState<number[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
     const [showRubric, setShowRubric] = useState(true);
@@ -394,7 +400,8 @@ export default function AdminLevelsPage() {
 
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        setMine(loadMyRatings());
+        setMine(loadJson<MyRatings>(STORAGE_KEY, {}));
+        setSampleIds(loadJson<number[]>(SAMPLE_KEY, []));
         load();
     }, [load]);
 
@@ -408,6 +415,22 @@ export default function AdminLevelsPage() {
         });
     };
 
+    const drawSample = () => {
+        const ids = pickSample(
+            questions.map((q) => q.id),
+            SAMPLE_SIZE
+        );
+        window.localStorage.setItem(SAMPLE_KEY, JSON.stringify(ids));
+        setSampleIds(ids);
+        setFilter("sample");
+    };
+
+    const clearSample = () => {
+        window.localStorage.removeItem(SAMPLE_KEY);
+        setSampleIds([]);
+        if (filter === "sample") setFilter("all");
+    };
+
     const onSaved = (updated: Question) => {
         setQuestions((prev) => prev.map((q) => (q.id === updated.id ? { ...q, ...updated } : q)));
     };
@@ -417,13 +440,14 @@ export default function AdminLevelsPage() {
         return questions.filter((q) => {
             const own = mine[q.id];
             const rated = own !== undefined;
+            if (filter === "sample" && !sampleIds.includes(q.id)) return false;
             if (filter === "mine" && !rated) return false;
             if (filter === "unrated" && rated) return false;
             if (filter === "disagree" && !disagrees(q, own)) return false;
             if (filter === "modelUnrated" && LEVEL_FIELDS.some((f) => q[f] !== null)) return false;
             return !needle || q.question.toLowerCase().includes(needle);
         });
-    }, [questions, mine, filter, keyword]);
+    }, [questions, mine, filter, keyword, sampleIds]);
 
     if (loading) return <LoadingState />;
     if (error) {
@@ -432,9 +456,10 @@ export default function AdminLevelsPage() {
         );
     }
 
-    const filters: Filter[] = ["all", "mine", "unrated", "disagree", "modelUnrated"];
+    const filters: Filter[] = ["all", "sample", "mine", "unrated", "disagree", "modelUnrated"];
     const filterKey: Record<Filter, TranslationKey> = {
         all: "levelsReview.filterAll",
+        sample: "levelsReview.filterSample",
         mine: "levelsReview.filterMine",
         unrated: "levelsReview.filterUnrated",
         disagree: "levelsReview.filterDisagree",
@@ -498,6 +523,14 @@ export default function AdminLevelsPage() {
                 <span className="text-gray-500">
                     {t("levelsReview.count", { shown: visible.length, total: questions.length })}
                 </span>
+                <Button variant="secondary" size="sm" onClick={drawSample} title={t("levelsReview.sampleHint", { n: SAMPLE_SIZE })}>
+                    {t("levelsReview.sample", { n: SAMPLE_SIZE })}
+                </Button>
+                {sampleIds.length > 0 && (
+                    <Button variant="secondary" size="sm" onClick={clearSample}>
+                        {t("levelsReview.clearSample")}
+                    </Button>
+                )}
             </div>
 
             {visible.length === 0 ? (
@@ -510,10 +543,10 @@ export default function AdminLevelsPage() {
                                 <th rowSpan={2} className="py-1 pr-2 align-bottom">
                                     {t("levelsReview.colQuestion")}
                                 </th>
-                                <th colSpan={4} className="px-1 py-1 text-center">
+                                <th colSpan={2} className="px-1 py-1 text-center">
                                     {t("levelsReview.colModel")}
                                 </th>
-                                <th colSpan={4} className="px-1 py-1 text-center">
+                                <th colSpan={2} className="px-1 py-1 text-center">
                                     {t("levelsReview.colMine")}
                                 </th>
                                 <th rowSpan={2} />
@@ -522,9 +555,7 @@ export default function AdminLevelsPage() {
                                 {[0, 1].map((group) =>
                                     LEVEL_FIELDS.map((field) => (
                                         <th key={`${group}-${field}`} className="px-1 py-1 font-normal">
-                                            {t(field.startsWith("question") ? "levelsReview.q" : "levelsReview.a")}
-                                            <br />
-                                            {t(field.includes("physics") ? "levelsReview.physics" : "levelsReview.math")}
+                                            {t(field === "physics_level" ? "levelsReview.physics" : "levelsReview.math")}
                                         </th>
                                     ))
                                 )}

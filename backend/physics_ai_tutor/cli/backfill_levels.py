@@ -47,10 +47,8 @@ def unrated_question_ids(db, limit: int) -> list[int]:
     rows = (
         db.query(Question.id)
         .filter(
-            Question.question_physics_level.is_(None),
-            Question.question_math_level.is_(None),
-            Question.answer_physics_level.is_(None),
-            Question.answer_math_level.is_(None),
+            Question.physics_level.is_(None),
+            Question.math_level.is_(None),
             Question.status == "APPROVED",
         )
         .order_by(Question.id.asc())

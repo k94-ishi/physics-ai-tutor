@@ -29,6 +29,12 @@ Assigned by the LLM **in the same call as concept extraction** (one
 prompt, no extra API cost), stored on `questions`, editable by the
 teacher in the admin UI because an LLM estimate is advisory.
 
+**One rating per QA pair** (owner, 2026-11-04): the yardstick is what a
+reader needs to follow the answer. The earlier design rated question and
+answer separately; the local trial showed the question level never
+exceeded the answer level, so the extra two numbers only doubled the
+teacher's validation work.
+
 ## Motivation
 
 This is the owner's tutor framing (2026-11-01) made measurable: *the
@@ -63,10 +69,9 @@ missing ingredient for:
 
 ## Acceptance criteria
 
-- [ ] A new question gets both levels in the same LLM call as concepts.
-- [ ] The air-resistance ODE case rates physics 3 / math 3; the v-t
-      slope question rates physics 1 / math ≤ 1 (snapshot test with a
-      mocked LLM; real values are the teacher's to correct).
+- [ ] A new question gets both axes in the same LLM call as concepts.
+- [ ] The air-resistance ODE case rates math 3; the v-t slope question
+      rates math ≤ 1 (real values are the teacher's to correct).
 - [ ] An admin can change either level and the change sticks.
 
 ## Out of scope
@@ -131,3 +136,16 @@ Prompt and page labels updated; still v5 (the version exists only on this
 unpushed branch), fingerprint re-pinned. The 144 local ratings were made
 before this wording; no re-run, the change narrows level 3 slightly and
 leaves the ladder intact.
+
+### 2026-11-04 - one rating per QA pair
+
+Owner's decision: measure the QA pair once (physics, math), not question
+and answer separately. The API fee is unchanged (both came from the one
+extraction call); what it saves is the teacher's time and the UI. The
+trial data agreed: question never exceeded answer, so max(Q, A) was the
+answer level anyway. Changes: migration `d1e2f3a4b5c6` renames
+`answer_*_level` -> `physics_level`/`math_level` and drops the question
+columns (existing answer ratings carry over, so the local 144 rows need
+no re-run); `concept_extraction` v6 emits `LEVELS: physics=N math=N`;
+edit page, admin badge and `/admin/manage/levels` show two numbers. The
+teacher's evaluation moves to [52].

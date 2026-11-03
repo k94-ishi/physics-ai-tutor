@@ -311,10 +311,11 @@ are in the set today.
 
 ### 5.3a Difficulty levels: backfill once, then validate ([40])
 
-New questions get two-axis difficulty (physics/math, question and answer
-rated separately) when they are approved. The existing APPROVED rows need
-one backfill pass, which also refreshes their concepts under the v5
-extraction prompt ([39], rubric aligned 2026-11-03):
+New questions get two-axis difficulty (physics/math, one rating per QA
+pair) when they are approved. The existing APPROVED rows need one
+backfill pass, which also refreshes their concepts under the v6
+extraction prompt ([39]; rubric aligned 2026-11-03, one rating per QA
+since 2026-11-04):
 
 ```bash
 cd backend && export DATABASE_URL='<production url>'
@@ -325,9 +326,9 @@ unset DATABASE_URL
 Restartable: re-run until it prints "backfill done" (one DeepSeek call per
 question; refuses outside the discount window without `--force`).
 
-Then the validation gate before anything is built on the axes: pick ~30
-rated questions, rate them yourself on the same 0-4 content-based scales, and record
-the agreement as a comment on [40] `785a7e9`. If the model cannot separate
+Then the validation gate before anything is built on the axes: follow
+the process in issue [52] (the `/admin/manage/levels` page draws the
+~30-row sample and computes the agreement). If the model cannot separate
 adjacent levels, we collapse the scale instead of building [38]/[42] on
 noise.
 

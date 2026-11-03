@@ -41,27 +41,23 @@ class ConceptName:
 
 # Two-axis difficulty ([40]), 0-4, rated by the nature of the content
 # itself rather than a school curriculum (owner's policy, 2026-11-01).
-# Question and answer are rated separately: the gap between them is the
-# "was this machinery necessary?" signal.
+# One rating per QA pair: what a reader needs to follow it (2026-11-04).
 MAX_LEVEL = 4
 
 _LEVELS_LINE = re.compile(
-    r"^levels:\s*question\s+physics\s*=\s*(\d+)\s+math\s*=\s*(\d+)"
-    r"\s*\|\s*answer\s+physics\s*=\s*(\d+)\s+math\s*=\s*(\d+)\s*$",
+    r"^levels:\s*physics\s*=\s*(\d+)\s+math\s*=\s*(\d+)\s*$",
     re.IGNORECASE,
 )
 
 
 @dataclass(frozen=True)
 class ExtractionLevels:
-    question_physics: int
-    question_math: int
-    answer_physics: int
-    answer_math: int
+    physics: int
+    math: int
 
 
 def parse_levels_line(line: str) -> ExtractionLevels | None:
-    """Parse 'LEVELS: question physics=N math=N | answer physics=N math=N'."""
+    """Parse 'LEVELS: physics=N math=N'."""
     match = _LEVELS_LINE.match(line.strip())
     if match is None:
         return None
@@ -90,10 +86,8 @@ def apply_levels_to_question(question, lines: list[str]) -> None:
         )
         return
 
-    question.question_physics_level = levels.question_physics
-    question.question_math_level = levels.question_math
-    question.answer_physics_level = levels.answer_physics
-    question.answer_math_level = levels.answer_math
+    question.physics_level = levels.physics
+    question.math_level = levels.math
 
 
 def parse_concept_line(line: str, language: str = "ja") -> ConceptName | None:

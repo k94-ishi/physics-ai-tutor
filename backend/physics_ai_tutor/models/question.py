@@ -80,18 +80,11 @@ class Question(Base):
         nullable=False,
     )
 
-    # Two-axis difficulty, 0-3 per axis ([40]), question and answer rated
-    # separately: the gap between them is the "was this machinery
-    # necessary?" signal. LLM-assigned during concept extraction,
+    # Two-axis difficulty of the QA pair, 0-4 per axis ([40]): what a
+    # reader needs to follow it. LLM-assigned during concept extraction,
     # advisory, teacher-correctable; NULL = not rated yet.
-    question_physics_level: Mapped[int | None] = mapped_column(
-        SmallInteger, nullable=True
-    )
-    question_math_level: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
-    answer_physics_level: Mapped[int | None] = mapped_column(
-        SmallInteger, nullable=True
-    )
-    answer_math_level: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    physics_level: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    math_level: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

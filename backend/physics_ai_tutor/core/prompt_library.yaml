@@ -100,13 +100,13 @@ prompts:
 - family: concept_extraction
   name: system
   language: null
-  version: v4
+  version: v5
   description: 'Instruction kept in English for both languages: the parser relies on one identical output format (''<ja> | <en>'' lines plus one LEVELS line).'
   text: 'You are an expert in physics education. Your output is processed automatically: print only the required format - one concept per line as ''<Japanese name> | <English name>'', then exactly one final line ''LEVELS: question physics=N math=N | answer physics=N math=N'' - and nothing else.'
 - family: concept_extraction
   name: user_template
   language: null
-  version: v4
+  version: v5
   description: 'Placeholders: example, language_name, glossary, question, answer.'
   text: |
     ---Example---
@@ -127,13 +127,13 @@ prompts:
     situation (a ball's flight, free fall without air); 2 = invisible
     quantities still felt in daily life (energy, pressure, current);
     3 = classical abstractions with no direct sensory handle (wave phase,
-    fields, entropy); 4 = modern or theoretical physics (relativity,
-    quantum, statistical, analytical mechanics).
+    fields, entropy); 4 = modern, theoretical or applied physics beyond
+    level 3 (relativity, quantum, statistical, analytical mechanics).
     math: 0 = everyday arithmetic; 1 = relations you can draw as a graph or
-    figure; 2 = symbolic algebra over several variables; 3 = functions as
+    figure, or symbolic algebra over several variables; 2 = functions as
     objects (trigonometric, exponential, logarithmic), vectors, basic
-    probability; 4 = calculus, differential equations, vector analysis,
-    linear algebra.
+    probability; 3 = calculus, differential equations, vector analysis,
+    linear algebra; 4 = mathematics more advanced than level 3.
     Rate the question by what the asker must already know to pose it, and
     the answer by what a reader needs to follow it. Finish with exactly one
     line in this form and nothing after it:
@@ -149,7 +149,7 @@ prompts:
 - family: concept_extraction
   name: example
   language: ja
-  version: v4
+  version: v5
   description: Worked example shown when the row's text is Japanese.
   text: |
     Question:
@@ -176,7 +176,7 @@ prompts:
 - family: concept_extraction
   name: example
   language: en
-  version: v4
+  version: v5
   description: Worked example shown when the row's text is English; same output lines as the Japanese example so extractions stay comparable.
   text: |
     Question:

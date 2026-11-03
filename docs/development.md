@@ -28,6 +28,14 @@ docker compose down
 docker compose up -d
 ```
 
+### Several checkouts on one machine
+
+Each git worktree can run its own stack. Copy
+`docker-compose.override.yml.template` to `docker-compose.override.yml`
+(gitignored), replace `NAME` with the worktree name and adjust the ports,
+then prefix every compose command with `-p physics-ai-tutor-NAME`. Point
+`frontend/.env.local` (`NEXT_PUBLIC_API_URL`) at the backend port you chose.
+
 ### Setup DB
 
 ```bash

@@ -75,3 +75,14 @@ should land close to it.
 
 - [ ] Backend and frontend checks pass; tests for ranking and the gap case
 - [ ] `docs/api.md` updated if a new endpoint or field appears
+
+## Log
+
+### 2026-11-03 - concept coverage on the 144-row local corpus (see [40] log)
+
+- Maths-tool concepts are extracted under v5: ベクトル (34 QAs), 三角関数
+  (14), 三角比 (8), 微分方程式 (2), 積分 (2), 二階微分 (1).
+- Gap check for the acceptance criteria: 微分方程式 is linked to 2 QAs but
+  neither *defines* it, so the prerequisite block would show it as a gap
+  on the air-resistance QA. That is the honest-gap path, and it confirms
+  the "concept without a defining QA" case must be first-class in the UI.

@@ -313,8 +313,8 @@ are in the set today.
 
 New questions get two-axis difficulty (physics/math, question and answer
 rated separately) when they are approved. The existing APPROVED rows need
-one backfill pass, which also refreshes their concepts under the v4
-extraction prompt ([39]):
+one backfill pass, which also refreshes their concepts under the v5
+extraction prompt ([39], rubric aligned 2026-11-03):
 
 ```bash
 cd backend && export DATABASE_URL='<production url>'

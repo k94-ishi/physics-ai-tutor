@@ -22,8 +22,8 @@ FAMILY_FINGERPRINTS = {
         "acfb4be41a3201371a48c347ae73ba9648f0a17f6980dcd9e96632922765b57d",
     ),
     "concept_extraction": (
-        "v4",
-        "cee5a4641b0740561ddc4fa9552066246007452838935c06a763f6580c69bda6",
+        "v5",
+        "315d1e4c2d71078ce1810ae1b09b73db1917d4d02255d3ae79afacc8e8c9b4ae",
     ),
     "translation": (
         "v1",
@@ -54,7 +54,7 @@ def test_prompt_versions_match_prompt_texts():
 def test_version_constants_come_from_the_library():
     assert prompts.ANSWER_PROMPT_VERSION == "v5"
     assert prompts.TRANSLATION_PROMPT_VERSION == "v1"
-    assert concept_service.CONCEPT_EXTRACTION_PROMPT_VERSION == "v4"
+    assert concept_service.CONCEPT_EXTRACTION_PROMPT_VERSION == "v5"
 
 
 def test_concept_extraction_example_matches_the_rows_language(monkeypatch):

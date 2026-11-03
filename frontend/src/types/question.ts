@@ -27,7 +27,7 @@ export type Question = {
     status: QuestionStatus;
     source: QuestionSource;
     concepts: string[];
-    // Two-axis difficulty (0-3), question and answer rated separately; null = unrated.
+    // Two-axis difficulty (0-4), question and answer rated separately; null = unrated.
     question_physics_level: number | null;
     question_math_level: number | null;
     answer_physics_level: number | null;

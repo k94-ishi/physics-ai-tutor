@@ -132,8 +132,9 @@ prompts:
     math: 0 = everyday arithmetic; 1 = relations you can draw as a graph or
     figure, or symbolic algebra over several variables; 2 = functions as
     objects (trigonometric, exponential, logarithmic), vectors, basic
-    probability; 3 = calculus, differential equations, vector analysis,
-    linear algebra; 4 = mathematics more advanced than level 3.
+    probability; 3 = calculus, beginner-level differential equations,
+    vector analysis, linear algebra; 4 = mathematics more advanced than
+    level 3.
     Rate the question by what the asker must already know to pose it, and
     the answer by what a reader needs to follow it. Finish with exactly one
     line in this form and nothing after it:

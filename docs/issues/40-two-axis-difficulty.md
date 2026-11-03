@@ -19,7 +19,7 @@ does):
 | 0 | everyday phenomena anyone can see and feel | everyday arithmetic |
 | 1 | visible motion/phenomena with named quantities in a concrete situation | relations you can draw as a graph or figure / symbolic algebra over several variables |
 | 2 | invisible quantities still felt in daily life (energy, pressure, current) | functions as objects, vectors, basic probability |
-| 3 | classical abstractions with no sensory handle (wave phase, fields, entropy) | calculus, differential equations, vector analysis, linear algebra |
+| 3 | classical abstractions with no sensory handle (wave phase, fields, entropy) | calculus, beginner level differential equations, vector analysis, linear algebra |
 | 4 | modern/theoretical/applied physics (relativity, quantum, statistical, analytical mechanics) more advanced than level 3 | more advanced math than level 3 |
 
 The owner reviews this rubric once ratings exist; the wording is a first
@@ -124,3 +124,10 @@ missing ingredient for:
 - Open question for the owner: are the question levels needed at all, or
   are the answer levels enough for [38]/[42]? See the discussion of
   2026-11-03.
+
+### 2026-11-03 - rubric wording: math 3 says "beginner-level differential equations"
+
+Prompt and page labels updated; still v5 (the version exists only on this
+unpushed branch), fingerprint re-pinned. The 144 local ratings were made
+before this wording; no re-run, the change narrows level 3 slightly and
+leaves the ladder intact.

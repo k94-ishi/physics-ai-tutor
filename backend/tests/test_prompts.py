@@ -23,7 +23,7 @@ FAMILY_FINGERPRINTS = {
     ),
     "concept_extraction": (
         "v5",
-        "315d1e4c2d71078ce1810ae1b09b73db1917d4d02255d3ae79afacc8e8c9b4ae",
+        "fe4445e8ac979ac34dcfcccea04a664143fd6b8a12e23843abafa62bdb8a184f",
     ),
     "translation": (
         "v1",

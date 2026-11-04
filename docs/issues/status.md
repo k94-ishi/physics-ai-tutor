@@ -62,7 +62,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 39 | closed | 39-extract-mathematical-tool-concepts.md | Concept extraction must reliably capture the mathematical tools an answer leans on | 2c422f9 |
 | 40 | closed | 40-two-axis-difficulty.md | Two-axis difficulty per QA (physics, math), assigned during concept extraction | 785a7e9, bfa263e (closed twin) |
 | 41 | closed | 41-show-concepts-to-students.md | Show concepts to students as clickable chips; concepts are the map, not admin metadata | 796163b, 0e5e4fa (closed twin) |
-| 42 | open | 42-question-page-layout-preview-grid.md | Question-page layout: more related questions, floating preview, and a two-axis grid | 7584a7d, 9cef53e (closed twin) |
+| 42 | closed | 42-question-page-layout-preview-grid.md | Question-page layout: more related questions, floating preview, and a two-axis grid | 7584a7d, 9cef53e (closed twin) |
 | 43 | open | 43-sticky-ask-bar.md | Keep the search/ask box reachable: sticky bar at the bottom of the viewport | be0e1aa, 8e373d4 (closed twin) |
 | 44 | open | 44-teacher-reverdict-too-advanced-edits.md | Teacher re-verdict: the old TOO_ADVANCED edits predate the advanced-content policy | fd0b3e9 |
 | 45 | open | 45-track-a-student-experience.md | Track A: student experience - the QA graph becomes walkable | 102900d |

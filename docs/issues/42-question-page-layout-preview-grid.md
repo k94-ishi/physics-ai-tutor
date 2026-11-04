@@ -61,3 +61,32 @@ not an open-ended redesign.
 ## Definition of done
 
 - [ ] Frontend checks pass; vitest for the modal and the grid fallback
+
+## Log
+
+### 2026-11-04 - implemented
+
+- Items 1 and 2 had already shipped with earlier work: the page fetches
+  20 related QAs, shows 10 with もっと見る, and `QuestionPreviewModal`
+  is shared by the related list and the [38] prerequisite block. This
+  pass added item 3 and the tests.
+- **Two-axis grid** (`QuestionLevelGrid`): rows = math level (top =
+  highest), columns = physics level, trimmed to the bounding box of the
+  current QA and the placeable items. The current question is outlined
+  with a 「今ここ」 badge; items at or below it on both axes tint green
+  (the climb down), items at or above tint violet (the climb up), mixed
+  stay gray. Clicking a cell opens the same preview modal.
+- Fallbacks exactly as scoped: the grid renders only when the current
+  QA and at least one related QA carry both levels; unrated related QAs
+  are listed under the grid; below the `md` breakpoint the flat list
+  remains the only view (no grid on mobile).
+- Visual pass stayed bounded: the grid reuses the existing tone system
+  (emerald = prerequisite direction, as in the [38] block; blue =
+  current) and no other page changed.
+- Vitest covers the modal (existing), grid placement/preview/fallback,
+  and the detail page's grid/list switching. Live check on the 144-row
+  corpus: QA 177 (physics 3 / math 3) places all 20 related QAs on a
+  4×4 bounding box with the current cell top-right - prerequisites
+  visibly cluster lower-left.
+- Axes as specced (rows = math); transposing is a one-line swap if the
+  teacher prefers it after using it.

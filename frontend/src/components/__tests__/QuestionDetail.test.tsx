@@ -241,3 +241,49 @@ describe("prerequisites", () => {
         expect(screen.queryByText("先に読むとよい質問")).not.toBeInTheDocument();
     });
 });
+
+describe("two-axis grid", () => {
+    it("shows the grid when the current question and a related one carry levels", async () => {
+        mocked.fetchQuestion.mockResolvedValue(
+            makeQuestion({ physics_level: 2, math_level: 3 })
+        );
+        mocked.fetchRelatedQuestions.mockResolvedValue([
+            makeQuestion({
+                id: 2,
+                question: "ベクトルってなに？",
+                physics_level: 1,
+                math_level: 1,
+            }),
+            makeQuestion({
+                id: 3,
+                question: "未評価の関連質問",
+                physics_level: null,
+                math_level: null,
+            }),
+        ]);
+
+        renderDetail();
+
+        expect(await screen.findByText("今ここ")).toBeInTheDocument();
+        // Rated items sit on the grid; unrated ones fall back to a list.
+        expect(screen.getByText("難易度が未評価の関連質問:")).toBeInTheDocument();
+        expect(screen.getAllByText("未評価の関連質問").length).toBeGreaterThan(0);
+    });
+
+    it("keeps the flat list when the current question has no levels", async () => {
+        mocked.fetchQuestion.mockResolvedValue(makeQuestion());
+        mocked.fetchRelatedQuestions.mockResolvedValue([
+            makeQuestion({
+                id: 2,
+                question: "ベクトルってなに？",
+                physics_level: 1,
+                math_level: 1,
+            }),
+        ]);
+
+        renderDetail();
+
+        expect(await screen.findByText("ベクトルってなに？")).toBeInTheDocument();
+        expect(screen.queryByText("今ここ")).not.toBeInTheDocument();
+    });
+});

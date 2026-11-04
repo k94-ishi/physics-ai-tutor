@@ -160,6 +160,13 @@ const ja = {
     "prerequisites.gapsLabel":
         "まだ説明する質問がない概念(押すと、その概念について質問できます):",
     "prerequisites.gapTitle": "「{concept}」について質問する",
+    "grid.hint":
+        "縦が数学、横が物理の難易度(0〜4)です。左下ほど基礎、右上ほど発展で、今の質問は「今ここ」の枠にいます。",
+    "grid.caption": "関連する質問の難易度マップ",
+    "grid.current": "今ここ",
+    "grid.axisMath": "数学",
+    "grid.axisPhysics": "物理 →",
+    "grid.unplaced": "難易度が未評価の関連質問:",
     "questionDetail.relatedHint": "カードを押すと、このページを離れずに中身を見られます。",
     "concepts.chipTitle": "「{concept}」に関する質問を見る",
     "concepts.showMore": "ほか{count}件",
@@ -715,6 +722,13 @@ const en: Record<keyof typeof ja, string> = {
     "prerequisites.gapsLabel":
         "Concepts with no explaining question yet (tap one to ask about it):",
     "prerequisites.gapTitle": "Ask about \"{concept}\"",
+    "grid.hint":
+        "Rows are math difficulty, columns are physics (0-4). Lower-left is more basic, upper-right more advanced; the current question is marked.",
+    "grid.caption": "Difficulty map of the related questions",
+    "grid.current": "You are here",
+    "grid.axisMath": "Math",
+    "grid.axisPhysics": "Physics →",
+    "grid.unplaced": "Related questions not rated yet:",
     "questionDetail.relatedHint": "Tap a card to read it without leaving this page.",
     "concepts.chipTitle": "See questions about \"{concept}\"",
     "concepts.showMore": "{count} more",

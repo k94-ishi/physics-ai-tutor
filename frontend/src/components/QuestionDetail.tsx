@@ -13,6 +13,9 @@ import Card from "@/components/ui/Card";
 import LoadingState from "@/components/ui/LoadingState";
 import MarkdownContent from "@/components/ui/MarkdownContent";
 import ConceptChips from "@/components/ui/ConceptChips";
+import QuestionLevelGrid, {
+    hasCoordinates,
+} from "@/components/ui/QuestionLevelGrid";
 import QuestionPreviewModal from "@/components/ui/QuestionPreviewModal";
 import ReferencedQuestions from "@/components/ui/ReferencedQuestions";
 import StatusMessage from "@/components/ui/StatusMessage";
@@ -125,6 +128,15 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
         ? related
         : related.slice(0, RELATED_VISIBLE);
     const hiddenRelated = related.length - visibleRelated.length;
+
+    // 広い画面では格子(座標を持つQAのみ)、狭い画面と座標のない行はリスト。
+    const showGrid =
+        question !== null &&
+        hasCoordinates(question) &&
+        related.some(hasCoordinates);
+    const unplacedRelated = showGrid
+        ? related.filter((item) => !hasCoordinates(item))
+        : [];
 
     const translatedBadge =
         question.provenance === "MACHINE"
@@ -258,7 +270,48 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
                         {t("questionDetail.relatedHint")}
                     </p>
 
-                    <div className="flex flex-col gap-3">
+                    {showGrid && (
+                        <div className="hidden md:flex md:flex-col md:gap-3">
+                            <QuestionLevelGrid
+                                current={question}
+                                items={related}
+                                onPreview={setPreview}
+                            />
+
+                            {unplacedRelated.length > 0 && (
+                                <div className="flex flex-col gap-2">
+                                    <p className="text-xs text-gray-500">
+                                        {t("grid.unplaced")}
+                                    </p>
+                                    {unplacedRelated.map((item) => (
+                                        <Card
+                                            key={item.id}
+                                            className="transition-colors hover:border-blue-300 hover:bg-blue-50/50"
+                                        >
+                                            <button
+                                                type="button"
+                                                onClick={() => setPreview(item)}
+                                                className="flex w-full cursor-pointer flex-col gap-1 text-left"
+                                            >
+                                                <span className="font-medium text-gray-900">
+                                                    {item.question}
+                                                </span>
+
+                                                <MarkdownContent
+                                                    content={item.answer}
+                                                    variant="preview"
+                                                />
+                                            </button>
+                                        </Card>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div
+                        className={`flex flex-col gap-3 ${showGrid ? "md:hidden" : ""}`}
+                    >
                         {visibleRelated.map((item) => (
                             <Card
                                 key={item.id}
@@ -286,7 +339,7 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
                         <button
                             type="button"
                             onClick={() => setRelatedExpanded(true)}
-                            className="self-start cursor-pointer text-sm font-medium text-blue-700 underline underline-offset-2"
+                            className={`self-start cursor-pointer text-sm font-medium text-blue-700 underline underline-offset-2 ${showGrid ? "md:hidden" : ""}`}
                         >
                             {t("questionDetail.showMoreRelated")}
                         </button>

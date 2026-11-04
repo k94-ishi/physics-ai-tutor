@@ -9,15 +9,15 @@ priority: P1
 
 Ordered queue; details live in each issue.
 
-1. [39] `2c422f9` extract maths-tool concepts (same prompt bump as 2.)
-2. [40] `785a7e9` two-axis difficulty, one rating per QA pair
-3. [37] `e00868e` accept necessary advanced content; answer at the asker's level
-4. [41] `796163b` concept chips for students
-5. [38] `1b4f7a1` prerequisite links, not just similar
-6. [42] `7584a7d` more related + preview modal + two-axis grid (grid needs 2.)
-7. [43] `be0e1aa` sticky ask bar
+1. ~~[39] extract maths-tool concepts~~ done
+2. ~~[40] two-axis difficulty, one rating per QA pair~~ done
+3. ~~[37] accept necessary advanced content~~ done
+4. ~~[41] concept chips for students~~ done
+5. [38] `1b4f7a1` prerequisite links, not just similar - **next up**
+6. [42] `7584a7d` more related + preview modal + two-axis grid
+7. [43] `be0e1aa` sticky ask bar (shipped in bc4d4b4; close after a look)
 8. [21] `ef104ba` /help page
 
-Gate between 2. and 5./6.: the teacher's ~30-question validation of the
-difficulty ratings (process in [52]) - do not build ranking or the grid on
-unvalidated axes.
+Gate between 2. and 5./6.: **passed locally 2026-11-04** ([52]: within
+±1 = 97 % on both axes, decision GO). The production re-check in [52]
+follows the rollout; it does not block building [38]/[42].

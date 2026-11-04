@@ -93,3 +93,9 @@ should land close to it.
   neither *defines* it, so the prerequisite block would show it as a gap
   on the air-resistance QA. That is the honest-gap path, and it confirms
   the "concept without a defining QA" case must be first-class in the UI.
+
+### 2026-11-04 - unblocked
+
+[52] passed the validation gate (within ±1 = 97 % on both axes, GO).
+The ranking rule in Scope can be implemented against the local corpus;
+the production numbers arrive with the backfill.

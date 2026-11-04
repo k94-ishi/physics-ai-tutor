@@ -91,10 +91,7 @@ def test_backfill_cli_is_restartable_and_window_guarded(admin_client, db, monkey
         admin_client.post(
             QUESTIONS, json={"question": f"未評価の質問{index}", "answer": "回答"}
         )
-    assert (
-        db.query(Question).filter(Question.physics_level.isnot(None)).count()
-        == 0
-    )
+    assert db.query(Question).filter(Question.physics_level.isnot(None)).count() == 0
 
     monkeypatch.setattr(
         concept_service,
@@ -107,10 +104,7 @@ def test_backfill_cli_is_restartable_and_window_guarded(admin_client, db, monkey
         backfill_cli, "_now", lambda: datetime(2026, 11, 1, 12, 0, tzinfo=UTC)
     )
     assert backfill_cli.main(limit=10) == 2
-    assert (
-        db.query(Question).filter(Question.physics_level.isnot(None)).count()
-        == 0
-    )
+    assert db.query(Question).filter(Question.physics_level.isnot(None)).count() == 0
 
     # --force rates up to the limit; a second run continues where it stopped.
     assert backfill_cli.main(limit=1, force=True) == 0

@@ -19,7 +19,7 @@ does):
 | 0 | everyday phenomena anyone can see and feel | everyday arithmetic |
 | 1 | visible motion/phenomena with named quantities in a concrete situation | relations you can draw as a graph or figure / symbolic algebra over several variables |
 | 2 | invisible quantities still felt in daily life (energy, pressure, current) | functions as objects, vectors, basic probability |
-| 3 | classical abstractions with no sensory handle (wave phase, fields, entropy) | calculus, beginner level differential equations, vector analysis, linear algebra |
+| 3 | classical abstractions with no sensory handle (fields, entropy) | calculus, beginner level differential equations, vector analysis, linear algebra |
 | 4 | modern/theoretical/applied physics (relativity, quantum, statistical, analytical mechanics) more advanced than level 3 | more advanced math than level 3 |
 
 The owner reviews this rubric once ratings exist; the wording is a first

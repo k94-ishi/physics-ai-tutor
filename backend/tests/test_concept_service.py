@@ -127,14 +127,12 @@ def test_parse_levels_line_reads_the_required_format():
     # Tolerant of case and spacing; the model is not a formatter.
     assert concept_service.parse_levels_line(
         "levels: physics = 3 math = 2"
-    ) == concept_service.ExtractionLevels(3, 2, 3, 3)
+    ) == concept_service.ExtractionLevels(3, 2)
 
 
 def test_parse_levels_line_clamps_and_rejects_garbage():
     # The scale is ordinal; an overshoot means "at least the top".
-    clamped = concept_service.parse_levels_line(
-        "LEVELS: physics=9 math=5"
-    )
+    clamped = concept_service.parse_levels_line("LEVELS: physics=9 math=5")
     assert clamped == concept_service.ExtractionLevels(4, 4)
 
     for junk in (

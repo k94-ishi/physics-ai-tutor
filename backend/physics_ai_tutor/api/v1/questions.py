@@ -32,6 +32,7 @@ from physics_ai_tutor.schemas.embedding import (
 from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.question import (
     AiVerdictFilter,
+    PrerequisitesResponse,
     QuestionCreate,
     QuestionImportResponse,
     QuestionListResponse,
@@ -48,7 +49,11 @@ from physics_ai_tutor.schemas.question_review import (
     QuestionReviewResponse,
 )
 from physics_ai_tutor.schemas.token import JWTPayload, UserRole
-from physics_ai_tutor.services import question_service, recommendation_service
+from physics_ai_tutor.services import (
+    prerequisite_service,
+    question_service,
+    recommendation_service,
+)
 from physics_ai_tutor.services.embedding_service import (
     search_similar_questions,
 )
@@ -229,6 +234,29 @@ def get_related_questions(
         ),
         language=lang,
     )
+
+
+@router.get(
+    "/{question_id}/prerequisites",
+    response_model=PrerequisitesResponse,
+)
+def get_prerequisites(
+    question_id: int,
+    limit: int = Query(default=5, ge=1, le=20),
+    lang: Language = Query(default=Language.JA),
+    db: Session = Depends(get_db),
+):
+    """Defining QAs for the concepts this QA leans on ([38]).
+
+    Students climb down, so only APPROVED rows ever appear, for admins
+    too; concepts with no usable definer come back as gaps.
+    """
+    response = prerequisite_service.get_prerequisites(
+        db, question_id, limit=limit, language=lang
+    )
+    if response is None:
+        raise HTTPException(status_code=404, detail="Question not found")
+    return response
 
 
 @router.get(

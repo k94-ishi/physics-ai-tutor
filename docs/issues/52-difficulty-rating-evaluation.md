@@ -155,3 +155,11 @@ extraction prompt, then re-rate; do not correct rows one by one.
 
 Remaining: the production sample after the rollout and backfill
 (checklist Phase 2, then 5.3a, then steps 1-7 here on a fresh sample).
+
+### 2026-11-04 - "wave phase" removed from the physics-3 examples
+
+Owner's call after the review above: the example invited exactly the
+observed lean (波ってなに？ and ホイヘンスの原理 rated 3 by topic).
+Removed from the extraction prompt, the issue [40] table and the
+review-page rubric; still v6 (nothing has been rated under v6 yet), no
+re-evaluation - the production sample stays the test of the wording.

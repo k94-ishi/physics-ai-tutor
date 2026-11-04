@@ -59,6 +59,12 @@ export type UpdateQuestionRequest = {
     math_level?: number;
 };
 
+// [38] "read this first": defining QAs plus concepts with no definer yet.
+export type PrerequisitesResponse = {
+    items: Question[];
+    gaps: string[];
+};
+
 export type SimilarQuestion = {
     id: number;
     question: string;

@@ -181,6 +181,15 @@ class QuestionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PrerequisitesResponse(BaseModel):
+    """The "read this first" block ([38]): defining QAs plus honest gaps."""
+
+    items: list[QuestionResponse]
+    # Concepts of the current QA with no usable defining QA, in the
+    # requested language; shown without a link rather than hidden.
+    gaps: list[str]
+
+
 class QuestionListResponse(BaseModel):
     items: list[QuestionResponse]
     total: int

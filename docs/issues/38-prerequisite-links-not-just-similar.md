@@ -99,3 +99,24 @@ should land close to it.
 [52] passed the validation gate (within ±1 = 97 % on both axes, GO).
 The ranking rule in Scope can be implemented against the local corpus;
 the production numbers arrive with the backfill.
+
+### 2026-11-04 - implemented
+
+- `GET /questions/{id}/prerequisites` (public): for each concept of the
+  QA, the APPROVED definition-style question (「〜とは」/「ってなに」/
+  "what is" + the concept's name, either language) that is not more
+  advanced than the current QA on either axis; least advanced definer
+  per concept, one card per QA, ordered hardest-first on the stuck axis
+  (the current QA's higher axis), limit 5. Concepts with no usable
+  definer come back as `gaps`.
+- UI: 「先に読むとよい質問」 block on the question page, above 関連する
+  質問 - green-tinted cards with the same preview modal, and gap
+  concepts as dashed chips that link to the concept filter, whose empty
+  state already offers the ask box (the one-click "ask about this
+  concept" from Scope).
+- Tests: backend ranking/exclusion/gap/404 cases (`test_prerequisites`),
+  frontend block render/preview/hidden cases. docs/api.md updated.
+- Not done, deliberately: no similarity fallback when a concept has
+  non-defining neighbours - that is what 関連する質問 already shows, and
+  mixing the two would blur the block's question ("what should I read
+  first?", not "what is nearby?").

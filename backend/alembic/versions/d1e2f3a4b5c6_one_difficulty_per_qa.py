@@ -23,7 +23,9 @@ def upgrade() -> None:
     """The answer rating ("what a reader needs to follow it") becomes the
     rating of the QA pair; the separate question rating is dropped ([40],
     owner's decision 2026-11-04)."""
-    op.alter_column("questions", "answer_physics_level", new_column_name="physics_level")
+    op.alter_column(
+        "questions", "answer_physics_level", new_column_name="physics_level"
+    )
     op.alter_column("questions", "answer_math_level", new_column_name="math_level")
     op.drop_column("questions", "question_physics_level")
     op.drop_column("questions", "question_math_level")
@@ -38,4 +40,6 @@ def downgrade() -> None:
         sa.Column("question_physics_level", sa.SmallInteger(), nullable=True),
     )
     op.alter_column("questions", "math_level", new_column_name="answer_math_level")
-    op.alter_column("questions", "physics_level", new_column_name="answer_physics_level")
+    op.alter_column(
+        "questions", "physics_level", new_column_name="answer_physics_level"
+    )

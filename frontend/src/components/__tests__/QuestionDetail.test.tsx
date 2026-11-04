@@ -9,6 +9,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
         ...actual,
         fetchQuestion: vi.fn(),
         fetchRelatedQuestions: vi.fn(),
+        fetchPrerequisites: vi.fn(),
     };
 });
 
@@ -50,6 +51,8 @@ beforeEach(() => {
     mocked.fetchQuestion.mockReset();
     mocked.fetchRelatedQuestions.mockReset();
     mocked.fetchRelatedQuestions.mockResolvedValue([]);
+    mocked.fetchPrerequisites.mockReset();
+    mocked.fetchPrerequisites.mockResolvedValue({ items: [], gaps: [] });
 });
 
 describe("QuestionDetail", () => {
@@ -191,5 +194,50 @@ describe("related questions", () => {
         expect(
             screen.queryByRole("button", { name: "関連する質問をもっと見る" })
         ).not.toBeInTheDocument();
+    });
+});
+
+describe("prerequisites", () => {
+    it("lists defining questions and shows unlinked concepts as gap chips", async () => {
+        mocked.fetchQuestion.mockResolvedValue(makeQuestion());
+        mocked.fetchPrerequisites.mockResolvedValue({
+            items: [
+                makeQuestion({ id: 9, question: "微分方程式ってなに？", answer: "説明" }),
+            ],
+            gaps: ["ベクトルの微分"],
+        });
+
+        renderDetail();
+
+        expect(await screen.findByText("先に読むとよい質問")).toBeInTheDocument();
+        expect(screen.getByText("微分方程式ってなに？")).toBeInTheDocument();
+        const gap = screen.getByRole("link", { name: "ベクトルの微分" });
+        expect(gap).toHaveAttribute(
+            "href",
+            `/?concept=${encodeURIComponent("ベクトルの微分")}`
+        );
+    });
+
+    it("previews a prerequisite without leaving the page", async () => {
+        mocked.fetchQuestion.mockResolvedValue(makeQuestion());
+        mocked.fetchPrerequisites.mockResolvedValue({
+            items: [makeQuestion({ id: 9, question: "微分方程式ってなに？", answer: "説明" })],
+            gaps: [],
+        });
+        const user = userEvent.setup();
+
+        renderDetail();
+
+        await user.click(await screen.findByText("微分方程式ってなに？"));
+        expect(screen.getByText("この質問のページを開く")).toBeInTheDocument();
+    });
+
+    it("hides the block when there are no prerequisites and no gaps", async () => {
+        mocked.fetchQuestion.mockResolvedValue(makeQuestion());
+
+        renderDetail();
+
+        await screen.findByText("速度ってなに？");
+        expect(screen.queryByText("先に読むとよい質問")).not.toBeInTheDocument();
     });
 });

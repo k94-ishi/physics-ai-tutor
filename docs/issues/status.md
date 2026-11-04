@@ -58,7 +58,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 35 | closed | 35-review-response-drops-ai-verdict-ui-defects.md | Bug: review response drops the AI verdict; small admin-UI defects in the AI-review surfaces | f2418a3 |
 | 36 | closed | 36-cjk-emphasis-rendering.md | Bug: bold markers around CJK punctuation render literally (CommonMark flanking rules); fix in the renderer, not the data | 1b55272 |
 | 37 | closed | 37-accept-necessary-advanced-content.md | Accept advanced content the question genuinely needs; the related-QA graph is the scaffolding, not inline derivation | e00868e, b8f3d28 (closed twin) |
-| 38 | open | 38-prerequisite-links-not-just-similar.md | Related questions should offer prerequisites, not only similar questions | 1b4f7a1 |
+| 38 | closed | 38-prerequisite-links-not-just-similar.md | Related questions should offer prerequisites, not only similar questions | 1b4f7a1 |
 | 39 | closed | 39-extract-mathematical-tool-concepts.md | Concept extraction must reliably capture the mathematical tools an answer leans on | 2c422f9 |
 | 40 | closed | 40-two-axis-difficulty.md | Two-axis difficulty per QA (physics, math), assigned during concept extraction | 785a7e9, bfa263e (closed twin) |
 | 41 | closed | 41-show-concepts-to-students.md | Show concepts to students as clickable chips; concepts are the map, not admin metadata | 796163b, 0e5e4fa (closed twin) |

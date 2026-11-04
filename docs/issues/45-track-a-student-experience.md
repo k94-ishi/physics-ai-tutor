@@ -13,8 +13,8 @@ Ordered queue; details live in each issue.
 2. ~~[40] two-axis difficulty, one rating per QA pair~~ done
 3. ~~[37] accept necessary advanced content~~ done
 4. ~~[41] concept chips for students~~ done
-5. [38] `1b4f7a1` prerequisite links, not just similar - **next up**
-6. [42] `7584a7d` more related + preview modal + two-axis grid
+5. ~~[38] prerequisite links, not just similar~~ done 2026-11-04
+6. [42] `7584a7d` more related + preview modal + two-axis grid - **next up**
 7. [43] `be0e1aa` sticky ask bar (shipped in bc4d4b4; close after a look)
 8. [21] `ef104ba` /help page
 

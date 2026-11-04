@@ -87,7 +87,11 @@ def test_reason_appears_in_review_history(client, admin_client, monkeypatch):
 
     admin_client.post(
         f"{QUESTIONS}/{question_id}/review",
-        json={"action": "REJECT", "reason": "UNNEEDED_TOOLS", "comment": "微積分を使用"},
+        json={
+            "action": "REJECT",
+            "reason": "UNNEEDED_TOOLS",
+            "comment": "微積分を使用",
+        },
     )
 
     history = admin_client.get(f"{QUESTIONS}/{question_id}/reviews").json()

@@ -154,6 +154,12 @@ const ja = {
     "common.close": "閉じる",
     "questionPreview.openFull": "この質問のページを開く",
     "questionDetail.showMoreRelated": "関連する質問をもっと見る",
+    "prerequisites.heading": "先に読むとよい質問",
+    "prerequisites.hint":
+        "この回答が使っている概念を、より基本的なところから説明している質問です。",
+    "prerequisites.gapsLabel":
+        "まだ説明する質問がない概念(押すと、その概念について質問できます):",
+    "prerequisites.gapTitle": "「{concept}」について質問する",
     "questionDetail.relatedHint": "カードを押すと、このページを離れずに中身を見られます。",
     "concepts.chipTitle": "「{concept}」に関する質問を見る",
     "concepts.showMore": "ほか{count}件",
@@ -196,7 +202,7 @@ const ja = {
     "levelsReview.physicsDesc0": "誰でも見て感じられる日常の現象",
     "levelsReview.physicsDesc1": "具体的な場面で、名前のついた量を使って表される目に見える運動・現象",
     "levelsReview.physicsDesc2": "目に見えないが日常で感じられる量(エネルギー、圧力、電流)",
-    "levelsReview.physicsDesc3": "感覚ではとらえられない古典物理の抽象概念(波の位相、場、エントロピー)",
+    "levelsReview.physicsDesc3": "感覚ではとらえられない古典物理の抽象概念(場、エントロピー)",
     "levelsReview.physicsDesc4": "レベル3より高度な現代・理論・応用物理(相対論、量子、統計力学、解析力学)",
     "levelsReview.mathDesc0": "日常の計算",
     "levelsReview.mathDesc1": "グラフや図に描ける関係、複数の変数を含む文字式",
@@ -703,6 +709,12 @@ const en: Record<keyof typeof ja, string> = {
     "common.close": "Close",
     "questionPreview.openFull": "Open this question",
     "questionDetail.showMoreRelated": "Show more related questions",
+    "prerequisites.heading": "Read these first",
+    "prerequisites.hint":
+        "Questions that explain the concepts this answer relies on, starting lower.",
+    "prerequisites.gapsLabel":
+        "Concepts with no explaining question yet (tap one to ask about it):",
+    "prerequisites.gapTitle": "Ask about \"{concept}\"",
     "questionDetail.relatedHint": "Tap a card to read it without leaving this page.",
     "concepts.chipTitle": "See questions about \"{concept}\"",
     "concepts.showMore": "{count} more",
@@ -745,7 +757,7 @@ const en: Record<keyof typeof ja, string> = {
     "levelsReview.physicsDesc0": "Everyday phenomena anyone can see and feel",
     "levelsReview.physicsDesc1": "Visible motion or phenomena with named quantities in a concrete situation",
     "levelsReview.physicsDesc2": "Invisible quantities still felt in daily life (energy, pressure, current)",
-    "levelsReview.physicsDesc3": "Classical abstractions with no sensory handle (wave phase, fields, entropy)",
+    "levelsReview.physicsDesc3": "Classical abstractions with no sensory handle (fields, entropy)",
     "levelsReview.physicsDesc4": "Modern, theoretical or applied physics beyond level 3 (relativity, quantum, statistical, analytical mechanics)",
     "levelsReview.mathDesc0": "Everyday arithmetic",
     "levelsReview.mathDesc1": "Relations you can draw as a graph or figure; symbolic algebra over several variables",

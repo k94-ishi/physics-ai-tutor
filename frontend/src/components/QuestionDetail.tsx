@@ -1,8 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, fetchQuestion, fetchRelatedQuestions } from "@/lib/api";
-import { Question } from "@/types/question";
+import {
+    ApiError,
+    fetchPrerequisites,
+    fetchQuestion,
+    fetchRelatedQuestions,
+} from "@/lib/api";
+import { PrerequisitesResponse, Question } from "@/types/question";
 import Card from "@/components/ui/Card";
 import LoadingState from "@/components/ui/LoadingState";
 import MarkdownContent from "@/components/ui/MarkdownContent";
@@ -20,6 +26,8 @@ type QuestionDetailProps = {
 // 1回の取得でAPIの上限まで取り、表示だけ段階的に増やす(追加の通信なし)。
 const RELATED_FETCH_LIMIT = 20;
 const RELATED_VISIBLE = 10;
+// 前提の「穴」チップの初期表示数(ConceptChipsと同じ発想)。
+const GAPS_VISIBLE = 8;
 
 /**
  * Client-side question view: refetches in the active UI language, so
@@ -29,6 +37,9 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
     const { language, t } = useLanguage();
     const [question, setQuestion] = useState<Question | null>(null);
     const [related, setRelated] = useState<Question[]>([]);
+    const [prerequisites, setPrerequisites] =
+        useState<PrerequisitesResponse | null>(null);
+    const [gapsExpanded, setGapsExpanded] = useState(false);
     const [relatedExpanded, setRelatedExpanded] = useState(false);
     const [preview, setPreview] = useState<Question | null>(null);
     const [loading, setLoading] = useState(true);
@@ -65,18 +76,20 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
         }
 
         try {
-            const relatedData = await fetchRelatedQuestions(
-                id,
-                RELATED_FETCH_LIMIT,
-                language
-            );
+            // 前提ブロックと関連リストは独立に失敗してよい(片方は出す)。
+            const [prerequisiteData, relatedData] = await Promise.allSettled([
+                fetchPrerequisites(id, language),
+                fetchRelatedQuestions(id, RELATED_FETCH_LIMIT, language),
+            ]);
             if (current === requestId.current) {
-                setRelated(relatedData);
-            }
-        } catch (error) {
-            console.error(error);
-            if (current === requestId.current) {
-                setRelated([]);
+                setPrerequisites(
+                    prerequisiteData.status === "fulfilled"
+                        ? prerequisiteData.value
+                        : null
+                );
+                setRelated(
+                    relatedData.status === "fulfilled" ? relatedData.value : []
+                );
             }
         } finally {
             if (current === requestId.current) {
@@ -153,6 +166,87 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
 
                 <ReferencedQuestions items={question.retrieved_questions} />
             </Card>
+
+            {prerequisites !== null &&
+                (prerequisites.items.length > 0 ||
+                    prerequisites.gaps.length > 0) && (
+                    <div className="flex flex-col gap-3">
+                        <h2 className="text-lg font-semibold text-gray-900">
+                            {t("prerequisites.heading")}
+                        </h2>
+
+                        <p className="text-xs text-gray-500">
+                            {t("prerequisites.hint")}
+                        </p>
+
+                        {prerequisites.items.map((item) => (
+                            <Card
+                                key={item.id}
+                                className="transition-colors hover:border-emerald-300 hover:bg-emerald-50/50"
+                            >
+                                <button
+                                    type="button"
+                                    onClick={() => setPreview(item)}
+                                    className="flex w-full cursor-pointer flex-col gap-1 text-left"
+                                >
+                                    <span className="font-medium text-gray-900">
+                                        {item.question}
+                                    </span>
+
+                                    <MarkdownContent
+                                        content={item.answer}
+                                        variant="preview"
+                                    />
+                                </button>
+                            </Card>
+                        ))}
+
+                        {prerequisites.gaps.length > 0 && (
+                            <div className="flex flex-col gap-2">
+                                <p className="text-xs text-gray-500">
+                                    {t("prerequisites.gapsLabel")}
+                                </p>
+                                <ul className="flex flex-wrap items-center gap-2">
+                                    {(gapsExpanded
+                                        ? prerequisites.gaps
+                                        : prerequisites.gaps.slice(0, GAPS_VISIBLE)
+                                    ).map((concept) => (
+                                        <li key={concept}>
+                                            <Link
+                                                href={`/?concept=${encodeURIComponent(concept)}`}
+                                                className="inline-flex rounded-full border border-dashed border-gray-300 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100"
+                                                title={t("prerequisites.gapTitle", {
+                                                    concept,
+                                                })}
+                                            >
+                                                {concept}
+                                            </Link>
+                                        </li>
+                                    ))}
+                                    {!gapsExpanded &&
+                                        prerequisites.gaps.length > GAPS_VISIBLE && (
+                                            <li>
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setGapsExpanded(true)
+                                                    }
+                                                    className="inline-flex cursor-pointer rounded-full border border-gray-300 px-3 py-1 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50"
+                                                >
+                                                    {t("concepts.showMore", {
+                                                        count:
+                                                            prerequisites.gaps
+                                                                .length -
+                                                            GAPS_VISIBLE,
+                                                    })}
+                                                </button>
+                                            </li>
+                                        )}
+                                </ul>
+                            </div>
+                        )}
+                    </div>
+                )}
 
             {related.length > 0 && (
                 <div className="flex flex-col gap-3">

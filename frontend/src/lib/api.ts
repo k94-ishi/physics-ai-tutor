@@ -23,7 +23,11 @@ import {
     LoginRequest,
     User,
 } from "@/types/auth";
-import { ContentLanguage, TranslationBatchResponse } from "@/types/question";
+import {
+    ContentLanguage,
+    PrerequisitesResponse,
+    TranslationBatchResponse,
+} from "@/types/question";
 import {
     AiReviewPendingCount,
     AiReviewRun,
@@ -303,6 +307,16 @@ export async function fetchRelatedQuestions(
     const langParam = lang ? `&lang=${lang}` : "";
     return apiFetch<Question[]>(
         `${getQuestionsUrl()}/${id}/related?limit=${limit}${langParam}`
+    );
+}
+
+export async function fetchPrerequisites(
+    id: number,
+    lang?: ContentLanguage
+): Promise<PrerequisitesResponse> {
+    const langParam = lang ? `?lang=${lang}` : "";
+    return apiFetch<PrerequisitesResponse>(
+        `${getQuestionsUrl()}/${id}/prerequisites${langParam}`
     );
 }
 

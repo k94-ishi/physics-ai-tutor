@@ -290,21 +290,6 @@ Production environment:
 
 ---
 
-## Roadmap and Issues
-
-Issues are tracked inside the repository with [git-bug](https://github.com/git-bug/git-bug),
-so no external tracker is needed. The roadmap is the issue labelled `epic`:
-
-```bash
-git bug termui          # browse and edit issues
-git bug bug -l epic     # the roadmap
-```
-
-See [docs/development.md](docs/development.md#issues-and-roadmap) for the
-labels and workflow.
-
----
-
 ## License
 
 This project is licensed under the MIT License.

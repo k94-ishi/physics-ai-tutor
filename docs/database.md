@@ -455,7 +455,11 @@ Revisions in order from the first to the current head:
 | `a2b3c4d5e6f7` | 2026-10-28 | Add `question_reviews.reason`: labelled reject/edit codes |
 | `b3c4d5e6f7a8` | 2026-10-28 | Add generation metadata to `questions` (model, prompt version, mode, token usage) |
 | `c4d5e6f7a8b9` | 2026-10-29 | Create `ai_reviews`; add `reviewer_kind` and `policy_name` to `question_reviews` |
-| `d5e6f7a8b9c0` | 2026-10-30 | Create `ai_review_runs`: recorded reviewer runs with a single-running guard (**head**) |
+| `d5e6f7a8b9c0` | 2026-10-30 | Create `ai_review_runs`: recorded reviewer runs with a single-running guard |
+| `a1b2c3d4e5f6` | 2026-11-01 | Add `skipped_count` and `heartbeat_at` to `ai_review_runs` |
+| `b7c8d9e0f1a2` | 2026-11-01 | Add two-axis difficulty to `questions`: `question_physics_level`, `question_math_level`, `answer_physics_level`, `answer_math_level` |
+| `c9d0e1f2a3b4` | 2026-11-02 | Create `query_embeddings`: cached embeddings for the `?similar=` URL search |
+| `d1e2f3a4b5c6` | 2026-11-04 | One difficulty rating per QA pair: rename `answer_physics_level`/`answer_math_level` to `physics_level`/`math_level`, drop the separate `question_*_level` columns (**head**) |
 
 The chain is linear with a single head. Verify with:
 

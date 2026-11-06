@@ -28,6 +28,14 @@ docker compose down
 docker compose up -d
 ```
 
+### Several checkouts on one machine
+
+Each git worktree can run its own stack. Copy
+`docker-compose.override.yml.template` to `docker-compose.override.yml`
+(gitignored), replace `NAME` with the worktree name and adjust the ports,
+then prefix every compose command with `-p physics-ai-tutor-NAME`. Point
+`frontend/.env.local` (`NEXT_PUBLIC_API_URL`) at the backend port you chose.
+
 ### Setup DB
 
 ```bash
@@ -225,6 +233,49 @@ Conventions:
   behaviour a user can observe. `async` Server Components are out of scope
   for Vitest; use a browser check against the local stack for those.
 
+### URL parameters on the student list
+
+Four parameters shape the student list and compose with pagination:
+`?keyword=` (lexical, written debounced), `?concept=` (chip navigation,
+[41]), `?similar=` (vector search, [49]), and `?lang=ja|en` ([50]).
+`lang` makes a shared link mean the same thing for every recipient - the
+vector search is language-scoped, so without it a `?similar=` link
+searches the recipient's stored language and can quietly return nothing.
+URL wins over the stored preference but never overwrites it; the header
+switcher updates `lang` only when the URL already carries it, and a
+language switch keeps a `similar=` query and re-runs it against the new
+language's embeddings (owner's decision, 2026-11-02). Language-dependent
+effects must wait for `useLanguage().resolved`, or they run once under
+the default `ja` and again under the resolved language. `similar` is
+written only on submit - unlike a keyword it costs an embedding call to
+restore - and the restore path skips the exact-match redirect so the back
+button never bounces forward. Query embeddings are cached server-side in
+`query_embeddings`, keyed by (normalised-text hash, embedding model); a
+model upgrade misses the cache by construction instead of mixing
+incompatible vectors.
+
+### The sticky ask bar
+
+`StickyAskBar` ([43]) fixes the ask box to the bottom of the question
+detail page. It measures itself and publishes `--ask-bar-height`; any
+other bottom-fixed element must offset by that variable (`Toaster`
+already does) or it will sit underneath the bar. The root layout sets
+`interactiveWidget: "resizes-content"` so a soft keyboard resizes the
+page rather than covering the bar.
+
+### Markdown rendering
+
+`MarkdownContent` composes remark-gfm, remark-math, rehype-katex and
+**remark-cjk-friendly**. The last one is not optional: CommonMark counts
+fullwidth punctuation (`」）。、`) as punctuation, so a `**` between `」`
+and a kana can only *open* emphasis, never close it, and
+`**「重心の位置」**と...` renders with literal asterisks. Japanese has no
+spaces to rescue the delimiter classification. The plugin implements the
+CJK-friendly flanking amendment and fixes it at render time, so stored
+answers never need editing for it (issue [36]). Keep it in the plugin
+list, and cover any new renderer with
+`src/components/ui/__tests__/MarkdownContent.test.tsx`.
+
 ### What is not covered
 
 - No end-to-end browser tests. Pages, routing and the Mermaid / KaTeX
@@ -239,6 +290,30 @@ Conventions:
 - Frontend is deployed to Vercel, backend to Render, database on Supabase.
 - Apply migrations to production (`alembic upgrade head` with the Supabase
   `DATABASE_URL`) before deploying backend code that needs the new schema.
+
+### Nightly AI review (`.github/workflows/ai-review-nightly.yml`)
+
+Runs `review_pending --scope both --trigger scheduled` every day at
+17:00 UTC (02:00 JST). The runner is GitHub Actions rather than a Render
+cron job or an in-process scheduler ([26]): no new infrastructure, the
+logs live next to the repo, and the Supabase *pooler* URL is reachable
+from Actions. The trade-off is that the production `DATABASE_URL` lives
+in a GitHub secret.
+
+Pricing assumptions (checked 2026-10-30; DeepSeek changes them, re-check
+before relying on the numbers): no Batch API (`/batches` returns 404),
+but requests in UTC 16:30-00:30 are discounted, and the long shared
+rubric prefix is cheap on repeated calls thanks to context caching - a
+dense nightly run maximises both. The window lives in
+`AI_REVIEW_OFFPEAK_START/END`; the CLI refuses to start outside it
+without `--force`, so a mis-set cron fails loudly (exit 2) instead of
+paying full price. A failed run exits 1 and fails the job, which triggers
+GitHub's failure e-mail; results are also on `/admin/stats`.
+
+Required repository secrets: `DATABASE_URL` (Supabase pooler) and
+`DEEPSEEK_API_KEY`. With the nightly in place, `AI_REVIEW_ENABLED` can
+stay `false` in production: teachers find fresh verdicts in the morning
+and generation never pays for an inline review call.
 
 ## Environment Variables
 
@@ -439,59 +514,6 @@ npm run build
 - [docs/database.md](database.md): schema, Alembic migrations, seed data
 - [docs/api.md](api.md): endpoint reference and access rules
 - [docs/security.md](security.md): security model and dependency policy
-
-## Issues and Roadmap
-
-Issues live in the repository itself via [git-bug](https://github.com/git-bug/git-bug)
-(`brew install git-bug`). They are stored as git objects under `refs/bugs`,
-separate from the file history, and are **not** pushed unless you run
-`git bug push` explicitly. Work locally; do not push bug refs to the remote
-unless that is intended.
-
-The store sits in the repository's common `.git`, so **all worktrees share
-the same bugs and identities**. Never run `git bug wipe`: it deletes every
-bug and identity for every worktree. Use `git bug bug rm <id>` for a single
-mistaken bug.
-
-One-time setup on a new machine:
-
-```bash
-git bug user new --name "<name>" --email "<email>" --non-interactive
-```
-
-Everyday use:
-
-```bash
-git bug termui                 # browse, comment, label, close
-git bug bug                    # list open issues
-git bug bug -l P0              # by priority label
-git bug bug -l M2              # by milestone label
-git bug bug -l epic            # the roadmap issue
-git bug bug show <id>          # one issue
-```
-
-Creating an issue: copy `docs/issues/TEMPLATE_task.md` (or
-`TEMPLATE_bug.md`), fill it in, then
-
-```bash
-git bug bug new -t "<title>" -F <your-copy>.md
-git bug bug label new <id> P1 M2 feature backend
-```
-
-Label conventions:
-
-| Label | Meaning |
-| --- | --- |
-| `P0` … `P3` | P0 blocks deployment, P1 next, P2 planned, P3 later |
-| `M0` … `M4` | Milestone: M0 Deploy Google Sign-In, M1 Student value, M2 Review data foundation, M3 AI-assisted review (advisory), M4 Partial automation and regression safety |
-| `epic` | A tracking issue that links others (the roadmap) |
-| topical | `backend`, `frontend`, `cli`, `prompt`, `review`, `ai-review`, `data-quality`, `observability`, `security`, `privacy`, `deploy`, `ops`, `testing`, `bug`, `feature` |
-
-Cross-references inside an issue body are git-bug short ids (`#a1b2c3d`).
-
-`docs/issues/NN-*.md` are the seed drafts (the roadmap is `00-roadmap.md`,
-imported as the `epic`). `scripts/import_issues.py [dir] [--apply]` imports
-them, skips titles that already exist, and rewrites `#NN` draft references
-to real ids. After the import, git-bug is the source of truth; the drafts
-are kept only so the tracker can be re-seeded in a fresh clone.
 - [AGENTS.md](../AGENTS.md): project rules for contributors and coding agents
+
+Issue tracking is kept outside this repository.

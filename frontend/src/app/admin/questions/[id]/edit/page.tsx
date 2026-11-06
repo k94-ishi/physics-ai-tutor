@@ -2,6 +2,8 @@
 
 import { SyntheticEvent, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import QuestionIdBadge from "@/components/ui/QuestionIdBadge";
+import SelectField from "@/components/ui/SelectField";
 import {
     fetchQuestion,
     reviewQuestion,
@@ -26,6 +28,15 @@ import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { TranslationKey } from "@/lib/i18n/translations";
 
 const LANGUAGES: ContentLanguage[] = ["ja", "en"];
+
+const LEVEL_FIELDS = ["physics_level", "math_level"] as const;
+
+type LevelField = (typeof LEVEL_FIELDS)[number];
+
+const LEVEL_LABEL_KEYS: Record<LevelField, TranslationKey> = {
+    physics_level: "levels.physics",
+    math_level: "levels.math",
+};
 
 const AI_VERDICT_LABEL_KEYS: Record<AiVerdict, TranslationKey> = {
     APPROVE: "admin.aiShortApprove",
@@ -91,6 +102,11 @@ export default function EditQuestionPage() {
     const [translating, setTranslating] = useState(false);
     const [reasonDialogOpen, setReasonDialogOpen] = useState(false);
     const [suggestionApplied, setSuggestionApplied] = useState(false);
+    // QAペアの難易度(物理・数学)。LLMの推定値を教員が上書きできる。
+    const [levels, setLevels] = useState<Record<LevelField, number | null>>({
+        physics_level: null,
+        math_level: null,
+    });
     const [errors, setErrors] = useState<Partial<Record<ContentLanguage, string>>>(
         {}
     );
@@ -103,6 +119,12 @@ export default function EditQuestionPage() {
             const data = await fetchQuestion(id);
             setLoaded(data);
             setTexts(textsFromQuestion(data));
+            setLevels({
+                physics_level: data.physics_level,
+                math_level: data.math_level,
+            });
+            // サーバの本文で上書きしたので「AI修正案を適用済み(未保存)」は無効。
+            setSuggestionApplied(false);
         } catch (error) {
             console.error(error);
             setLoadError(true);
@@ -153,6 +175,14 @@ export default function EditQuestionPage() {
             changes[`question_${lang}`] = next.question;
             changes[`answer_${lang}`] = next.answer;
             changed = true;
+        }
+
+        for (const field of LEVEL_FIELDS) {
+            const next = levels[field];
+            if (next !== null && next !== loaded[field]) {
+                changes[field] = next;
+                changed = true;
+            }
         }
 
         return changed ? changes : null;
@@ -304,7 +334,7 @@ export default function EditQuestionPage() {
         if (!loaded || !suggestion) {
             return;
         }
-        setField(loaded.original_language as ContentLanguage, "answer", suggestion);
+        setField(loaded.original_language, "answer", suggestion);
         setSuggestionApplied(true);
     };
 
@@ -349,7 +379,12 @@ export default function EditQuestionPage() {
 
     return (
         <main className="flex flex-col gap-6">
-            <h1 className="text-2xl font-bold text-gray-900">{t("editQuestion.title")}</h1>
+            <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-2xl font-bold text-gray-900">
+                    {t("editQuestion.title")}
+                </h1>
+                <QuestionIdBadge id={id} />
+            </div>
 
             {aiReview && (
                 <Card className="flex flex-col gap-3 border-purple-200 bg-purple-50">
@@ -358,10 +393,16 @@ export default function EditQuestionPage() {
                             {t("editQuestion.aiSuggestionHeading")}
                         </h2>
                         <span className="text-xs text-purple-800">
-                            {t("editQuestion.aiVerdictLine", {
-                                verdict: aiVerdictLabel,
-                                confidence: Math.round((aiReview.confidence ?? 0) * 100),
-                            })}
+                            {aiReview.confidence !== null
+                                ? t("editQuestion.aiVerdictLine", {
+                                      verdict: aiVerdictLabel,
+                                      confidence: Math.round(
+                                          aiReview.confidence * 100
+                                      ),
+                                  })
+                                : t("editQuestion.aiVerdictLineNoConfidence", {
+                                      verdict: aiVerdictLabel,
+                                  })}
                         </span>
                     </div>
 
@@ -437,6 +478,51 @@ export default function EditQuestionPage() {
                             />
                         </fieldset>
                     ))}
+
+                    <fieldset className="flex flex-col gap-2">
+                        <legend className="text-sm font-medium text-gray-700">
+                            {t("levels.heading")}
+                        </legend>
+                        <div className="grid grid-cols-2 gap-3">
+                            {LEVEL_FIELDS.map((field) => (
+                                <SelectField
+                                    key={field}
+                                    id={field}
+                                    label={t(LEVEL_LABEL_KEYS[field])}
+                                    value={
+                                        levels[field] === null
+                                            ? ""
+                                            : String(levels[field])
+                                    }
+                                    onChange={(e) =>
+                                        setLevels((prev) => ({
+                                            ...prev,
+                                            [field]:
+                                                e.target.value === ""
+                                                    ? null
+                                                    : Number(e.target.value),
+                                        }))
+                                    }
+                                    options={[
+                                        ...(levels[field] === null
+                                            ? [
+                                                  {
+                                                      value: "",
+                                                      label: t("levels.unrated"),
+                                                  },
+                                              ]
+                                            : []),
+                                        ...[0, 1, 2, 3, 4].map((n) => ({
+                                            value: String(n),
+                                            label: t(
+                                                `levels.${field.includes("physics") ? "physics" : "math"}${n}` as TranslationKey
+                                            ),
+                                        })),
+                                    ]}
+                                />
+                            ))}
+                        </div>
+                    </fieldset>
 
                     <div className="flex flex-wrap gap-2">
                         <Button type="submit" disabled={busy}>

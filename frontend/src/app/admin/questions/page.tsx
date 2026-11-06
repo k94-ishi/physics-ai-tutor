@@ -36,12 +36,52 @@ import ReferencedQuestions from "@/components/ui/ReferencedQuestions";
 import { showToast } from "@/components/ui/Toast";
 import { useQueryState } from "@/lib/hooks/useQueryState";
 import { runWithConcurrencyLimit } from "@/lib/concurrency";
+import { parseIdSearch } from "@/lib/questionIds";
+import { useAiReviewRun } from "@/lib/hooks/useAiReviewRun";
+import {
+    isAiReviewable,
+    splitAiReviewSelection,
+} from "@/lib/aiReviewEligibility";
+import QuestionIdBadge from "@/components/ui/QuestionIdBadge";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { TranslationKey } from "@/lib/i18n/translations";
 
 type Mode = "ai" | "keyword";
-type BulkAction = "delete" | "approve" | "reject" | "extract" | "translate";
+type BulkAction =
+    | "delete"
+    | "approve"
+    | "reject"
+    | "extract"
+    | "translate"
+    | "aiReview";
 type ConceptFilter = "" | "extracted" | "unextracted";
+
+// URL由来の値は何でもあり得るので、候補と突き合わせてから型に入れる。
+// 候補外(?sort=garbage等)は既定値扱いにし、APIへ渡して422にしない。
+function fromUrl<T extends string>(value: string, allowed: readonly T[]): T | "" {
+    return (allowed as readonly string[]).includes(value) ? (value as T) : "";
+}
+
+const STATUS_VALUES: readonly QuestionStatus[] = [
+    "UNREVIEWED",
+    "APPROVED",
+    "REJECTED",
+];
+const CONCEPT_FILTER_VALUES: readonly ConceptFilter[] = [
+    "extracted",
+    "unextracted",
+];
+const SORT_VALUES: readonly QuestionSort[] = [
+    "oldest",
+    "ai_confidence",
+    "asked_count",
+];
+const AI_VERDICT_VALUES: readonly AiVerdictFilter[] = [
+    "APPROVE",
+    "EDIT",
+    "REJECT",
+    "NONE",
+];
 type ExtractionStatus = "processing" | "done" | "error";
 type ReviewAction = "APPROVE" | "REJECT";
 type ReviewActionState = { action: ReviewAction; state: "processing" | "error" };
@@ -53,6 +93,7 @@ const ADMIN_QUERY_DEFAULTS = {
     page: "1",
     size: "30",
     keyword: "",
+    ids: "",
     status: "",
     conceptFilter: "",
     sort: "",
@@ -96,6 +137,10 @@ const BULK_ACTION_KEYS: Record<
         title: "admin.confirmBulkTranslate",
         confirmLabel: "admin.translateLabel",
     },
+    aiReview: {
+        title: "admin.aiReviewBulkTitle",
+        confirmLabel: "admin.bulkAiReview",
+    },
 };
 
 function modeButtonClassName(active: boolean): string {
@@ -121,10 +166,10 @@ function AdminQuestionsPageInner() {
     const [queryState, setQueryState] = useQueryState(ADMIN_QUERY_DEFAULTS);
     const page = Number(queryState.page);
     const size = Number(queryState.size);
-    const statusFilter = queryState.status as QuestionStatus | "";
-    const conceptFilter = queryState.conceptFilter as ConceptFilter;
-    const sortOption = queryState.sort as QuestionSort | "";
-    const aiVerdictFilter = queryState.aiVerdict as AiVerdictFilter | "";
+    const statusFilter = fromUrl(queryState.status, STATUS_VALUES);
+    const conceptFilter = fromUrl(queryState.conceptFilter, CONCEPT_FILTER_VALUES);
+    const sortOption = fromUrl(queryState.sort, SORT_VALUES);
+    const aiVerdictFilter = fromUrl(queryState.aiVerdict, AI_VERDICT_VALUES);
     const [keywordInput, setKeywordInput] = useState(queryState.keyword);
     const [listItems, setListItems] = useState<Question[]>([]);
     const [listTotal, setListTotal] = useState(0);
@@ -152,6 +197,10 @@ function AdminQuestionsPageInner() {
     >(new Map());
     const processingIdsRef = useRef<Set<number>>(new Set());
 
+    // AIレビューはランとして実行し、対象カードに処理中バッジを出す([28])
+    const [aiReviewingIds, setAiReviewingIds] = useState<Set<number>>(new Set());
+    const aiReviewBatchRef = useRef<number[]>([]);
+
     // 単体操作(削除のみ確認ダイアログを経由し、承認・却下は即実行)
     const [deleteTarget, setDeleteTarget] = useState<Question | null>(null);
     const [deleting, setDeleting] = useState(false);
@@ -169,13 +218,15 @@ function AdminQuestionsPageInner() {
             keyword: string,
             status: QuestionStatus | "",
             sort: QuestionSort | "" = "",
-            aiVerdict: AiVerdictFilter | "" = ""
+            aiVerdict: AiVerdictFilter | "" = "",
+            ids: string = ""
         ) => {
             const requestId = ++listRequestId.current;
             setListLoading(true);
             setListError(false);
 
             try {
+                const idFilter = parseIdSearch(ids);
                 const data = await fetchQuestions({
                     page: targetPage,
                     size: targetSize,
@@ -183,6 +234,7 @@ function AdminQuestionsPageInner() {
                     status: status || undefined,
                     sort: sort || undefined,
                     aiVerdict: aiVerdict || undefined,
+                    ids: idFilter ?? undefined,
                 });
 
                 if (requestId !== listRequestId.current) {
@@ -207,18 +259,33 @@ function AdminQuestionsPageInner() {
         []
     );
 
-    // URLのkeywordが外部要因(戻る/進む等)で変わったら入力欄に反映する
+    // URLのkeyword/idsが外部要因(戻る/進む、?ids=の直リンク等)で変わったら
+    // 入力欄に反映する。id検索は "#54,848" の形に戻すとそのまま再解析できる。
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        setKeywordInput(queryState.keyword);
-    }, [queryState.keyword]);
+        setKeywordInput(
+            queryState.ids ? `#${queryState.ids}` : queryState.keyword
+        );
+    }, [queryState.keyword, queryState.ids]);
 
-    // キーワード入力をデバウンスしてURLへ反映する(1ページ目に戻す)
+    // キーワード入力をデバウンスしてURLへ反映する(1ページ目に戻す)。
+    // "#54" や "54,848" はキーワードではなくid検索としてidsへ送る。
     useEffect(() => {
         const timer = setTimeout(() => {
             const trimmed = keywordInput.trim();
-            if (trimmed !== queryState.keyword) {
-                setQueryState({ keyword: trimmed, page: "1" });
+            const ids = parseIdSearch(trimmed);
+            const nextIds = ids ? ids.join(",") : "";
+            const nextKeyword = ids ? "" : trimmed;
+
+            if (
+                nextKeyword !== queryState.keyword ||
+                nextIds !== queryState.ids
+            ) {
+                setQueryState({
+                    keyword: nextKeyword,
+                    ids: nextIds,
+                    page: "1",
+                });
             }
         }, KEYWORD_DEBOUNCE_MS);
 
@@ -230,16 +297,25 @@ function AdminQuestionsPageInner() {
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelectedIds(new Set());
-    }, [queryState.keyword, statusFilter, conceptFilter, sortOption, aiVerdictFilter, page]);
+    }, [
+        queryState.keyword,
+        queryState.ids,
+        statusFilter,
+        conceptFilter,
+        sortOption,
+        aiVerdictFilter,
+        page,
+    ]);
 
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter);
+        loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter, queryState.ids);
     }, [
         loadList,
         page,
         size,
         queryState.keyword,
+        queryState.ids,
         statusFilter,
         sortOption,
         aiVerdictFilter,
@@ -328,7 +404,7 @@ function AdminQuestionsPageInner() {
 
         try {
             await deleteQuestion(deleteTarget.id);
-            await loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter);
+            await loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter, queryState.ids);
             showToast(t("admin.questionDeleted"));
             setDeleteTarget(null);
         } catch (error) {
@@ -432,7 +508,7 @@ function AdminQuestionsPageInner() {
 
             setSelectedIds(new Set());
             setBulkAction(null);
-            await loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter);
+            await loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter, queryState.ids);
         } catch (error) {
             console.error(error);
             showToast(t("admin.bulkActionFailed"), "error");
@@ -495,6 +571,66 @@ function AdminQuestionsPageInner() {
             }
         });
     };
+
+    // ランの完了時にまとめてトーストを出し、対象カードの判定バッジだけを
+    // 取り直す(ページ全体は再読み込みしない)。
+    const aiRun = useAiReviewRun(async (finished) => {
+        const ids = aiReviewBatchRef.current;
+        aiReviewBatchRef.current = [];
+        setAiReviewingIds(new Set());
+
+        if (finished.status === "done") {
+            showToast(
+                t("aiRuns.finishedToast", {
+                    reviewed: finished.reviewed_count,
+                    skipped: finished.skipped_count,
+                    failed: finished.failed_count,
+                })
+            );
+        } else {
+            showToast(
+                t("aiRuns.failedToast", { error: finished.error ?? "?" }),
+                "error"
+            );
+        }
+
+        // idsフィルタは一度に100件まで([31])なので分割して取り直す。
+        for (let index = 0; index < ids.length; index += 100) {
+            const chunk = ids.slice(index, index + 100);
+            try {
+                const data = await fetchQuestions({
+                    ids: chunk,
+                    size: Math.min(Math.max(chunk.length, 1), 120),
+                });
+                setListItems((prev) => {
+                    const byId = new Map(data.items.map((q) => [q.id, q]));
+                    return prev.map((q) => byId.get(q.id) ?? q);
+                });
+            } catch (error) {
+                console.error(error);
+            }
+        }
+    });
+
+    const startAiReviewSelected = async (ids: number[]) => {
+        setBulkAction(null);
+
+        if (ids.length === 0) {
+            showToast(t("admin.aiReviewNothingEligible"), "error");
+            return;
+        }
+
+        const created = await aiRun.start("selected", ids);
+        if (created === null) {
+            return;
+        }
+
+        setSelectedIds(new Set());
+        aiReviewBatchRef.current = ids;
+        setAiReviewingIds(new Set(ids));
+    };
+
+    const aiSelection = splitAiReviewSelection(listItems, selectedIds);
 
     const handlePageChange = (nextPage: number) =>
         setQueryState({ page: String(nextPage) });
@@ -738,7 +874,7 @@ function AdminQuestionsPageInner() {
                             variant="error"
                             message={t("admin.fetchFailed")}
                             onRetry={() =>
-                                loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter)
+                                loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter, queryState.ids)
                             }
                         />
                     )}
@@ -810,6 +946,13 @@ function AdminQuestionsPageInner() {
                                             {t("admin.translateLabel")}
                                         </Button>
                                         <Button
+                                            variant="secondary"
+                                            disabled={aiRun.running || aiRun.starting}
+                                            onClick={() => setBulkAction("aiReview")}
+                                        >
+                                            {t("admin.bulkAiReview")}
+                                        </Button>
+                                        <Button
                                             variant="danger"
                                             onClick={() => setBulkAction("delete")}
                                         >
@@ -849,6 +992,10 @@ function AdminQuestionsPageInner() {
 
                                                 <div className="flex min-w-0 flex-1 flex-col gap-2">
                                                     <div className="flex flex-wrap items-center gap-2">
+                                                        <QuestionIdBadge
+                                                            id={question.id}
+                                                        />
+
                                                         <span
                                                             className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASSES[question.status]}`}
                                                         >
@@ -957,6 +1104,30 @@ function AdminQuestionsPageInner() {
                                                             </span>
                                                         )}
 
+                                                        {question.physics_level !==
+                                                            null && (
+                                                            <span
+                                                                className="shrink-0 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700"
+                                                                title={t("levels.badgeTitle", {
+                                                                    p: question.physics_level,
+                                                                    m: question.math_level ?? "-",
+                                                                })}
+                                                            >
+                                                                {t("levels.badge", {
+                                                                    p: question.physics_level,
+                                                                    m: question.math_level ?? "-",
+                                                                })}
+                                                            </span>
+                                                        )}
+
+                                                        {aiReviewingIds.has(
+                                                            question.id
+                                                        ) && (
+                                                            <span className="shrink-0 animate-pulse rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">
+                                                                {t("admin.aiReviewProcessing")}
+                                                            </span>
+                                                        )}
+
                                                         {review?.state === "processing" && (
                                                             <span className="shrink-0 animate-pulse rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
                                                                 {review.action === "APPROVE"
@@ -1053,6 +1224,28 @@ function AdminQuestionsPageInner() {
                                                             {t("common.edit")}
                                                         </Link>
 
+                                                        {isAiReviewable(question) && (
+                                                            <Button
+                                                                variant="secondary"
+                                                                disabled={
+                                                                    aiRun.running ||
+                                                                    aiRun.starting ||
+                                                                    aiReviewingIds.has(
+                                                                        question.id
+                                                                    )
+                                                                }
+                                                                onClick={() =>
+                                                                    startAiReviewSelected([
+                                                                        question.id,
+                                                                    ])
+                                                                }
+                                                            >
+                                                                {question.ai_review
+                                                                    ? t("admin.aiReviewCardAgain")
+                                                                    : t("admin.aiReviewCard")}
+                                                            </Button>
+                                                        )}
+
                                                         <Button
                                                             variant="secondary"
                                                             disabled={extraction === "processing"}
@@ -1101,16 +1294,33 @@ function AdminQuestionsPageInner() {
             <ConfirmDialog
                 open={bulkAction !== null && bulkAction !== "reject"}
                 title={bulkAction ? t(BULK_ACTION_KEYS[bulkAction].title) : ""}
-                description={t("admin.bulkTargetCount", { count: selectedIds.size })}
+                description={
+                    bulkAction === "aiReview"
+                        ? t("admin.aiReviewBulkDescription", {
+                              eligible: aiSelection.eligibleIds.length,
+                              skipped: aiSelection.skippedCount,
+                          })
+                        : t("admin.bulkTargetCount", { count: selectedIds.size })
+                }
                 confirmLabel={
                     bulkAction ? t(BULK_ACTION_KEYS[bulkAction].confirmLabel) : undefined
                 }
-                confirming={bulkAction === "extract" ? false : bulkProcessing}
-                onConfirm={() =>
+                confirming={
                     bulkAction === "extract"
-                        ? startConceptExtraction(Array.from(selectedIds))
-                        : handleConfirmBulkAction()
+                        ? false
+                        : bulkAction === "aiReview"
+                          ? aiRun.starting
+                          : bulkProcessing
                 }
+                onConfirm={() => {
+                    if (bulkAction === "extract") {
+                        startConceptExtraction(Array.from(selectedIds));
+                    } else if (bulkAction === "aiReview") {
+                        startAiReviewSelected(aiSelection.eligibleIds);
+                    } else {
+                        handleConfirmBulkAction();
+                    }
+                }}
                 onCancel={() => setBulkAction(null)}
             />
 

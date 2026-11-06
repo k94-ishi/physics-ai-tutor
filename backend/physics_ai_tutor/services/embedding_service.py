@@ -1,4 +1,6 @@
+import hashlib
 import logging
+import unicodedata
 
 from openai import OpenAIError
 from sqlalchemy.orm import Session
@@ -6,6 +8,7 @@ from sqlalchemy.orm import Session
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.exceptions import EmbeddingGenerationError
 from physics_ai_tutor.core.openai import client
+from physics_ai_tutor.repositories import query_embedding_repository
 from physics_ai_tutor.repositories.embedding_repository import (
     search_similar_embeddings,
 )
@@ -36,6 +39,39 @@ def create_embeddings(texts: list[str]) -> list[list[float]]:
     return [item.embedding for item in response.data]
 
 
+def normalize_query(text: str) -> str:
+    """NFKC + whitespace collapse, so trivially different strings share
+    one cache entry (and one embedding)."""
+    return " ".join(unicodedata.normalize("NFKC", text).split())
+
+
+def embed_query(db: Session, text: str) -> list[float]:
+    """Embed a search query through the cache ([49]).
+
+    Keyed by (hash of the normalised text, model): a repeated search - a
+    retried phrasing, a shared ?similar= link, a re-asked question - costs
+    no OpenAI call. A model change misses the cache by construction.
+    """
+    normalized = normalize_query(text)
+    text_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    model = settings.embedding_model
+
+    cached = query_embedding_repository.get(db, text_hash, model)
+    if cached is not None:
+        try:
+            query_embedding_repository.touch(db, cached)
+        except Exception:
+            # Hit bookkeeping must never break a search.
+            logger.warning("query embedding touch failed", exc_info=True)
+            db.rollback()
+        return list(cached.embedding)
+
+    embedding = create_embeddings([normalized])[0]
+    row = query_embedding_repository.create(db, text_hash, normalized, model, embedding)
+
+    return list(row.embedding)
+
+
 def search_similar_questions(
     db: Session,
     query: str,
@@ -44,7 +80,7 @@ def search_similar_questions(
     language: Language | str = Language.JA,
 ) -> list[SimilarQuestionResponse]:
     lang = Language(language)
-    query_embedding = create_embeddings([query])[0]
+    query_embedding = embed_query(db, query)
 
     # Same-language search only: every row is embedded in each language it
     # has text for, so cross-language scoring is not needed.

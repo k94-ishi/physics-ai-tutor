@@ -180,15 +180,23 @@ def get_ai_review_run(
 def get_ai_review_pending_count(
     db: Session = Depends(get_db),
 ):
-    """How many questions a run would touch, and the remaining budget."""
+    """How many questions await review, and how many a run could do now.
+
+    `pending` and `stale` are true totals; a run is additionally bounded by
+    `remaining`, so `would_review_*` is what a confirm dialog should quote.
+    """
     from physics_ai_tutor.core.config import settings
 
     remaining = ai_review_service.remaining_daily_budget(db)
+    pending = ai_review_service.count_pending(db)
+    stale = ai_review_service.count_stale(db)
 
     return PendingCountResponse(
-        pending=len(ai_review_service.eligible_question_ids(db, "pending")),
-        stale=len(ai_review_service.eligible_question_ids(db, "stale")),
+        pending=pending,
+        stale=stale,
         daily_cap=settings.ai_review_daily_cap,
         used_24h=settings.ai_review_daily_cap - remaining,
         remaining=remaining,
+        would_review_pending=min(pending, remaining),
+        would_review_stale=min(stale, remaining),
     )

@@ -24,3 +24,7 @@ dev/
 data/
 # Local compose overrides
 docker-compose.override.yml
+
+# Internal issue tracker and operator notes (local only, not for the public repo)
+docs/issues/
+docs/operator-checklist.md

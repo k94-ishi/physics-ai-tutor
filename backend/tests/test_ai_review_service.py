@@ -186,6 +186,15 @@ def test_reviewer_prompt_matches_the_questions_language(
 def _bind_review_cli(monkeypatch, db):
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     monkeypatch.setattr(review_pending_cli, "SessionLocal", factory)
+    # Pin the clock inside the off-peak window so these tests do not
+    # depend on the wall-clock time they happen to run at.
+    from datetime import UTC, datetime
+
+    monkeypatch.setattr(
+        review_pending_cli,
+        "_now",
+        lambda: datetime(2026, 11, 1, 20, 0, tzinfo=UTC),
+    )
 
 
 def test_cli_backfills_only_pending_questions(
@@ -203,13 +212,37 @@ def test_cli_backfills_only_pending_questions(
         fake_generation(json.dumps(VALID_REVIEW)),
     )
 
-    assert review_pending_cli.main(limit=1) == 1
+    # 0 is the process exit code: the run finished, not a review count.
+    assert review_pending_cli.main(limit=1) == 0
     assert db.query(AiReview).count() == 1
 
     # The second run picks up the remaining question, not the reviewed one.
-    assert review_pending_cli.main(limit=10) == 1
-    assert db.query(AiReview).count() == 2
     assert review_pending_cli.main(limit=10) == 0
+    assert db.query(AiReview).count() == 2
+
+    # Nothing left: an empty run still succeeds and reviews nothing more.
+    assert review_pending_cli.main(limit=10) == 0
+    assert db.query(AiReview).count() == 2
+
+
+def test_cli_exits_nonzero_when_the_run_fails(
+    client, db, monkeypatch, _bind_review_cli
+):
+    """A scheduled run ([26]) can only alert if failure reaches the exit code."""
+    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    client.post(ASK_PATH, json={"question": "失敗するはずの質問です"})
+
+    from physics_ai_tutor.models import AiReviewRun
+    from physics_ai_tutor.services import ai_review_service as service
+
+    def _boom(db_, run_id):
+        run = db_.get(AiReviewRun, run_id)
+        service._finish(db_, run, "failed", "boom")
+        return run
+
+    monkeypatch.setattr(service, "execute_run", _boom)
+
+    assert review_pending_cli.main(limit=1) == 1
 
 
 def test_service_skips_non_ai_and_already_reviewed_questions(
@@ -366,6 +399,83 @@ def test_selected_scope_keeps_only_reviewable_ids(
     assert eligible == [ids[0], ids[2]]
 
 
+def test_question_reviewed_mid_run_counts_as_skipped_not_failed(
+    client, admin_client, db, monkeypatch
+):
+    """[28] requires skips to be reported as skips; they are not errors."""
+    ids = _three_pending(client, monkeypatch)
+    from physics_ai_tutor.models import AiReviewRun
+    from physics_ai_tutor.services import ai_review_service as service
+
+    run = service.start_run(db, scope="pending", trigger="cli")
+
+    # A teacher approves one of them after the run fixed its id list.
+    question = db.get(Question, ids[1])
+    question.status = "APPROVED"
+    db.commit()
+
+    monkeypatch.setattr(
+        deepseek_service,
+        "generate_answer",
+        fake_generation(json.dumps(VALID_REVIEW)),
+    )
+    service.execute_run(db, run.id)
+
+    finished = db.get(AiReviewRun, run.id)
+    assert finished.reviewed_count == 2
+    assert finished.skipped_count == 1
+    assert finished.failed_count == 0, "a skip must not be reported as a failure"
+
+
+def test_unparsed_verdict_is_retried_then_given_up_on(client, db, monkeypatch):
+    """A NULL verdict is no verdict, so the question stays pending - but not forever."""
+    from physics_ai_tutor.repositories import ai_review_repository
+    from physics_ai_tutor.services import ai_review_service as service
+
+    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    asked = client.post(ASK_PATH, json={"question": "解析できない判定の質問"})
+    question_id = asked.json()["question_id"]
+
+    monkeypatch.setattr(
+        deepseek_service, "generate_answer", fake_generation("not json at all")
+    )
+
+    attempts = ai_review_repository.MAX_PARSE_ATTEMPTS
+    for attempt in range(attempts):
+        pending = ai_review_repository.list_pending_question_ids(db, 10)
+        assert question_id in pending, f"unparsed verdict dropped after {attempt}"
+        service.review_question(db, db.get(Question, question_id))
+
+    assert db.query(AiReview).filter_by(question_id=question_id).count() == attempts
+    assert question_id not in ai_review_repository.list_pending_question_ids(db, 10)
+
+    # A readable verdict settles it immediately.
+    monkeypatch.setattr(
+        deepseek_service,
+        "generate_answer",
+        fake_generation(json.dumps(VALID_REVIEW)),
+    )
+    other = client.post(ASK_PATH, json={"question": "普通に判定できる質問"}).json()
+    service.review_question(db, db.get(Question, other["question_id"]))
+    assert other["question_id"] not in ai_review_repository.list_pending_question_ids(
+        db, 10
+    )
+
+
+def test_pending_count_is_not_capped_by_the_daily_budget(
+    client, admin_client, db, monkeypatch
+):
+    """[27]'s dialog quotes these numbers; a capped total would mislead."""
+    _three_pending(client, monkeypatch)
+    monkeypatch.setattr(settings, "ai_review_daily_cap", 2)
+
+    body = admin_client.get("/api/v1/admin/ai-review/pending-count").json()
+
+    assert body["pending"] == 3, "the true backlog, not the cap"
+    assert body["remaining"] == 2
+    assert body["would_review_pending"] == 2, "what a run started now would touch"
+
+
 def test_timed_out_run_is_failed_and_replaced(client, db, monkeypatch):
     _three_pending(client, monkeypatch)
     from datetime import UTC, datetime, timedelta
@@ -374,8 +484,9 @@ def test_timed_out_run_is_failed_and_replaced(client, db, monkeypatch):
     from physics_ai_tutor.services import ai_review_service as service
 
     stuck = service.start_run(db, scope="pending", trigger="cli")
+    # Silent for an hour: the heartbeat is what the reaper looks at.
     db.query(AiReviewRun).filter_by(id=stuck.id).update(
-        {"started_at": datetime.now(UTC) - timedelta(hours=1)}
+        {"heartbeat_at": datetime.now(UTC) - timedelta(hours=1)}
     )
     db.commit()
 
@@ -383,8 +494,65 @@ def test_timed_out_run_is_failed_and_replaced(client, db, monkeypatch):
 
     stale_row = db.get(AiReviewRun, stuck.id)
     assert stale_row.status == "failed"
-    assert "timed out" in stale_row.error
+    assert "no progress" in stale_row.error
     assert fresh.status == "running"
+
+
+def test_long_but_healthy_run_is_not_reaped(client, db, monkeypatch):
+    """Duration alone must not reap a run; a full-cap run exceeds the timeout."""
+    _three_pending(client, monkeypatch)
+    from datetime import UTC, datetime, timedelta
+
+    from physics_ai_tutor.models import AiReviewRun
+    from physics_ai_tutor.services import ai_review_service as service
+
+    busy = service.start_run(db, scope="pending", trigger="cli")
+    db.query(AiReviewRun).filter_by(id=busy.id).update(
+        {
+            "started_at": datetime.now(UTC) - timedelta(hours=3),
+            "heartbeat_at": datetime.now(UTC),
+        }
+    )
+    db.commit()
+
+    with pytest.raises(service.RunInProgressError):
+        service.start_run(db, scope="pending", trigger="manual")
+
+    assert db.get(AiReviewRun, busy.id).status == "running"
+
+
+def test_reaped_run_executor_stops_instead_of_overlapping(client, db, monkeypatch):
+    """The replaced executor must not keep calling DeepSeek, nor claim 'done'."""
+    _three_pending(client, monkeypatch)
+    from datetime import UTC, datetime, timedelta
+
+    from physics_ai_tutor.models import AiReviewRun
+    from physics_ai_tutor.services import ai_review_service as service
+
+    stuck = service.start_run(db, scope="pending", trigger="cli")
+    assert stuck.requested_count == 3
+
+    calls = {"n": 0}
+    real_grade = service.grade_answer
+
+    def _grade_then_go_silent(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            # Mid-run, a new start reaps this one as silent and takes over.
+            db.query(AiReviewRun).filter_by(id=stuck.id).update(
+                {"heartbeat_at": datetime.now(UTC) - timedelta(hours=1)}
+            )
+            db.commit()
+            service.start_run(db, scope="selected", trigger="manual", question_ids=[])
+        return real_grade(*args, **kwargs)
+
+    monkeypatch.setattr(service, "grade_answer", _grade_then_go_silent)
+
+    service.execute_run(db, stuck.id)
+
+    reaped = db.get(AiReviewRun, stuck.id)
+    assert reaped.status == "failed", "a reaped run must not report itself done"
+    assert calls["n"] == 1, "the reaped executor kept spending DeepSeek calls"
 
 
 def test_run_endpoints(client, user_client, admin_client, db, monkeypatch):
@@ -507,3 +675,99 @@ def test_hopeless_output_is_still_reported_unparsed():
 
     assert service._parse_output('{"verdict": "EDIT", ') is None
     assert service._parse_output("not json at all") is None
+
+
+def test_offpeak_window_wraps_midnight():
+    from datetime import UTC, datetime
+
+    inside = [
+        datetime(2026, 11, 1, 16, 30, tzinfo=UTC),
+        datetime(2026, 11, 1, 20, 0, tzinfo=UTC),
+        datetime(2026, 11, 1, 0, 29, tzinfo=UTC),
+    ]
+    outside = [
+        datetime(2026, 11, 1, 0, 30, tzinfo=UTC),
+        datetime(2026, 11, 1, 12, 0, tzinfo=UTC),
+        datetime(2026, 11, 1, 16, 29, tzinfo=UTC),
+    ]
+    for now in inside:
+        assert review_pending_cli.within_offpeak(now, "16:30", "00:30"), now
+    for now in outside:
+        assert not review_pending_cli.within_offpeak(now, "16:30", "00:30"), now
+    # A window that does not wrap behaves as a plain interval.
+    assert review_pending_cli.within_offpeak(
+        datetime(2026, 11, 1, 10, 0, tzinfo=UTC), "09:00", "11:00"
+    )
+    assert not review_pending_cli.within_offpeak(
+        datetime(2026, 11, 1, 11, 0, tzinfo=UTC), "09:00", "11:00"
+    )
+
+
+def test_cli_refuses_outside_the_window_and_force_overrides(
+    client, db, monkeypatch, _bind_review_cli
+):
+    """[26]: outside the window the CLI reviews nothing; --force proceeds."""
+    from datetime import UTC, datetime
+
+    _three_pending(client, monkeypatch)
+    monkeypatch.setattr(
+        deepseek_service,
+        "generate_answer",
+        fake_generation(json.dumps(VALID_REVIEW)),
+    )
+    # Midday UTC is well outside the 16:30-00:30 window.
+    monkeypatch.setattr(
+        review_pending_cli,
+        "_now",
+        lambda: datetime(2026, 11, 1, 12, 0, tzinfo=UTC),
+    )
+
+    assert review_pending_cli.main(limit=10) == 2
+    assert db.query(AiReview).count() == 0, "refusal must review nothing"
+
+    assert review_pending_cli.main(limit=10, force=True) == 0
+    assert db.query(AiReview).count() == 3
+
+
+def test_cli_scheduled_both_reviews_pending_then_stale(
+    client, db, monkeypatch, _bind_review_cli
+):
+    """[26]: the nightly call records trigger=scheduled and covers both scopes."""
+    from physics_ai_tutor.models import AiReviewRun
+    from physics_ai_tutor.repositories import ai_review_repository
+    from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
+    from physics_ai_tutor.schemas.language import Language
+
+    ids = _three_pending(client, monkeypatch)
+    # One question already has a verdict from an older prompt: stale.
+    ai_review_repository.create(
+        db,
+        AiReviewCreate(
+            question_id=ids[0],
+            language=Language.JA,
+            verdict=AiReviewVerdict.APPROVE,
+            confidence=0.9,
+            model="mock",
+            prompt_version="r0-old",
+        ),
+    )
+    db.commit()
+
+    monkeypatch.setattr(
+        deepseek_service,
+        "generate_answer",
+        fake_generation(json.dumps(VALID_REVIEW)),
+    )
+
+    assert review_pending_cli.main(limit=10, scope="both", trigger="scheduled") == 0
+
+    runs = db.query(AiReviewRun).order_by(AiReviewRun.id).all()
+    assert [run.scope for run in runs] == ["pending", "stale"]
+    assert all(run.trigger == "scheduled" for run in runs)
+    assert all(run.status == "done" for run in runs)
+    assert runs[0].reviewed_count == 2
+    assert runs[1].reviewed_count == 1
+
+    # Nothing left in either scope: the next night starts no empty runs.
+    assert review_pending_cli.main(limit=10, scope="both", trigger="scheduled") == 0
+    assert db.query(AiReviewRun).count() == 2

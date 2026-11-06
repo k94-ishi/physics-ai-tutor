@@ -44,6 +44,8 @@ const QUESTION = {
     source: "AI_GENERATED",
     concepts: [],
     retrieved_questions: [],
+    physics_level: null,
+    math_level: null,
 } as unknown as Question;
 
 async function renderPage() {
@@ -108,12 +110,92 @@ describe("AI suggestion", () => {
         });
     });
 
+    it("clears the applied badge when the texts are reloaded from the server", async () => {
+        // The en text is missing so the translate button is shown.
+        mocked.fetchQuestion.mockResolvedValue({
+            ...WITH_SUGGESTION,
+            texts: { ja: WITH_SUGGESTION.texts.ja },
+        } as unknown as Question);
+        mocked.translateQuestions.mockResolvedValue({ results: [] });
+        const user = userEvent.setup();
+        await renderPage();
+
+        await user.click(screen.getByRole("button", { name: "修正案を回答に反映" }));
+        expect(screen.getByText("AI提案を反映済み(未保存)")).toBeInTheDocument();
+
+        // Translating reloads the question, which discards the unsaved
+        // suggestion - the badge and the disabled Apply must follow.
+        await user.click(screen.getByRole("button", { name: "不足言語を自動翻訳" }));
+
+        await waitFor(() =>
+            expect(
+                screen.queryByText("AI提案を反映済み(未保存)")
+            ).not.toBeInTheDocument()
+        );
+        expect(
+            screen.getByRole("button", { name: "修正案を回答に反映" })
+        ).toBeEnabled();
+    });
+
+    it("hides the confidence instead of showing 0% when it is null", async () => {
+        mocked.fetchQuestion.mockResolvedValue({
+            ...WITH_SUGGESTION,
+            ai_review: {
+                ...(WITH_SUGGESTION as unknown as { ai_review: object }).ai_review,
+                confidence: null,
+            },
+        } as unknown as Question);
+        await renderPage();
+
+        expect(screen.getByText(/判定:/)).toBeInTheDocument();
+        expect(screen.queryByText(/確信度/)).not.toBeInTheDocument();
+    });
+
     it("shows no panel when there is no AI review", async () => {
         await renderPage();
 
         expect(screen.queryByText("AIレビューの修正案")).not.toBeInTheDocument();
     });
 });
+
+describe("Difficulty levels", () => {
+    it("sends only the changed level and keeps the text untouched", async () => {
+        const user = userEvent.setup();
+        await renderPage();
+
+        await user.selectOptions(
+            screen.getByLabelText("物理"),
+            "2"
+        );
+        mocked.updateQuestion.mockResolvedValue(QUESTION);
+        await user.click(screen.getByRole("button", { name: "保存" }));
+
+        await waitFor(() => expect(mocked.updateQuestion).toHaveBeenCalled());
+        expect(mocked.updateQuestion).toHaveBeenCalledWith({
+            id: 7,
+            physics_level: 2,
+        });
+    });
+
+    it("shows the LLM rating and does not resend it unchanged", async () => {
+        mocked.fetchQuestion.mockResolvedValue({
+            ...QUESTION,
+            physics_level: 1,
+            math_level: 1,
+        } as unknown as Question);
+        const user = userEvent.setup();
+        await renderPage();
+
+        expect(screen.getByLabelText("物理")).toHaveValue("1");
+
+        // Nothing changed: saving goes straight back without a PUT.
+        await user.click(screen.getByRole("button", { name: "保存" }));
+        await waitFor(() =>
+            expect(mocked.updateQuestion).not.toHaveBeenCalled()
+        );
+    });
+});
+
 
 describe("Save and approve", () => {
     it("sends EDIT_APPROVE with the edited text so the diff is recorded", async () => {

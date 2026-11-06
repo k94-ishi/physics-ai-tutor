@@ -115,3 +115,57 @@ def test_attach_concepts_to_question_dedupes_within_same_call(db):
 
     assert len(concepts) == 1
     assert len(concept_repository.list_all(db)) == 1
+
+
+LEVELS_LINE = "LEVELS: physics=1 math=1"
+
+
+def test_parse_levels_line_reads_the_required_format():
+    levels = concept_service.parse_levels_line(LEVELS_LINE)
+
+    assert levels == concept_service.ExtractionLevels(1, 1)
+    # Tolerant of case and spacing; the model is not a formatter.
+    assert concept_service.parse_levels_line(
+        "levels: physics = 3 math = 2"
+    ) == concept_service.ExtractionLevels(3, 2)
+
+
+def test_parse_levels_line_clamps_and_rejects_garbage():
+    # The scale is ordinal; an overshoot means "at least the top".
+    clamped = concept_service.parse_levels_line("LEVELS: physics=9 math=5")
+    assert clamped == concept_service.ExtractionLevels(4, 4)
+
+    for junk in (
+        "LEVELS: question physics=1 math=0 | answer physics=1 math=1",
+        "question physics=1 math=0 | answer physics=1 math=1",
+        "LEVELS: physics=a math=0",
+        "概念A | concept A",
+        "",
+    ):
+        assert concept_service.parse_levels_line(junk) is None, junk
+
+
+def test_levels_line_is_metadata_not_a_concept(db):
+    question = _create_question(db)
+
+    concept_service.attach_concepts_to_question(
+        db,
+        question_id=question.id,
+        concept_names=["加速度 | acceleration", LEVELS_LINE],
+    )
+
+    names = {c.name for c in concept_repository.list_all(db)}
+    assert names == {"加速度"}, "the levels line must never become a concept"
+
+
+def test_apply_levels_to_question_stores_and_tolerates_absence(db):
+    question = _create_question(db)
+
+    concept_service.apply_levels_to_question(question, ["概念A | concept A"])
+    assert question.physics_level is None, "no line, no change"
+
+    concept_service.apply_levels_to_question(
+        question, ["概念A | concept A", LEVELS_LINE]
+    )
+    assert question.physics_level == 1
+    assert question.math_level == 1

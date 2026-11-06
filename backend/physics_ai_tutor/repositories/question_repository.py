@@ -1,9 +1,34 @@
 from sqlalchemy import func, nullslast, or_
 from sqlalchemy.orm import Query, Session
 
-from physics_ai_tutor.models import AiReview, Question, QuestionAsk
+from physics_ai_tutor.models import (
+    AiReview,
+    Concept,
+    Question,
+    QuestionAsk,
+    QuestionConcept,
+)
 from physics_ai_tutor.schemas.language import Language, TextProvenance
 from physics_ai_tutor.schemas.question import QuestionCreate, QuestionUpdate
+
+
+def _filter_by_concept(query: Query, db: Session, concept: str | None) -> Query:
+    """Keep questions linked to a concept, matched by either language's name.
+
+    The chip in the student UI only knows the displayed name, so the
+    filter takes a name rather than an id; names are unique per column.
+    """
+    if not concept:
+        return query
+
+    linked = (
+        db.query(QuestionConcept.question_id)
+        .join(Concept, Concept.id == QuestionConcept.concept_id)
+        .filter(or_(Concept.name_ja == concept, Concept.name_en == concept))
+        .scalar_subquery()
+    )
+
+    return query.filter(Question.id.in_(linked))
 
 
 def _filter_by_keyword(
@@ -109,12 +134,18 @@ def _list_query(
     language: Language | str | None,
     ai_verdict: str | None,
     join_ai_review: bool,
+    ids: list[int] | None = None,
+    concept: str | None = None,
 ):
     query = db.query(Question)
 
     if join_ai_review or ai_verdict is not None:
         query = _with_latest_ai_review(db, query)
 
+    if ids is not None:
+        query = query.filter(Question.id.in_(ids))
+
+    query = _filter_by_concept(query, db, concept)
     query = _filter_by_keyword(query, keyword, search_question, search_answer)
     query = _filter_by_status(query, status, exclude_statuses)
     query = _filter_by_language(query, language)
@@ -134,6 +165,8 @@ def get_questions(
     language: Language | str | None = None,
     sort: str | None = None,
     ai_verdict: str | None = None,
+    ids: list[int] | None = None,
+    concept: str | None = None,
 ) -> list[Question]:
     query = _list_query(
         db,
@@ -145,6 +178,8 @@ def get_questions(
         language,
         ai_verdict,
         join_ai_review=sort == "ai_confidence",
+        ids=ids,
+        concept=concept,
     )
 
     return _apply_sort(db, query, sort).offset(offset).limit(limit).all()
@@ -159,6 +194,8 @@ def count_questions(
     search_answer: bool = True,
     language: Language | str | None = None,
     ai_verdict: str | None = None,
+    ids: list[int] | None = None,
+    concept: str | None = None,
 ) -> int:
     query = _list_query(
         db,
@@ -170,6 +207,8 @@ def count_questions(
         language,
         ai_verdict,
         join_ai_review=False,
+        ids=ids,
+        concept=concept,
     )
 
     return query.count()

@@ -1,4 +1,5 @@
 import logging
+import re
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
@@ -38,10 +39,65 @@ class ConceptName:
         return name
 
 
+# Two-axis difficulty ([40]), 0-4, rated by the nature of the content
+# itself rather than a school curriculum (owner's policy, 2026-11-01).
+# One rating per QA pair: what a reader needs to follow it (2026-11-04).
+MAX_LEVEL = 4
+
+_LEVELS_LINE = re.compile(
+    r"^levels:\s*physics\s*=\s*(\d+)\s+math\s*=\s*(\d+)\s*$",
+    re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True)
+class ExtractionLevels:
+    physics: int
+    math: int
+
+
+def parse_levels_line(line: str) -> ExtractionLevels | None:
+    """Parse 'LEVELS: physics=N math=N'."""
+    match = _LEVELS_LINE.match(line.strip())
+    if match is None:
+        return None
+
+    # The scale is ordinal; an overshoot means "at least the top level".
+    values = [min(int(group), MAX_LEVEL) for group in match.groups()]
+
+    return ExtractionLevels(*values)
+
+
+def find_levels(lines: list[str]) -> ExtractionLevels | None:
+    """The levels line from raw extraction output; None when absent/garbled."""
+    for line in lines:
+        levels = parse_levels_line(line)
+        if levels is not None:
+            return levels
+    return None
+
+
+def apply_levels_to_question(question, lines: list[str]) -> None:
+    """Store the LLM's advisory ratings; a teacher may overwrite them later."""
+    levels = find_levels(lines)
+    if levels is None:
+        logger.info(
+            "Concept extraction carried no levels line: question_id=%s", question.id
+        )
+        return
+
+    question.physics_level = levels.physics
+    question.math_level = levels.math
+
+
 def parse_concept_line(line: str, language: str = "ja") -> ConceptName | None:
     """Parse '<ja> | <en>'. A bare name is assigned to `language`."""
     line = line.strip()
     if not line:
+        return None
+
+    # The levels line also contains '|'; it is metadata, not a concept.
+    if parse_levels_line(line) is not None:
         return None
 
     if "|" in line:

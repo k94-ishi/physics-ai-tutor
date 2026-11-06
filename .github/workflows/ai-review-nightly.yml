@@ -1,0 +1,57 @@
+# Nightly AI review of the backlog, inside DeepSeek's off-peak window
+# (UTC 16:30-00:30 = JST 01:30-09:30; pricing checked 2026-10-30).
+# Reviews pending questions first, then stale verdicts, as recorded runs
+# with trigger=scheduled. The CLI itself refuses to start outside the
+# window, so a mis-set cron fails loudly instead of paying full price.
+#
+# Required repository secrets (Settings -> Secrets -> Actions):
+#   DATABASE_URL     - the Supabase *pooler* URL (reachable from Actions)
+#   DEEPSEEK_API_KEY - the reviewer's API key
+# A failed run makes the job fail, which produces GitHub's failure e-mail;
+# results also appear on /admin/stats under "AI review runs".
+name: AI Review Nightly
+
+on:
+  schedule:
+    # 17:00 UTC = 02:00 JST, 30 minutes into the discount window.
+    - cron: "0 17 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Run outside the off-peak window (full price)"
+        type: boolean
+        default: false
+      limit:
+        description: "Maximum questions per scope"
+        type: number
+        default: 200
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      # The reviewer never embeds or signs tokens; dummies satisfy Settings.
+      OPENAI_API_KEY: unused
+      JWT_SECRET_KEY: nightly-review-dummy-secret
+      JWT_ALGORITHM: HS256
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: uv sync
+      - name: Review pending, then stale
+        run: >
+          uv run python -m physics_ai_tutor.cli.review_pending
+          --scope both
+          --trigger scheduled
+          --limit ${{ inputs.limit || 200 }}
+          ${{ inputs.force && '--force' || '' }}

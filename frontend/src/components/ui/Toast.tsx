@@ -46,7 +46,11 @@ export default function Toaster() {
     }
 
     return (
-        <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+        <div
+            className="fixed right-4 z-50 flex flex-col gap-2"
+            // 下部固定の質問バー([43])があるときはその上に出す。
+            style={{ bottom: "calc(1rem + var(--ask-bar-height, 0px))" }}
+        >
             {items.map((item) => (
                 <div
                     key={item.id}

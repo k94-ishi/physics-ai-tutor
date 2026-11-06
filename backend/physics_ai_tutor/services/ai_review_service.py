@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -217,21 +218,36 @@ def grade_answer(
     return GradedAnswer(result, _parse_output(result.content))
 
 
+class Outcome(StrEnum):
+    """Why a question produced no review, so a run can count it honestly."""
+
+    REVIEWED = "reviewed"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+
+
 def review_question(db: Session, question: Question) -> AiReview | None:
     """Grade one UNREVIEWED AI answer and store the verdict. Advisory only.
 
     Never raises and never touches the question's status; a reviewer
     failure must not affect the student-facing flow.
     """
+    return review_question_with_outcome(db, question)[0]
+
+
+def review_question_with_outcome(
+    db: Session, question: Question
+) -> tuple[AiReview | None, Outcome]:
+    """As `review_question`, but says whether None meant skipped or failed."""
     if question.source not in AI_SOURCES:
         logger.info("AI review skipped: question_id=%d reason=not_ai", question.id)
-        return None
+        return None, Outcome.SKIPPED
 
     if question.status != QuestionStatus.UNREVIEWED:
         logger.info(
             "AI review skipped: question_id=%d reason=already_reviewed", question.id
         )
-        return None
+        return None, Outcome.SKIPPED
 
     language = Language(question.original_language)
 
@@ -254,7 +270,7 @@ def review_question(db: Session, question: Question) -> AiReview | None:
             exc_info=True,
         )
         db.rollback()
-        return None
+        return None, Outcome.FAILED
 
     review = AiReviewCreate(
         question_id=question.id,
@@ -279,7 +295,7 @@ def review_question(db: Session, question: Question) -> AiReview | None:
             "Storing AI review failed: question_id=%d", question.id, exc_info=True
         )
         db.rollback()
-        return None
+        return None, Outcome.FAILED
 
     logger.info(
         "AI review stored: question_id=%d verdict=%s confidence=%s",
@@ -288,13 +304,24 @@ def review_question(db: Session, question: Question) -> AiReview | None:
         row.confidence,
     )
 
-    return row
+    return row, Outcome.REVIEWED
 
 
 # --- runs ----------------------------------------------------------------------
 
 RUN_TIMEOUT_MINUTES = 30
 CAP_WINDOW_HOURS = 24
+
+
+SINGLE_RUNNING_INDEX = "uq_ai_review_runs_single_running"
+
+
+def _is_single_running_violation(exc: IntegrityError) -> bool:
+    """True when the insert lost the race for the one 'running' slot."""
+    orig = getattr(exc, "orig", None)
+    sqlstate = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
+
+    return sqlstate == "23505" and SINGLE_RUNNING_INDEX in str(orig)
 
 
 class RunInProgressError(Exception):
@@ -333,15 +360,31 @@ def eligible_question_ids(
     raise ValueError(f"Unknown scope: {scope}")
 
 
+def count_pending(db: Session) -> int:
+    """Questions awaiting a first verdict, ignoring any run or cap limit."""
+    return ai_review_repository.count_pending_questions(db)
+
+
+def count_stale(db: Session) -> int:
+    """Questions whose verdict predates the current rubric."""
+    return ai_review_repository.count_stale_questions(db, REVIEW_PROMPT_VERSION)
+
+
 def _fail_timed_out_runs(db: Session) -> None:
+    """Reap runs that have gone silent, not merely long ones.
+
+    The executor heartbeats after every question, so the cutoff measures
+    silence. Reaping by `started_at` would kill a healthy full-cap run,
+    which at a few seconds per call takes far longer than the timeout.
+    """
     cutoff = datetime.now(UTC) - timedelta(minutes=RUN_TIMEOUT_MINUTES)
 
     db.query(AiReviewRun).filter(
-        AiReviewRun.status == "running", AiReviewRun.started_at < cutoff
+        AiReviewRun.status == "running", AiReviewRun.heartbeat_at < cutoff
     ).update(
         {
             "status": "failed",
-            "error": f"timed out after {RUN_TIMEOUT_MINUTES} minutes",
+            "error": f"no progress for {RUN_TIMEOUT_MINUTES} minutes",
             "finished_at": func.now(),
         }
     )
@@ -387,9 +430,13 @@ def start_run(
     try:
         db.commit()
     except IntegrityError as exc:
-        # Lost the race against a concurrent start.
         db.rollback()
-        raise RunInProgressError("concurrent start") from exc
+        if _is_single_running_violation(exc):
+            # Lost the race against a concurrent start.
+            raise RunInProgressError("concurrent start") from exc
+        # Anything else (a dangling started_by, say) is a real error and
+        # must not be reported to the caller as "a run is in progress".
+        raise
 
     return run
 
@@ -402,28 +449,59 @@ def execute_run(db: Session, run_id: int) -> AiReviewRun | None:
 
     try:
         for question_id in run.question_ids:
-            question = db.get(Question, question_id)
-            row = review_question(db, question) if question is not None else None
+            # Another start may have reaped this run as timed out and
+            # begun its own. Stop rather than review alongside it, which
+            # would break the overlap guard and spend an unbudgeted call.
+            db.refresh(run)
+            if run.status != "running":
+                logger.warning(
+                    "AI review run stopped: run_id=%d status=%s", run_id, run.status
+                )
+                return run
 
-            if row is None:
-                run.failed_count += 1
+            question = db.get(Question, question_id)
+            if question is None:
+                row, outcome = None, Outcome.SKIPPED
             else:
+                row, outcome = review_question_with_outcome(db, question)
+
+            if outcome is Outcome.REVIEWED and row is not None:
                 run.reviewed_count += 1
                 run.prompt_tokens += row.prompt_tokens or 0
                 run.completion_tokens += row.completion_tokens or 0
+            elif outcome is Outcome.SKIPPED:
+                run.skipped_count += 1
+            else:
+                run.failed_count += 1
 
             # Commit after every question so progress polling sees it.
+            run.heartbeat_at = datetime.now(UTC)
             db.commit()
 
-        run.status = "done"
-        run.finished_at = datetime.now(UTC)
-        db.commit()
+        if _finish(db, run, "done"):
+            return run
+        logger.warning("AI review run was taken over: run_id=%d", run_id)
     except Exception:
         logger.exception("AI review run failed: run_id=%d", run_id)
         db.rollback()
-        run.status = "failed"
-        run.error = "unexpected error; see server logs"
-        run.finished_at = datetime.now(UTC)
-        db.commit()
+        _finish(db, run, "failed", "unexpected error; see server logs")
 
     return run
+
+
+def _finish(
+    db: Session, run: AiReviewRun, status: str, error: str | None = None
+) -> bool:
+    """Close the run, but only while it is still ours. True when written."""
+    updated = (
+        db.query(AiReviewRun)
+        .filter(AiReviewRun.id == run.id, AiReviewRun.status == "running")
+        .update(
+            {"status": status, "error": error, "finished_at": func.now()},
+            synchronize_session=False,
+        )
+    )
+    db.commit()
+    db.refresh(run)
+
+    return bool(updated)

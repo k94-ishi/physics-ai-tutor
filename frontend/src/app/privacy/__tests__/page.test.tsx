@@ -36,14 +36,11 @@ describe("PrivacyPage", () => {
         }
     });
 
-    it("links to a contact channel", () => {
+    it("links to a monitored contact address", () => {
         renderPage();
 
         const link = screen.getByRole("link", { name: "お問い合わせ窓口" });
-        expect(link).toHaveAttribute(
-            "href",
-            expect.stringContaining("github.com/k94-ishi/physics-ai-tutor")
-        );
+        expect(link).toHaveAttribute("href", "mailto:kishibashi.dev@gmail.com");
     });
 
     it("mentions what sign-in stores, matching the backend schema", () => {

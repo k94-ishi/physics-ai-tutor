@@ -69,10 +69,13 @@ class QuestionCreate(BaseModel):
             if (q is None) != (a is None):
                 raise ValueError(f"question_{lang} and answer_{lang} go together")
 
-        if not self.texts():
+        if not self.texts() and not self._allows_empty_texts():
             raise ValueError("At least one language's question and answer is required")
 
         return self
+
+    def _allows_empty_texts(self) -> bool:
+        return False
 
     def texts(self) -> dict[Language, tuple[str, str]]:
         result: dict[Language, tuple[str, str]] = {}
@@ -91,7 +94,20 @@ class QuestionCreate(BaseModel):
 
 
 class QuestionUpdate(QuestionCreate):
-    pass
+    # Teacher corrections to the advisory LLM difficulty ratings ([40]).
+    physics_level: int | None = Field(default=None, ge=0, le=4)
+    math_level: int | None = Field(default=None, ge=0, le=4)
+
+    def _allows_empty_texts(self) -> bool:
+        # A levels-only correction is a legitimate update.
+        return bool(self.levels())
+
+    def levels(self) -> dict[str, int]:
+        """Only the axes the request actually set."""
+        fields = ("physics_level", "math_level")
+        return {
+            name: value for name in fields if (value := getattr(self, name)) is not None
+        }
 
 
 class QuestionRefSummary(BaseModel):
@@ -153,12 +169,25 @@ class QuestionResponse(BaseModel):
     source: QuestionSource
     concepts: list[str] = Field(default_factory=list)
     retrieved_questions: list[QuestionRefSummary] = Field(default_factory=list)
+    # Two-axis difficulty ([40]); None = not rated yet. Public on purpose:
+    # the student-facing grid and prerequisite ranking read these.
+    physics_level: int | None = None
+    math_level: int | None = None
     # Populated only for admin callers; see attach_generation_meta.
     generation: GenerationMeta | None = None
     # Latest AI verdict; admin callers only (attach_ai_reviews).
     ai_review: AiReviewSummary | None = None
 
     model_config = {"from_attributes": True}
+
+
+class PrerequisitesResponse(BaseModel):
+    """The "read this first" block ([38]): defining QAs plus honest gaps."""
+
+    items: list[QuestionResponse]
+    # Concepts of the current QA with no usable defining QA, in the
+    # requested language; shown without a link rather than hidden.
+    gaps: list[str]
 
 
 class QuestionListResponse(BaseModel):

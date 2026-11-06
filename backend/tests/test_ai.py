@@ -403,7 +403,7 @@ def test_ask_ai_off_topic_with_bare_sentinel_uses_fallback(client, monkeypatch):
     response = client.post(ASK_PATH, json={"question": "こんにちは、元気ですか"})
 
     assert response.status_code == 200
-    assert "高校物理" in response.json()["answer"]
+    assert "物理について質問してください" in response.json()["answer"]
 
 
 def test_ask_ai_off_topic_records_no_ask_history(user_client, db, monkeypatch):

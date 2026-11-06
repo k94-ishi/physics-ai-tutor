@@ -3,6 +3,7 @@
 import { ComponentProps, ReactNode } from "react";
 import ReactMarkdown, { type ExtraProps } from "react-markdown";
 import rehypeKatex from "rehype-katex";
+import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { normalizeMathDelimiters } from "@/lib/markdown";
@@ -65,6 +66,10 @@ function OrderedList({ children }: { children?: ReactNode }) {
  * 質問・回答テキストをMarkdown(表・数式・Mermaid図解)として描画する共通コンポーネント。
  * variant="preview"は一覧カードでの短い抜粋表示用で、Mermaid図は重い描画を避けて
  * プレースホルダーに置き換える。
+ *
+ * remarkCjkFriendlyは`**「重心の位置」**と`のような強調を正しく閉じるために必要。
+ * CommonMarkは全角約物を約物として扱うため、`」`と`と`に挟まれた`**`は開始記号
+ * としか解釈できず、閉じられない`**`がそのまま本文に出てしまう(issue [36])。
  */
 export default function MarkdownContent({
     content,
@@ -78,7 +83,7 @@ export default function MarkdownContent({
             }`}
         >
             <ReactMarkdown
-                remarkPlugins={[remarkGfm, remarkMath]}
+                remarkPlugins={[remarkGfm, remarkMath, remarkCjkFriendly]}
                 rehypePlugins={[rehypeKatex]}
                 components={{
                     p: Paragraph,

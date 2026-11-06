@@ -143,6 +143,8 @@ def fetch_questions(
     include_generation: bool = False,
     sort: str | None = None,
     ai_verdict: str | None = None,
+    ids: list[int] | None = None,
+    concept: str | None = None,
 ) -> QuestionListResponse:
     offset = (page - 1) * size
     language_filter = Language(language) if only_with_language else None
@@ -159,6 +161,8 @@ def fetch_questions(
         language=language_filter,
         sort=sort,
         ai_verdict=ai_verdict,
+        ids=ids,
+        concept=concept,
     )
 
     total = question_repository.count_questions(
@@ -170,6 +174,8 @@ def fetch_questions(
         search_answer=search_answer,
         language=language_filter,
         ai_verdict=ai_verdict,
+        ids=ids,
+        concept=concept,
     )
 
     prepare_for_response(db, questions, language)
@@ -277,6 +283,7 @@ def _attach_concepts_best_effort(db: Session, question: Question) -> None:
         concept_service.attach_concepts_to_question(
             db, question.id, names, language=question.original_language
         )
+        concept_service.apply_levels_to_question(question, names)
     except ConceptExtractionError:
         logger.warning(
             "Concept extraction failed; question saved without concepts: "
@@ -476,6 +483,10 @@ def update_question(
         if question is None:
             return None
 
+        # The teacher's word on difficulty beats the LLM's advisory rating.
+        for field, value in question_data.levels().items():
+            setattr(question, field, value)
+
         edited = question_data.texts()
 
         for lang, (q, a) in edited.items():
@@ -567,6 +578,11 @@ def review_question(
         )
 
         prepare_for_response(db, [current], response_language)
+        # Reviewing is admin-only, and the queue replaces its row with this
+        # response, so it must carry the same admin fields as the list and
+        # detail endpoints or the AI badge vanishes from the card.
+        attach_generation_meta([current])
+        attach_ai_reviews(db, [current])
 
         db.commit()
 
@@ -612,6 +628,7 @@ def reextract_concepts_for_questions(
             concepts = concept_service.attach_concepts_to_question(
                 db, question_id, names, language=question.original_language
             )
+            concept_service.apply_levels_to_question(question, names)
             db.commit()
 
             results.append(

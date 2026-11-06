@@ -23,7 +23,16 @@ import {
     LoginRequest,
     User,
 } from "@/types/auth";
-import { ContentLanguage, TranslationBatchResponse } from "@/types/question";
+import {
+    ContentLanguage,
+    PrerequisitesResponse,
+    TranslationBatchResponse,
+} from "@/types/question";
+import {
+    AiReviewPendingCount,
+    AiReviewRun,
+    AiReviewRunScope,
+} from "@/types/aiReviewRun";
 import { AskAiResponse } from "@/types/ai";
 import {
     AdminStatsResponse,
@@ -126,6 +135,12 @@ export async function fetchQuestions(
     }
     if (params.lang) {
         searchParams.set("lang", params.lang);
+    }
+    if (params.ids?.length) {
+        searchParams.set("ids", params.ids.join(","));
+    }
+    if (params.concept) {
+        searchParams.set("concept", params.concept);
     }
 
     const query = searchParams.toString();
@@ -295,6 +310,16 @@ export async function fetchRelatedQuestions(
     );
 }
 
+export async function fetchPrerequisites(
+    id: number,
+    lang?: ContentLanguage
+): Promise<PrerequisitesResponse> {
+    const langParam = lang ? `?lang=${lang}` : "";
+    return apiFetch<PrerequisitesResponse>(
+        `${getQuestionsUrl()}/${id}/prerequisites${langParam}`
+    );
+}
+
 export async function translateQuestions(
     questionIds: number[]
 ): Promise<TranslationBatchResponse> {
@@ -402,4 +427,36 @@ export async function extractConcepts(
             body: JSON.stringify({ question_ids: questionIds }),
         }
     );
+}
+
+export async function fetchAiReviewPendingCount(): Promise<AiReviewPendingCount> {
+    return apiFetch<AiReviewPendingCount>(
+        `${getApiUrl()}/api/v1/admin/ai-review/pending-count`
+    );
+}
+
+export async function fetchAiReviewRuns(limit = 10): Promise<AiReviewRun[]> {
+    return apiFetch<AiReviewRun[]>(
+        `${getApiUrl()}/api/v1/admin/ai-review/runs?limit=${limit}`
+    );
+}
+
+export async function fetchAiReviewRun(id: number): Promise<AiReviewRun> {
+    return apiFetch<AiReviewRun>(
+        `${getApiUrl()}/api/v1/admin/ai-review/runs/${id}`
+    );
+}
+
+export async function startAiReviewRun(params: {
+    scope: AiReviewRunScope;
+    questionIds?: number[];
+}): Promise<AiReviewRun> {
+    return apiFetch<AiReviewRun>(`${getApiUrl()}/api/v1/admin/ai-review/runs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            scope: params.scope,
+            question_ids: params.questionIds,
+        }),
+    });
 }

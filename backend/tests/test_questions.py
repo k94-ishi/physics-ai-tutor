@@ -2,7 +2,7 @@ import json
 from enum import StrEnum
 
 from physics_ai_tutor.core.exceptions import EmbeddingGenerationError
-from physics_ai_tutor.models import QuestionEmbedding
+from physics_ai_tutor.models import Question, QuestionEmbedding
 from physics_ai_tutor.repositories import question_repository
 from physics_ai_tutor.services import embedding_service
 
@@ -942,3 +942,124 @@ def test_get_questions_list_includes_retrieved_questions(admin_client, db):
     assert items[0]["retrieved_questions"] == [
         {"id": referenced.id, "question": "参照質問2"}
     ]
+
+
+def test_ids_filter_lists_exactly_those_questions(admin_client):
+    """[31]: `?ids=54,848` opens exactly those cards, total included."""
+    created = [
+        _post(admin_client, f"ID検索の質問その{i}", f"回答{i}").json()[Key.ID]
+        for i in range(3)
+    ]
+    wanted = [created[0], created[2]]
+
+    body = admin_client.get(
+        PATH, params={"ids": ",".join(str(i) for i in wanted)}
+    ).json()
+
+    assert [q[Key.ID] for q in body["items"]] == wanted
+    assert body["total"] == 2
+
+
+def test_ids_filter_is_ignored_for_non_admin_callers(client, admin_client):
+    """Public visibility rules are unchanged; the parameter is simply dropped."""
+    created = [
+        _post(admin_client, f"公開ID検索その{i}", f"回答{i}").json()[Key.ID]
+        for i in range(2)
+    ]
+
+    body = client.get(PATH, params={"ids": str(created[0])}).json()
+
+    assert {q[Key.ID] for q in body["items"]} >= set(created)
+
+
+def test_ids_filter_rejects_unusable_input(admin_client):
+    assert admin_client.get(PATH, params={"ids": "abc"}).status_code == 422
+    assert admin_client.get(PATH, params={"ids": ""}).status_code == 422
+    too_many = ",".join(str(i) for i in range(101))
+    assert admin_client.get(PATH, params={"ids": too_many}).status_code == 422
+
+
+def test_ids_filter_combines_with_the_status_filter(admin_client):
+    created = [
+        _post(admin_client, f"ID絞り込みその{i}", f"回答{i}").json()[Key.ID]
+        for i in range(2)
+    ]
+
+    body = admin_client.get(
+        PATH,
+        params={"ids": ",".join(str(i) for i in created), "status": "REJECTED"},
+    ).json()
+
+    assert body["total"] == 0
+
+
+def _link_concept(db, question_id: int, name_ja: str, name_en: str) -> None:
+    from physics_ai_tutor.repositories import (
+        concept_repository,
+        question_concept_repository,
+    )
+
+    concept = concept_repository.get_by_name(db, name_ja, language="ja")
+    if concept is None:
+        concept = concept_repository.create(
+            db,
+            name_ja=name_ja,
+            name_en=name_en,
+            embedding=[0.1] * 1536,
+            extraction_model="mock",
+            embedding_model="mock",
+            extraction_prompt_version="v4",
+        )
+    question_concept_repository.link(db, question_id=question_id, concept_id=concept.id)
+    db.commit()
+
+
+def test_concept_filter_lists_only_linked_questions(admin_client, db):
+    """[41]: a chip must lead to the questions sharing that concept."""
+    linked = _post(admin_client, "微分方程式を使う質問", "回答").json()[Key.ID]
+    other = _post(admin_client, "関係のない質問", "回答").json()[Key.ID]
+    _link_concept(db, linked, "微分方程式", "differential equation")
+
+    body = admin_client.get(PATH, params={"concept": "微分方程式"}).json()
+
+    assert [q[Key.ID] for q in body["items"]] == [linked]
+    assert body["total"] == 1
+    assert other not in [q[Key.ID] for q in body["items"]]
+
+
+def test_concept_filter_matches_either_language_name(admin_client, db):
+    linked = _post(admin_client, "英語名でも引ける質問", "回答").json()[Key.ID]
+    _link_concept(db, linked, "運動量", "momentum")
+
+    for name in ("運動量", "momentum"):
+        body = admin_client.get(PATH, params={"concept": name}).json()
+        assert [q[Key.ID] for q in body["items"]] == [linked], name
+
+
+def test_concept_filter_hides_unreviewed_and_rejected_from_students(
+    client, admin_client, db
+):
+    """Visibility rules win over the filter; a chip never leaks drafts."""
+    approved = _post(admin_client, "公開済みの波の質問", "回答").json()[Key.ID]
+    hidden = _post(admin_client, "未公開の波の質問", "回答").json()[Key.ID]
+    for question_id in (approved, hidden):
+        _link_concept(db, question_id, f"波{question_id}", f"wave {question_id}")
+
+    db.query(Question).filter(Question.id == hidden).update({"status": "UNREVIEWED"})
+    db.commit()
+    _link_concept(db, approved, "共有概念", "shared concept")
+    _link_concept(db, hidden, "共有概念", "shared concept")
+
+    public = client.get(PATH, params={"concept": "共有概念"}).json()
+
+    assert [q[Key.ID] for q in public["items"]] == [approved]
+    assert public["total"] == 1
+
+
+def test_unknown_concept_returns_an_empty_page_not_everything(admin_client):
+    _post(admin_client, "概念のない質問", "回答")
+
+    body = admin_client.get(PATH, params={"concept": "存在しない概念"}).json()
+
+    assert body["items"] == []
+    assert body["total"] == 0

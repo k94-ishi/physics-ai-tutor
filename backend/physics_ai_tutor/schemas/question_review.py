@@ -23,6 +23,10 @@ class QuestionReviewReason(StrEnum):
     MATH_ERROR = "MATH_ERROR"
     INCOMPLETE = "INCOMPLETE"
     OFF_TOPIC = "OFF_TOPIC"
+    # Machinery the question clearly never needed, or an unnamed concept
+    # the student cannot look up ([37]); renamed from TOO_ADVANCED.
+    UNNEEDED_TOOLS = "UNNEEDED_TOOLS"
+    # Legacy code kept so rows stored before the rename still parse.
     TOO_ADVANCED = "TOO_ADVANCED"
     UNCLEAR = "UNCLEAR"
     FORMATTING = "FORMATTING"

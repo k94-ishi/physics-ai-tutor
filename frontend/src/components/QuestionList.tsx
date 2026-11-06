@@ -22,6 +22,11 @@ const LIST_QUERY_DEFAULTS = {
     page: "1",
     size: "30",
     keyword: "",
+    // 概念チップ([41])からの絞り込み。空文字なら絞り込みなし。
+    concept: "",
+    // ベクトル検索([49])。値はQuestionSearchAndAskが管理し、ここでは
+    // 初期タブの選択にだけ使う。
+    similar: "",
 };
 
 function modeButtonClassName(active: boolean): string {
@@ -37,10 +42,16 @@ const inputClassName =
 
 function QuestionListInner() {
     const { language, t } = useLanguage();
-    const [mode, setMode] = useState<Mode>("similarity");
 
     // 一覧(pagination + keyword filter、page/size/keywordはURLで管理)
     const [queryState, setQueryState] = useQueryState(LIST_QUERY_DEFAULTS);
+    // 共有リンクが正しいタブで開くよう、初期タブはURLから決める:
+    // ?similar=はベクトル検索、?keyword=だけならキーワード検索。
+    const [mode, setMode] = useState<Mode>(() =>
+        queryState.keyword !== "" && queryState.similar === ""
+            ? "keyword"
+            : "similarity"
+    );
     const page = Number(queryState.page);
     const size = Number(queryState.size);
     const [keywordInput, setKeywordInput] = useState(queryState.keyword);
@@ -58,7 +69,8 @@ function QuestionListInner() {
             targetSize: number,
             keyword: string,
             targetSearchQuestion: boolean,
-            targetSearchAnswer: boolean
+            targetSearchAnswer: boolean,
+            concept: string
         ) => {
             const requestId = ++listRequestId.current;
             setListLoading(true);
@@ -73,6 +85,7 @@ function QuestionListInner() {
                     searchQuestion: targetSearchQuestion,
                     searchAnswer: targetSearchAnswer,
                     lang: language,
+                    concept: concept || undefined,
                 });
 
                 if (requestId !== listRequestId.current) {
@@ -119,8 +132,23 @@ function QuestionListInner() {
     // ページ・サイズ・キーワード・検索対象フィールドが確定するたびに一覧を取得する(初回ロードも含む)
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        loadList(page, size, queryState.keyword, searchQuestion, searchAnswer);
-    }, [loadList, page, size, queryState.keyword, searchQuestion, searchAnswer]);
+        loadList(
+            page,
+            size,
+            queryState.keyword,
+            searchQuestion,
+            searchAnswer,
+            queryState.concept
+        );
+    }, [
+        loadList,
+        page,
+        size,
+        queryState.keyword,
+        searchQuestion,
+        searchAnswer,
+        queryState.concept,
+    ]);
 
     const handlePageChange = (nextPage: number) =>
         setQueryState({ page: String(nextPage) });
@@ -137,8 +165,25 @@ function QuestionListInner() {
 
     // 「AIに聞く-検索/生成」タブでまだ検索していない間のフォールバックにも、
     // 「キーワード検索」タブの主表示にも、同じ質問一覧を使う(重複させない)。
+    const conceptBanner = queryState.concept ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-800">
+            <span>
+                {t("concepts.filterBanner", { concept: queryState.concept })}
+            </span>
+            <button
+                type="button"
+                onClick={() => setQueryState({ concept: "", page: "1" })}
+                className="cursor-pointer font-medium underline underline-offset-2"
+            >
+                {t("concepts.clearFilter")}
+            </button>
+        </div>
+    ) : null;
+
     const browseList = (
         <>
+            {conceptBanner}
+
             {listLoading && <LoadingState />}
 
             {!listLoading && listError && (
@@ -146,13 +191,26 @@ function QuestionListInner() {
                     variant="error"
                     message={t("questionList.fetchFailed")}
                     onRetry={() =>
-                        loadList(page, size, queryState.keyword, searchQuestion, searchAnswer)
+                        loadList(
+                            page,
+                            size,
+                            queryState.keyword,
+                            searchQuestion,
+                            searchAnswer,
+                            queryState.concept
+                        )
                     }
                 />
             )}
 
             {!listLoading && !listError && listItems.length === 0 && (
-                <StatusMessage message={t("questionList.empty")} />
+                <StatusMessage
+                    message={
+                        queryState.concept
+                            ? t("concepts.noMatch", { concept: queryState.concept })
+                            : t("questionList.empty")
+                    }
+                />
             )}
 
             {!listLoading && !listError && listItems.length > 0 && (

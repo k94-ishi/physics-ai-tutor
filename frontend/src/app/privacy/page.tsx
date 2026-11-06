@@ -6,12 +6,9 @@ import Card from "@/components/ui/Card";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { TranslationKey } from "@/lib/i18n/translations";
 
-const LAST_UPDATED = "2026-10-28";
+const LAST_UPDATED = "2026-11-06";
 
-// Replace with a monitored contact address before publishing the Google
-// OAuth consent screen; until then the repository's issue tracker is the
-// only public channel that exists.
-const CONTACT_URL = "https://github.com/k94-ishi/physics-ai-tutor/issues";
+const CONTACT_URL = "mailto:kishibashi.dev@gmail.com";
 
 function Section({
     headingKey,
@@ -115,7 +112,9 @@ export default function PrivacyPage() {
             </Section>
 
             <Section headingKey="privacy.retention.heading">
-                <Paragraphs keys={["privacy.retention.body"]} />
+                <Paragraphs
+                    keys={["privacy.retention.body", "privacy.retention.devNotice"]}
+                />
             </Section>
 
             <Section headingKey="privacy.deletion.heading">
@@ -132,8 +131,6 @@ export default function PrivacyPage() {
                 <Paragraphs keys={["privacy.contact.body"]} />
                 <a
                     href={CONTACT_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
                     className="text-sm text-blue-600 underline hover:text-blue-800"
                 >
                     {t("privacy.contact.linkLabel")}

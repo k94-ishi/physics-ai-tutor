@@ -1,6 +1,14 @@
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Integer, String, Text, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Integer,
+    SmallInteger,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -71,6 +79,12 @@ class Question(Base):
         server_default="{}",
         nullable=False,
     )
+
+    # Two-axis difficulty of the QA pair, 0-4 per axis ([40]): what a
+    # reader needs to follow it. LLM-assigned during concept extraction,
+    # advisory, teacher-correctable; NULL = not rated yet.
+    physics_level: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    math_level: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

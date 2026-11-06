@@ -27,6 +27,9 @@ export type Question = {
     status: QuestionStatus;
     source: QuestionSource;
     concepts: string[];
+    // Two-axis difficulty of the QA pair (0-4); null = unrated.
+    physics_level: number | null;
+    math_level: number | null;
     retrieved_questions: RetrievedQuestionRef[];
     generation?: GenerationMeta | null;
     ai_review?: AiReviewSummary | null;
@@ -51,6 +54,15 @@ export type UpdateQuestionRequest = {
     answer_ja?: string;
     question_en?: string;
     answer_en?: string;
+    // Teacher corrections to the advisory difficulty ratings.
+    physics_level?: number;
+    math_level?: number;
+};
+
+// [38] "read this first": defining QAs plus concepts with no definer yet.
+export type PrerequisitesResponse = {
+    items: Question[];
+    gaps: string[];
 };
 
 export type SimilarQuestion = {
@@ -74,6 +86,10 @@ export type FetchQuestionsParams = {
     lang?: ContentLanguage;
     sort?: QuestionSort;
     aiVerdict?: AiVerdictFilter;
+    /** Admin only: list exactly these question ids. */
+    ids?: number[];
+    /** Questions linked to this concept (name in either language). */
+    concept?: string;
 };
 
 export type SearchQuestionsParams = {
@@ -89,7 +105,7 @@ export const REVIEW_REASONS = [
     "MATH_ERROR",
     "INCOMPLETE",
     "OFF_TOPIC",
-    "TOO_ADVANCED",
+    "UNNEEDED_TOOLS",
     "UNCLEAR",
     "FORMATTING",
     "LANGUAGE",
@@ -97,7 +113,8 @@ export const REVIEW_REASONS = [
     "OTHER",
 ] as const;
 
-export type ReviewReason = (typeof REVIEW_REASONS)[number];
+// Legacy codes appear in stored reviews but are no longer offered as choices.
+export type ReviewReason = (typeof REVIEW_REASONS)[number] | "TOO_ADVANCED";
 
 export type AiVerdict = "APPROVE" | "EDIT" | "REJECT";
 

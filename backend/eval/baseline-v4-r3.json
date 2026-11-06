@@ -1,0 +1,11 @@
+{
+  "answer_prompt_version": "v4",
+  "reviewer_prompt_version": "r3",
+  "set_sha256": "6b79f8ad0e5371d3d5d9e42beecbc75112b8cce2ef0162419192e6af67fc45cc",
+  "n": 66,
+  "exact_agreement_rate": 0.6666666666666666,
+  "publish_agreement_rate": 0.9393939393939394,
+  "reject_precision": 0.875,
+  "reject_recall": 0.7777777777777778,
+  "created_at": "2026-10-31T18:35:45.573849+00:00"
+}

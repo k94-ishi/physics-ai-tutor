@@ -45,6 +45,11 @@ class AiReviewRun(Base):
     failed_count: Mapped[int] = mapped_column(
         Integer, server_default="0", nullable=False
     )
+    # Not an error: the question was deleted, or stopped being an
+    # unreviewed AI answer between the run starting and reaching it.
+    skipped_count: Mapped[int] = mapped_column(
+        Integer, server_default="0", nullable=False
+    )
     prompt_tokens: Mapped[int] = mapped_column(
         Integer, server_default="0", nullable=False
     )
@@ -55,6 +60,11 @@ class AiReviewRun(Base):
     status: Mapped[str] = mapped_column(String(10), nullable=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    # Touched after every question, so a long but healthy run is not reaped
+    # as timed out; the timeout measures silence, not total duration.
+    heartbeat_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     finished_at: Mapped[datetime | None] = mapped_column(

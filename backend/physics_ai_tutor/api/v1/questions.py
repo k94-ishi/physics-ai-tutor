@@ -32,6 +32,7 @@ from physics_ai_tutor.schemas.embedding import (
 from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.question import (
     AiVerdictFilter,
+    PrerequisitesResponse,
     QuestionCreate,
     QuestionImportResponse,
     QuestionListResponse,
@@ -48,7 +49,11 @@ from physics_ai_tutor.schemas.question_review import (
     QuestionReviewResponse,
 )
 from physics_ai_tutor.schemas.token import JWTPayload, UserRole
-from physics_ai_tutor.services import question_service, recommendation_service
+from physics_ai_tutor.services import (
+    prerequisite_service,
+    question_service,
+    recommendation_service,
+)
 from physics_ai_tutor.services.embedding_service import (
     search_similar_questions,
 )
@@ -67,6 +72,31 @@ PUBLIC_HIDDEN_STATUSES: list[str] = [
 
 def _is_admin(current_user: JWTPayload | None) -> bool:
     return current_user is not None and current_user.role == UserRole.ADMIN
+
+
+MAX_ID_FILTER = 100
+
+
+def _parse_ids(raw: str | None) -> list[int] | None:
+    """Parse `ids=54,848`; None means no filter, [] means match nothing.
+
+    An unparseable or over-long list filters everything out rather than
+    silently listing the whole queue, which would look like a search hit.
+    """
+    if raw is None:
+        return None
+
+    parts = [part.strip() for part in raw.split(",") if part.strip()]
+    if not parts or len(parts) > MAX_ID_FILTER:
+        raise HTTPException(
+            status_code=422,
+            detail=f"ids must hold 1 to {MAX_ID_FILTER} question ids",
+        )
+
+    try:
+        return [int(part) for part in parts]
+    except ValueError:
+        raise HTTPException(status_code=422, detail="ids must be integers") from None
 
 
 def _hidden_statuses_for(current_user: JWTPayload | None) -> list[str] | None:
@@ -88,6 +118,17 @@ def get_questions(
     lang: Language = Query(default=Language.JA),
     sort: QuestionSort | None = Query(default=None),
     ai_verdict: AiVerdictFilter | None = Query(default=None),
+    ids: str | None = Query(
+        default=None,
+        max_length=800,
+        description="Admin only: comma-separated question ids, at most 100.",
+    ),
+    concept: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description="Questions linked to this concept (name in either language).",
+    ),
     db: Session = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
@@ -109,6 +150,8 @@ def get_questions(
         include_generation=is_admin,
         sort=sort.value if sort and is_admin else None,
         ai_verdict=ai_verdict.value if ai_verdict and is_admin else None,
+        ids=_parse_ids(ids) if is_admin else None,
+        concept=concept,
     )
 
 
@@ -191,6 +234,29 @@ def get_related_questions(
         ),
         language=lang,
     )
+
+
+@router.get(
+    "/{question_id}/prerequisites",
+    response_model=PrerequisitesResponse,
+)
+def get_prerequisites(
+    question_id: int,
+    limit: int = Query(default=5, ge=1, le=20),
+    lang: Language = Query(default=Language.JA),
+    db: Session = Depends(get_db),
+):
+    """Defining QAs for the concepts this QA leans on ([38]).
+
+    Students climb down, so only APPROVED rows ever appear, for admins
+    too; concepts with no usable definer come back as gaps.
+    """
+    response = prerequisite_service.get_prerequisites(
+        db, question_id, limit=limit, language=lang
+    )
+    if response is None:
+        raise HTTPException(status_code=404, detail="Question not found")
+    return response
 
 
 @router.get(

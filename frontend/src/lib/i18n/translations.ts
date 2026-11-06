@@ -403,6 +403,8 @@ const ja = {
     "privacy.retention.heading": "保存期間",
     "privacy.retention.body":
         "アカウント情報は、削除の申し出があるまで保存します。利用記録は約1日で削除されます。質問と回答は教育コンテンツとして保存されます。アカウントを削除すると、質問履歴とアカウントの紐付けは解除されます。",
+    "privacy.retention.devNotice":
+        "本サービスは開発中です。データは安全に管理するよう努めていますが、開発上の都合(データベース構成の変更やサービスの終了など)により、保存されている情報を予告なく削除する場合があります。",
     "privacy.deletion.heading": "アカウントの削除",
     "privacy.deletion.body":
         "ログイン中は、アカウントページからいつでも自分でアカウントを削除できます。ログインできない場合は、下記の連絡先にご依頼ください。",
@@ -966,6 +968,8 @@ const en: Record<keyof typeof ja, string> = {
     "privacy.retention.heading": "Retention",
     "privacy.retention.body":
         "Account information is kept until you ask us to delete it. Usage records are deleted after about one day. Questions and answers are kept as educational content. Deleting your account removes the link between your account and your question history.",
+    "privacy.retention.devNotice":
+        "This service is still under development. We take reasonable care to keep data safe, but stored information may be deleted without notice for development reasons, such as database schema changes or discontinuing the service.",
     "privacy.deletion.heading": "Deleting your account",
     "privacy.deletion.body":
         "While signed in, you can delete your account yourself at any time from the account page. If you can no longer sign in, send a request to the contact below.",

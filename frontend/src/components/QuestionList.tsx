@@ -11,6 +11,8 @@ import Pagination from "@/components/ui/Pagination";
 import MarkdownContent from "@/components/ui/MarkdownContent";
 import ReferencedQuestions from "@/components/ui/ReferencedQuestions";
 import QuestionSearchAndAsk from "@/components/QuestionSearchAndAsk";
+import ConceptFilter, { MeaningChooser } from "@/components/ui/ConceptFilter";
+import { ConceptSearchItem } from "@/types/concept";
 import { useQueryState } from "@/lib/hooks/useQueryState";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 
@@ -24,6 +26,8 @@ const LIST_QUERY_DEFAULTS = {
     keyword: "",
     // 概念チップ([41])からの絞り込み。空文字なら絞り込みなし。
     concept: "",
+    // 意味(概念ID)で絞り込むとき([55])。conceptは見出し用の表示名。
+    conceptId: "",
     // ベクトル検索([49])。値はQuestionSearchAndAskが管理し、ここでは
     // 初期タブの選択にだけ使う。
     similar: "",
@@ -70,7 +74,8 @@ function QuestionListInner() {
             keyword: string,
             targetSearchQuestion: boolean,
             targetSearchAnswer: boolean,
-            concept: string
+            concept: string,
+            conceptId: string
         ) => {
             const requestId = ++listRequestId.current;
             setListLoading(true);
@@ -85,7 +90,9 @@ function QuestionListInner() {
                     searchQuestion: targetSearchQuestion,
                     searchAnswer: targetSearchAnswer,
                     lang: language,
-                    concept: concept || undefined,
+                    // A chosen sense is exact; a bare word covers all its senses.
+                    concept: conceptId ? undefined : concept || undefined,
+                    conceptId: conceptId ? Number(conceptId) : undefined,
                 });
 
                 if (requestId !== listRequestId.current) {
@@ -142,7 +149,8 @@ function QuestionListInner() {
             queryState.keyword,
             searchQuestion,
             searchAnswer,
-            queryState.concept
+            queryState.concept,
+            queryState.conceptId
         );
     }, [
         resolved,
@@ -153,6 +161,7 @@ function QuestionListInner() {
         searchQuestion,
         searchAnswer,
         queryState.concept,
+        queryState.conceptId,
     ]);
 
     const handlePageChange = (nextPage: number) =>
@@ -177,7 +186,9 @@ function QuestionListInner() {
             </span>
             <button
                 type="button"
-                onClick={() => setQueryState({ concept: "", page: "1" })}
+                onClick={() =>
+                    setQueryState({ concept: "", conceptId: "", page: "1" })
+                }
                 className="cursor-pointer font-medium underline underline-offset-2"
             >
                 {t("concepts.clearFilter")}
@@ -185,9 +196,22 @@ function QuestionListInner() {
         </div>
     ) : null;
 
+    const chooseSense = (item: ConceptSearchItem) =>
+        setQueryState({
+            concept: item.label,
+            conceptId: String(item.id),
+            page: "1",
+        });
+
     const browseList = (
         <>
+            <ConceptFilter onSelect={chooseSense} />
+
             {conceptBanner}
+
+            {queryState.concept && !queryState.conceptId && (
+                <MeaningChooser word={queryState.concept} onSelect={chooseSense} />
+            )}
 
             {listLoading && <LoadingState />}
 
@@ -202,7 +226,8 @@ function QuestionListInner() {
                             queryState.keyword,
                             searchQuestion,
                             searchAnswer,
-                            queryState.concept
+                            queryState.concept,
+                            queryState.conceptId
                         )
                     }
                 />

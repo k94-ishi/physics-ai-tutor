@@ -21,6 +21,13 @@ export default function AdminManagePage() {
                 </Link>
                 <p className="text-sm text-gray-600">{t("manage.levelsHint")}</p>
             </Card>
+
+            <Card className="flex flex-col gap-1">
+                <Link href="/admin/manage/concepts" className="font-medium text-blue-600 hover:underline">
+                    {t("conceptsAdmin.title")}
+                </Link>
+                <p className="text-sm text-gray-600">{t("manage.conceptsHint")}</p>
+            </Card>
         </main>
     );
 }

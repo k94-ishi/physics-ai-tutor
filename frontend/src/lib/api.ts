@@ -35,6 +35,12 @@ import {
 } from "@/types/aiReviewRun";
 import { AskAiResponse } from "@/types/ai";
 import {
+    AdminConcept,
+    AdminConceptList,
+    ConceptReviewFilter,
+    ConceptSearchItem,
+} from "@/types/concept";
+import {
     AdminStatsResponse,
     MyQuestionsResponse,
     ReviewAgreementResponse,
@@ -141,6 +147,9 @@ export async function fetchQuestions(
     }
     if (params.concept) {
         searchParams.set("concept", params.concept);
+    }
+    if (params.conceptId !== undefined) {
+        searchParams.set("concept_id", String(params.conceptId));
     }
 
     const query = searchParams.toString();
@@ -459,4 +468,119 @@ export async function startAiReviewRun(params: {
             question_ids: params.questionIds,
         }),
     });
+}
+
+// --- concept senses ([55]) -----------------------------------------------------
+
+function getConceptsUrl(): string {
+    return `${getApiUrl()}/api/v1/concepts`;
+}
+
+function getAdminConceptsUrl(): string {
+    return `${getApiUrl()}/api/v1/admin/concepts`;
+}
+
+function jsonInit(method: string, body: unknown): RequestInit {
+    return {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    };
+}
+
+export async function searchConcepts(
+    q: string,
+    lang: ContentLanguage,
+    limit = 20
+): Promise<ConceptSearchItem[]> {
+    const params = new URLSearchParams({ q, lang, limit: String(limit) });
+    return apiFetch<ConceptSearchItem[]>(`${getConceptsUrl()}?${params}`);
+}
+
+export async function fetchAdminConcepts(params: {
+    q?: string;
+    filter?: ConceptReviewFilter;
+    page?: number;
+    size?: number;
+}): Promise<AdminConceptList> {
+    const search = new URLSearchParams({
+        q: params.q ?? "",
+        review_filter: params.filter ?? "all",
+        page: String(params.page ?? 1),
+        size: String(params.size ?? 30),
+    });
+    return apiFetch<AdminConceptList>(`${getAdminConceptsUrl()}?${search}`);
+}
+
+export async function fetchAdminConcept(
+    id: number,
+    lang: ContentLanguage
+): Promise<AdminConcept> {
+    return apiFetch<AdminConcept>(`${getAdminConceptsUrl()}/${id}?lang=${lang}`);
+}
+
+export async function updateConceptGloss(
+    id: number,
+    gloss: { gloss_ja: string | null; gloss_en: string | null },
+    lang: ContentLanguage
+): Promise<AdminConcept> {
+    return apiFetch<AdminConcept>(
+        `${getAdminConceptsUrl()}/${id}?lang=${lang}`,
+        jsonInit("PATCH", gloss)
+    );
+}
+
+export async function addConceptTerm(
+    id: number,
+    term: { language: ContentLanguage; term: string; is_preferred: boolean },
+    lang: ContentLanguage
+): Promise<AdminConcept> {
+    return apiFetch<AdminConcept>(
+        `${getAdminConceptsUrl()}/${id}/terms?lang=${lang}`,
+        jsonInit("POST", term)
+    );
+}
+
+export async function updateConceptTerm(
+    termId: number,
+    change: { term?: string; is_preferred?: boolean },
+    lang: ContentLanguage
+): Promise<AdminConcept> {
+    return apiFetch<AdminConcept>(
+        `${getAdminConceptsUrl()}/terms/${termId}?lang=${lang}`,
+        jsonInit("PATCH", change)
+    );
+}
+
+export async function deleteConceptTerm(termId: number): Promise<void> {
+    return apiFetch<void>(`${getAdminConceptsUrl()}/terms/${termId}`, {
+        method: "DELETE",
+    });
+}
+
+export async function mergeConcept(
+    id: number,
+    intoId: number,
+    lang: ContentLanguage
+): Promise<AdminConcept> {
+    return apiFetch<AdminConcept>(
+        `${getAdminConceptsUrl()}/${id}/merge?lang=${lang}`,
+        jsonInit("POST", { into_id: intoId })
+    );
+}
+
+export async function splitConcept(
+    id: number,
+    body: {
+        question_ids: number[];
+        terms: { language: ContentLanguage; term: string }[];
+        gloss_ja?: string;
+        gloss_en?: string;
+    },
+    lang: ContentLanguage
+): Promise<AdminConcept> {
+    return apiFetch<AdminConcept>(
+        `${getAdminConceptsUrl()}/${id}/split?lang=${lang}`,
+        jsonInit("POST", body)
+    );
 }

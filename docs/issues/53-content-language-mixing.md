@@ -50,3 +50,29 @@ Students only ever read the language they chose.
       paths; a missing row is translated once and appears next time
 - [ ] vitest: one fetch per load in the resolved language
 - [ ] Backend and frontend checks pass; `docs/api.md` updated
+
+## Log
+
+### 2026-11-09 - implemented
+
+- Backend: `prepare_for_response(strict_language=...)` drops concept names
+  and referenced questions lacking the language; related and prerequisite
+  services drop such rows *before* ranking/slicing (so a student still
+  gets the full count from readable rows) and report their ids. The
+  router queues them to `background_translation_service` (APPROVED only,
+  in-flight de-duplication, own session, never raises). Detail, list and
+  exact-match pass the same flag for non-admins. Admins keep the fallback.
+- Prerequisites: an untranslated definer is treated as "no definer yet",
+  so its concept shows as a gap until the translation lands.
+- Concept names: hidden, **not translated** - there is no name-translation
+  step; names come from concept extraction, which returns both languages.
+  Locally all 790 concepts have both names. Owner to decide whether a
+  name-translation prompt (new prompt family, version + fingerprint) is
+  worth it.
+- Frontend: `QuestionDetail` and `QuestionList` wait for
+  `useLanguage().resolved`; a language switch clears the previous
+  language's related/prerequisite results and closes the preview.
+- Tests: `tests/test_language_strict.py` (6); vitest "fetches once, in the
+  stored language" (fails without the guard, verified). pytest 492,
+  ruff, mypy, lint, tsc, vitest 159, build: all pass.
+- Left open for the owner to verify in the UI.

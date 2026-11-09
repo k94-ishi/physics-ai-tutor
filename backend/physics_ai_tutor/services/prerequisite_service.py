@@ -20,7 +20,10 @@ from physics_ai_tutor.schemas.question import (
     QuestionResponse,
     QuestionStatus,
 )
-from physics_ai_tutor.services.question_service import prepare_for_response
+from physics_ai_tutor.services.question_service import (
+    prepare_for_response,
+    split_by_language,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +82,8 @@ def get_prerequisites(
     question_id: int,
     limit: int = 5,
     language: Language | str = Language.JA,
+    only_with_language: bool = False,
+    missing_language_ids: list[int] | None = None,
 ) -> PrerequisitesResponse | None:
     lang = Language(language)
 
@@ -102,6 +107,16 @@ def get_prerequisites(
         .all()
     )
 
+    if only_with_language:
+        # A definer the student cannot read is no definer yet; report it.
+        readable, missing = split_by_language(
+            list({candidate.id: candidate for _, candidate in links}.values()), lang
+        )
+        readable_ids = {question.id for question in readable}
+        links = [link for link in links if link[1].id in readable_ids]
+        if missing_language_ids is not None:
+            missing_language_ids.extend(missing)
+
     best_by_concept: dict[int, tuple[Concept, Question]] = {}
     concepts_seen: dict[int, Concept] = {}
     for concept, candidate in links:
@@ -122,10 +137,16 @@ def get_prerequisites(
         .filter(QuestionConcept.question_id == question_id)
         .all()
     )
+    gap_concepts = [c for c in current_concepts if c.id not in best_by_concept]
     gaps = [
-        concept.display_name(lang.value)
-        for concept in current_concepts
-        if concept.id not in best_by_concept
+        name
+        for concept in gap_concepts
+        if (
+            name := concept.name_in(lang.value)
+            if only_with_language
+            else concept.display_name(lang.value)
+        )
+        is not None
     ]
 
     # One card per QA even when it defines several concepts; hardest
@@ -140,7 +161,7 @@ def get_prerequisites(
         reverse=True,
     )[:limit]
 
-    prepare_for_response(db, ordered, lang)
+    prepare_for_response(db, ordered, lang, strict_language=only_with_language)
 
     logger.info(
         "Prerequisites computed: question_id=%d definers=%d gaps=%d",

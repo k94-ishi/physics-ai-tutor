@@ -50,14 +50,20 @@ def resolve_language(questions: list[Question], language: Language | str) -> Non
 
 
 def attach_concept_names(
-    db: Session, questions: list[Question], language: Language | str = Language.JA
+    db: Session,
+    questions: list[Question],
+    language: Language | str = Language.JA,
+    strict_language: bool = False,
 ) -> None:
     """Populate each question's transient `.concepts` (display names)."""
     if not questions:
         return
 
     concepts_by_id = question_concept_repository.get_concepts_for_questions(
-        db, [q.id for q in questions], language=Language(language).value
+        db,
+        [q.id for q in questions],
+        language=Language(language).value,
+        strict_language=strict_language,
     )
 
     for question in questions:
@@ -65,7 +71,10 @@ def attach_concept_names(
 
 
 def attach_retrieved_questions(
-    db: Session, questions: list[Question], language: Language | str = Language.JA
+    db: Session,
+    questions: list[Question],
+    language: Language | str = Language.JA,
+    strict_language: bool = False,
 ) -> None:
     """Resolve `retrieved_question_ids` to {id, question} summaries."""
     if not questions:
@@ -83,6 +92,8 @@ def attach_retrieved_questions(
         return
 
     referenced = question_repository.get_questions_by_ids(db, list(all_ids))
+    if strict_language:
+        referenced, _ = split_by_language(referenced, language)
     resolve_language(referenced, language)
     referenced_by_id = {item.id: item for item in referenced}
 
@@ -95,11 +106,29 @@ def attach_retrieved_questions(
 
 
 def prepare_for_response(
-    db: Session, questions: list[Question], language: Language | str = Language.JA
+    db: Session,
+    questions: list[Question],
+    language: Language | str = Language.JA,
+    strict_language: bool = False,
 ) -> None:
+    """Fill the transient response fields.
+
+    With `strict_language` (student responses) concept names and referenced
+    questions that lack `language` are left out instead of falling back.
+    """
     resolve_language(questions, language)
-    attach_concept_names(db, questions, language)
-    attach_retrieved_questions(db, questions, language)
+    attach_concept_names(db, questions, language, strict_language)
+    attach_retrieved_questions(db, questions, language, strict_language)
+
+
+def split_by_language(
+    questions: list[Question], language: Language | str
+) -> tuple[list[Question], list[int]]:
+    """Rows that have text in `language`, and the ids of those that do not."""
+    lang = Language(language)
+    kept = [question for question in questions if question.has(lang)]
+    missing = [question.id for question in questions if not question.has(lang)]
+    return kept, missing
 
 
 # --- reads --------------------------------------------------------------------
@@ -178,7 +207,9 @@ def fetch_questions(
         concept=concept,
     )
 
-    prepare_for_response(db, questions, language)
+    prepare_for_response(
+        db, questions, language, strict_language=only_with_language
+    )
 
     # Generation metadata is admin-only; attach it while the ORM objects are
     # still in hand (the response models are built from them next).
@@ -217,7 +248,9 @@ def fetch_question(
         _translate_into(db, question, Language(language))
         db.commit()
 
-    prepare_for_response(db, [question], language)
+    prepare_for_response(
+        db, [question], language, strict_language=translate_if_missing
+    )
 
     return question
 
@@ -227,13 +260,14 @@ def fetch_question_by_exact_text(
     question_text: str,
     exclude_statuses: list[str] | None = None,
     language: Language | str = Language.JA,
+    strict_language: bool = False,
 ) -> Question | None:
     question = question_repository.get_by_exact_text(
         db, question_text, language=language, exclude_statuses=exclude_statuses
     )
 
     if question is not None:
-        prepare_for_response(db, [question], language)
+        prepare_for_response(db, [question], language, strict_language)
 
     return question
 

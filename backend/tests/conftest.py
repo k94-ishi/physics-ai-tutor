@@ -15,6 +15,7 @@ from physics_ai_tutor.database.base import Base
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.main import app
 from physics_ai_tutor.services import (
+    background_translation_service,
     concept_service,
     embedding_service,
     translation_service,
@@ -167,6 +168,7 @@ def _background_translation_uses_test_db(monkeypatch):
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     monkeypatch.setattr(ai_router, "SessionLocal", factory)
     monkeypatch.setattr(admin_router, "SessionLocal", factory)
+    monkeypatch.setattr(background_translation_service, "SessionLocal", factory)
 
 
 # Rate-limit counters live in the rate_limit_hits table, which is

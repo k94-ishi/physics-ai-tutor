@@ -41,7 +41,7 @@ const inputClassName =
     "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
 
 function QuestionListInner() {
-    const { language, t } = useLanguage();
+    const { language, resolved, t } = useLanguage();
 
     // 一覧(pagination + keyword filter、page/size/keywordはURLで管理)
     const [queryState, setQueryState] = useQueryState(LIST_QUERY_DEFAULTS);
@@ -131,6 +131,10 @@ function QuestionListInner() {
 
     // ページ・サイズ・キーワード・検索対象フィールドが確定するたびに一覧を取得する(初回ロードも含む)
     useEffect(() => {
+        // 言語の解決前に取得すると、jaで一度取ってから取り直す([53])。
+        if (!resolved) {
+            return;
+        }
         // eslint-disable-next-line react-hooks/set-state-in-effect
         loadList(
             page,
@@ -141,6 +145,7 @@ function QuestionListInner() {
             queryState.concept
         );
     }, [
+        resolved,
         loadList,
         page,
         size,

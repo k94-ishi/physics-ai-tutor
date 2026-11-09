@@ -56,6 +56,22 @@ beforeEach(() => {
 });
 
 describe("QuestionDetail", () => {
+    it("fetches once, in the stored language, after it resolves", async () => {
+        localStorage.setItem("language", "en");
+        mocked.fetchQuestion.mockResolvedValue(makeQuestion());
+
+        renderDetail();
+
+        await waitFor(() =>
+            expect(mocked.fetchRelatedQuestions).toHaveBeenCalled()
+        );
+        // Never a first round trip in the default ja ([53]).
+        expect(mocked.fetchQuestion).toHaveBeenCalledTimes(1);
+        expect(mocked.fetchQuestion).toHaveBeenCalledWith(1, "en");
+        expect(mocked.fetchRelatedQuestions).toHaveBeenCalledWith(1, 20, "en");
+        localStorage.removeItem("language");
+    });
+
     it("fetches in the active language and renders the text", async () => {
         mocked.fetchQuestion.mockResolvedValue(makeQuestion());
 

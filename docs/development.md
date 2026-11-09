@@ -171,6 +171,7 @@ Layout of `backend/tests/`:
 | `test_models.py` | Column defaults, cascades |
 | `test_migrations.py` | Single Alembic head, models match migrations |
 | `test_cli.py` | `create_user` and `translate_missing` CLIs and the seed script |
+| `test_language_strict.py` | Students never get the other language on related/prerequisites/concepts; hidden rows are translated once in the background ([53]) |
 | `test_language.py` | Bilingual rows: eager translation, provenance, `lang` resolution, English ask flow, cache tiers, review in either language, translate endpoint, import shapes |
 | `test_logging.py` | Request logging middleware |
 

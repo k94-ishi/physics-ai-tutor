@@ -30,9 +30,16 @@ def get_concepts_for_question(db: Session, question_id: int) -> list[Concept]:
 
 
 def get_concepts_for_questions(
-    db: Session, question_ids: list[int], language: str = "ja"
+    db: Session,
+    question_ids: list[int],
+    language: str = "ja",
+    strict_language: bool = False,
 ) -> dict[int, list[str]]:
-    """Concept display names per question, in `language` with fallback."""
+    """Concept names per question in `language`.
+
+    Falls back to the other language unless `strict_language` is set, in
+    which case concepts without a name in `language` are skipped.
+    """
     if not question_ids:
         return {}
 
@@ -45,7 +52,13 @@ def get_concepts_for_questions(
 
     result: dict[int, list[str]] = {question_id: [] for question_id in question_ids}
     for question_id, concept in rows:
-        result[question_id].append(concept.display_name(language))
+        name = (
+            concept.name_in(language)
+            if strict_language
+            else concept.display_name(language)
+        )
+        if name is not None:
+            result[question_id].append(name)
 
     return result
 

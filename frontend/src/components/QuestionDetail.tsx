@@ -37,7 +37,7 @@ const GAPS_VISIBLE = 8;
  * switching the header language switches the content too.
  */
 export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
-    const { language, t } = useLanguage();
+    const { language, resolved, t } = useLanguage();
     const [question, setQuestion] = useState<Question | null>(null);
     const [related, setRelated] = useState<Question[]>([]);
     const [prerequisites, setPrerequisites] =
@@ -55,6 +55,10 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
         setLoading(true);
         setLoadError(false);
         setNotFoundError(false);
+        // 言語が変わったら前の言語の結果を残さない([53])。
+        setRelated([]);
+        setPrerequisites(null);
+        setPreview(null);
 
         try {
             const data = await fetchQuestion(id, language);
@@ -102,9 +106,13 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
     }, [id, language]);
 
     useEffect(() => {
+        // 言語の解決前に取得すると、既定のjaで一度取ってから取り直す([53])。
+        if (!resolved) {
+            return;
+        }
         // eslint-disable-next-line react-hooks/set-state-in-effect
         load();
-    }, [load]);
+    }, [load, resolved]);
 
     if (loading && question === null) {
         return <LoadingState />;

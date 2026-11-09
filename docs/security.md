@@ -175,6 +175,11 @@ Notes:
   `ai_review_runs`, at most one at a time, and every reviewer call counts
   against a rolling 24h budget (`AI_REVIEW_DAILY_CAP`), so neither a stuck
   job nor an eager admin can spend unbounded tokens.
+- Student reads of `/related` and `/prerequisites` may queue a translation
+  for APPROVED rows that lack the requested language ([53]). Each row is
+  translated at most once (in-flight ids are de-duplicated; a translated
+  row never qualifies again), so the total is bounded by the number of
+  approved rows, not by traffic.
 - Each created row also triggers one translation call and one extra
   embedding call for the other language. These run at creation (AI answers
   translate in a background task), so they are bounded by the same ask rate

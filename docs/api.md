@@ -39,7 +39,13 @@ language; the response also carries `language` (the language actually
 served), `provenance` (`ORIGINAL`, `HUMAN`, `MACHINE`), `original_language`,
 `available_languages`, and `texts` with both language blocks. For non-admin
 callers, list results only include rows that have text in `lang`; detail
-requests for a row that lacks `lang` are translated on the fly.
+requests for a row that lacks `lang` are translated on the fly. The same
+strict rule covers everything around a student's question ([53]): related
+questions, prerequisites (items and `gaps`), concept names, and
+`retrieved_questions` never fall back to the other language. Hidden
+APPROVED rows are machine translated once in the background, so they
+appear on the next view; concept names without a translation are hidden
+(no translation step exists for names yet).
 
 Write endpoints accept either `{"question", "answer", "language"}`
 (language defaults to `ja`) or the explicit
@@ -84,8 +90,8 @@ missing language is machine translated at creation.
 | GET | `/api/v1/questions?lang=` | Public | Paginated list with optional keyword (matches any language) and status filter. Non-admins only see `APPROVED` rows that have text in `lang`. Admins may also pass `sort` (`oldest`, `ai_confidence`, `asked_count`) and `ai_verdict` (`APPROVE`, `EDIT`, `REJECT`, `NONE` = no AI review); both are ignored for other callers. Anyone may pass `concept=<name>` (matched against either language's concept name) to list the questions linked to that concept, which is what the student concept chips use; the usual visibility rules still apply, so non-admins only see APPROVED rows. Admins may also pass `ids` (comma-separated, 1-100, e.g. `ids=54,848`) to list exactly those questions; it is ignored for other callers, and 422 when it is empty, over 100 ids, or not integers. Admin items carry `ai_review` (latest verdict, confidence, reasons, rationale, suggested answer) and `generation`; public items return `null` for both. Every item carries the two-axis difficulty of the QA pair, `physics_level`/`math_level` (0-4 by what a reader needs to follow the answer, or null = unrated; LLM-assigned at approval time, teacher-correctable via `PUT /questions/{id}`, which also accepts a levels-only body). |
 | GET | `/api/v1/questions/exact-match?question=&lang=` | Public | Look up a question by exact text in the `lang` column. Non-admins only match `APPROVED` rows. |
 | GET | `/api/v1/questions/{id}?lang=` | Public | Question detail with concepts and referenced questions in `lang`. 404 for non-admins unless `APPROVED`. |
-| GET | `/api/v1/questions/{id}/related?lang=` | Public | Concept- and embedding-based recommendations, compared within `lang` |
-| GET | `/api/v1/questions/{id}/prerequisites?lang=&limit=` | Public | "Read these first" ([38]): for each concept this QA leans on, the APPROVED question that defines it (definition-style wording, e.g. 「〜とは」/"what is") and is not more advanced than the current QA on either difficulty axis; one card per QA, hardest first, `limit` 1-20 (default 5). `gaps` lists the current QA's concepts that have no such definer, in `lang`. Only APPROVED rows ever appear, for admins too. 404 when the question id does not exist. |
+| GET | `/api/v1/questions/{id}/related?lang=` | Public | Concept- and embedding-based recommendations, compared within `lang`. For non-admins, rows without text in `lang` are left out and translated once in a background task after the response ([53]); admins get the original-language fallback. |
+| GET | `/api/v1/questions/{id}/prerequisites?lang=&limit=` | Public | "Read these first" ([38]): for each concept this QA leans on, the APPROVED question that defines it (definition-style wording, e.g. 「〜とは」/"what is") and is not more advanced than the current QA on either difficulty axis; one card per QA, hardest first, `limit` 1-20 (default 5). `gaps` lists the current QA's concepts that have no such definer, in `lang`. Students get the same strict language rule as `/related` ([53]). Only APPROVED rows ever appear, for admins too. 404 when the question id does not exist. |
 | POST | `/api/v1/questions/search` | Public | Semantic similarity search within one language. Body: `{"query": str, "limit": int, "language": "ja" or "en"}`. Returns rows with cosine `distance`. Query embeddings are cached by (normalised-text hash, embedding model), so a repeated search - retried phrasing, shared `?similar=` link, or the RAG retrieval of the same text - costs no OpenAI call. |
 | GET | `/api/v1/questions/{id}/reviews` | Admin | Review history of a question. Each row carries `reviewer_kind` (`human`/`ai`/`policy`) and `policy_name`; everything recorded so far is `human`. |
 | GET | `/api/v1/admin/reviews/export` | Admin | The human review dataset as JSONL (`application/x-ndjson`, one review per line; schema in `docs/database.md`). `since=YYYY-MM-DD` is inclusive and defaults to the 2026-10-28 data cutoff; `all=true` returns every row. Reviewer identity is replaced by a keyed hash. |

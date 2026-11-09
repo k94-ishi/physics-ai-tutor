@@ -11,7 +11,10 @@ from physics_ai_tutor.repositories import (
 )
 from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.question import QuestionResponse
-from physics_ai_tutor.services.question_service import prepare_for_response
+from physics_ai_tutor.services.question_service import (
+    prepare_for_response,
+    split_by_language,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +32,8 @@ def get_related_questions(
     limit: int = 5,
     exclude_statuses: list[str] | None = None,
     language: Language | str = Language.JA,
+    only_with_language: bool = False,
+    missing_language_ids: list[int] | None = None,
 ) -> list[QuestionResponse]:
     if exclude_statuses is None:
         exclude_statuses = ["REJECTED"]
@@ -130,8 +135,15 @@ def get_related_questions(
 
     scored.sort(key=lambda item: item[0], reverse=True)
 
-    top_questions = [candidate_question for _, candidate_question in scored[:limit]]
-    prepare_for_response(db, top_questions, lang)
+    ranked = [candidate_question for _, candidate_question in scored]
+    if only_with_language:
+        # Students never get the other language; report the gaps instead.
+        ranked, missing = split_by_language(ranked, lang)
+        if missing_language_ids is not None:
+            missing_language_ids.extend(missing)
+
+    top_questions = ranked[:limit]
+    prepare_for_response(db, top_questions, lang, strict_language=only_with_language)
 
     logger.info(
         "Related questions computed: question_id=%d candidates=%d returned=%d",

@@ -3,6 +3,7 @@ import logging
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -50,6 +51,7 @@ from physics_ai_tutor.schemas.question_review import (
 )
 from physics_ai_tutor.schemas.token import JWTPayload, UserRole
 from physics_ai_tutor.services import (
+    background_translation_service,
     prerequisite_service,
     question_service,
     recommendation_service,
@@ -102,6 +104,17 @@ def _parse_ids(raw: str | None) -> list[int] | None:
 def _hidden_statuses_for(current_user: JWTPayload | None) -> list[str] | None:
     # Admins see everything; everyone else only sees approved content.
     return None if _is_admin(current_user) else PUBLIC_HIDDEN_STATUSES
+
+
+def _queue_translations(
+    background_tasks: BackgroundTasks, question_ids: list[int]
+) -> None:
+    # Rows hidden for lacking the language get translated once, after the response.
+    claimed = background_translation_service.claim(question_ids)
+    if claimed:
+        background_tasks.add_task(
+            background_translation_service.translate_missing, claimed
+        )
 
 
 @router.get(
@@ -170,6 +183,7 @@ def get_exact_match_question(
         question,
         exclude_statuses=_hidden_statuses_for(current_user),
         language=lang,
+        strict_language=not _is_admin(current_user),
     )
 
     if result is None:
@@ -218,6 +232,7 @@ def get_question(
     response_model=list[QuestionResponse],
 )
 def get_related_questions(
+    background_tasks: BackgroundTasks,
     question_id: int,
     limit: int = Query(default=5, ge=1, le=20),
     lang: Language = Query(default=Language.JA),
@@ -225,7 +240,8 @@ def get_related_questions(
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
     is_admin = _is_admin(current_user)
-    return recommendation_service.get_related_questions(
+    missing: list[int] = []
+    related = recommendation_service.get_related_questions(
         db,
         question_id,
         limit=limit,
@@ -233,7 +249,11 @@ def get_related_questions(
             [QuestionStatus.REJECTED] if is_admin else PUBLIC_HIDDEN_STATUSES
         ),
         language=lang,
+        only_with_language=not is_admin,
+        missing_language_ids=missing,
     )
+    _queue_translations(background_tasks, missing)
+    return related
 
 
 @router.get(
@@ -241,21 +261,31 @@ def get_related_questions(
     response_model=PrerequisitesResponse,
 )
 def get_prerequisites(
+    background_tasks: BackgroundTasks,
     question_id: int,
     limit: int = Query(default=5, ge=1, le=20),
     lang: Language = Query(default=Language.JA),
     db: Session = Depends(get_db),
+    current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
     """Defining QAs for the concepts this QA leans on ([38]).
 
     Students climb down, so only APPROVED rows ever appear, for admins
     too; concepts with no usable definer come back as gaps.
     """
+    is_admin = _is_admin(current_user)
+    missing: list[int] = []
     response = prerequisite_service.get_prerequisites(
-        db, question_id, limit=limit, language=lang
+        db,
+        question_id,
+        limit=limit,
+        language=lang,
+        only_with_language=not is_admin,
+        missing_language_ids=missing,
     )
     if response is None:
         raise HTTPException(status_code=404, detail="Question not found")
+    _queue_translations(background_tasks, missing)
     return response
 
 

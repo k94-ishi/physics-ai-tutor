@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from physics_ai_tutor.api.dependencies import get_current_user_optional, require_admin
 from physics_ai_tutor.database.dependency import get_db
+from physics_ai_tutor.repositories import concept_repository
 from physics_ai_tutor.schemas.bulk import (
     BulkDeleteRequest,
     BulkDeleteResponse,
@@ -117,6 +118,21 @@ def _queue_translations(
         )
 
 
+def _queue_concept_names(
+    background_tasks: BackgroundTasks,
+    db: Session,
+    question_ids: list[int],
+    language: Language,
+) -> None:
+    # Concept names hidden for lacking the language get translated once.
+    missing = concept_repository.ids_missing_name(db, question_ids, language.value)
+    claimed = background_translation_service.claim_concepts(missing)
+    if claimed:
+        background_tasks.add_task(
+            background_translation_service.translate_concept_names, claimed
+        )
+
+
 @router.get(
     "",
     response_model=QuestionListResponse,
@@ -200,6 +216,7 @@ def get_exact_match_question(
     response_model=QuestionResponse,
 )
 def get_question(
+    background_tasks: BackgroundTasks,
     question_id: int,
     lang: Language = Query(default=Language.JA),
     db: Session = Depends(get_db),
@@ -223,6 +240,8 @@ def get_question(
     if _is_admin(current_user):
         question_service.attach_generation_meta([question])
         question_service.attach_ai_reviews(db, [question])
+    else:
+        _queue_concept_names(background_tasks, db, [question.id], lang)
 
     return question
 
@@ -253,6 +272,9 @@ def get_related_questions(
         missing_language_ids=missing,
     )
     _queue_translations(background_tasks, missing)
+    if not is_admin:
+        ids = [item.id for item in related]
+        _queue_concept_names(background_tasks, db, ids, lang)
     return related
 
 
@@ -286,6 +308,10 @@ def get_prerequisites(
     if response is None:
         raise HTTPException(status_code=404, detail="Question not found")
     _queue_translations(background_tasks, missing)
+    if not is_admin:
+        # The current QA too: its concepts are the gap chips.
+        ids = [question_id, *(item.id for item in response.items)]
+        _queue_concept_names(background_tasks, db, ids, lang)
     return response
 
 

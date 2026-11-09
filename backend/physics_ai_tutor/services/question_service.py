@@ -207,9 +207,7 @@ def fetch_questions(
         concept=concept,
     )
 
-    prepare_for_response(
-        db, questions, language, strict_language=only_with_language
-    )
+    prepare_for_response(db, questions, language, strict_language=only_with_language)
 
     # Generation metadata is admin-only; attach it while the ORM objects are
     # still in hand (the response models are built from them next).
@@ -248,9 +246,7 @@ def fetch_question(
         _translate_into(db, question, Language(language))
         db.commit()
 
-    prepare_for_response(
-        db, [question], language, strict_language=translate_if_missing
-    )
+    prepare_for_response(db, [question], language, strict_language=translate_if_missing)
 
     return question
 

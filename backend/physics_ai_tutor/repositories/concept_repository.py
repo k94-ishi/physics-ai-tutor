@@ -79,3 +79,18 @@ def average_concept_similarity(
     )
 
     return {question_id: float(avg_similarity) for question_id, avg_similarity in rows}
+
+
+def ids_missing_name(db: Session, question_ids: list[int], language: str) -> list[int]:
+    """Concepts of these questions that have no name in `language`."""
+    if not question_ids:
+        return []
+    column = Concept.name_ja if language == "ja" else Concept.name_en
+    rows = (
+        db.query(Concept.id)
+        .join(QuestionConcept, QuestionConcept.concept_id == Concept.id)
+        .filter(QuestionConcept.question_id.in_(question_ids), column.is_(None))
+        .distinct()
+        .all()
+    )
+    return [concept_id for (concept_id,) in rows]

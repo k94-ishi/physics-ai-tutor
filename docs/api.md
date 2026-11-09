@@ -44,8 +44,10 @@ strict rule covers everything around a student's question ([53]): related
 questions, prerequisites (items and `gaps`), concept names, and
 `retrieved_questions` never fall back to the other language. Hidden
 APPROVED rows are machine translated once in the background, so they
-appear on the next view; concept names without a translation are hidden
-(no translation step exists for names yet).
+appear on the next view. Concept names missing in `lang` are hidden the
+same way and translated once in the background through the existing QA
+translator (no separate prompt); a translation that collides with another
+concept's name is skipped.
 
 Write endpoints accept either `{"question", "answer", "language"}`
 (language defaults to `ja`) or the explicit

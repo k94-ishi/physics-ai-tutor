@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core import prompts
 from physics_ai_tutor.core.config import settings
-from physics_ai_tutor.core.exceptions import ConceptExtractionError
+from physics_ai_tutor.core.exceptions import ConceptExtractionError, TranslationError
 from physics_ai_tutor.core.prompt_library import load_library
 from physics_ai_tutor.models import Concept
 from physics_ai_tutor.repositories import (
@@ -14,7 +14,11 @@ from physics_ai_tutor.repositories import (
     question_concept_repository,
 )
 from physics_ai_tutor.schemas.language import Language
-from physics_ai_tutor.services import deepseek_service, embedding_service
+from physics_ai_tutor.services import (
+    deepseek_service,
+    embedding_service,
+    translation_service,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -196,3 +200,35 @@ def attach_concepts_to_question(
         concepts.append(concept)
 
     return concepts
+
+
+def translate_missing_name(db: Session, concept_id: int) -> bool:
+    """Fill a concept's missing name via the existing QA translator; commits.
+
+    Reuses `translation_service.translate_qa` (glossary included) with the
+    name in both slots, so no new prompt is needed ([53]). A translation
+    that collides with another concept's name is skipped, not merged.
+    """
+    concept = db.get(Concept, concept_id)
+    if concept is None or (concept.name_ja and concept.name_en):
+        return False
+
+    source, target = (
+        (Language.JA, Language.EN) if concept.name_ja else (Language.EN, Language.JA)
+    )
+    name = concept.name_in(source.value)
+    assert name is not None
+    try:
+        translated, _ = translation_service.translate_qa(name, name, source, target)
+    except TranslationError:
+        logger.warning("Concept name translation failed: concept_id=%d", concept_id)
+        return False
+
+    translated = translated.strip()[:255]
+    if not translated or concept_repository.get_by_name(db, translated, target.value):
+        logger.warning("Concept name translation unusable: concept_id=%d", concept_id)
+        return False
+
+    setattr(concept, f"name_{target.value}", translated)
+    db.commit()
+    return True

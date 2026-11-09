@@ -47,8 +47,8 @@ def test_concepts_without_a_name_in_lang_are_hidden_from_students(
 ):
     current = _create(admin_client, "力ってなに？", True, monkeypatch)
 
-    student = client.get(f"{QUESTIONS}/{current}", params={"lang": "en"}).json()
     admin = admin_client.get(f"{QUESTIONS}/{current}", params={"lang": "en"}).json()
+    student = client.get(f"{QUESTIONS}/{current}", params={"lang": "en"}).json()
 
     assert student["concepts"] == ["concept A"]
     assert sorted(admin["concepts"]) == ["concept A", "概念B"]
@@ -116,3 +116,40 @@ def test_claim_deduplicates_rows_in_flight():
     # Release so other tests start clean.
     for question_id in (901, 902, 903):
         background_translation_service._release(question_id)
+
+
+def test_concept_name_missing_in_lang_is_translated_once(
+    admin_client, client, db, monkeypatch
+):
+    current = _create(admin_client, "力ってなに？", True, monkeypatch)
+    calls: list[str] = []
+
+    def _translate(question, answer, source, target):
+        calls.append(question)
+        return f"[{target}] {question}", f"[{target}] {answer}"
+
+    monkeypatch.setattr(translation_service, "translate_qa", _translate)
+
+    first = client.get(f"{QUESTIONS}/{current}", params={"lang": "en"}).json()
+    assert first["concepts"] == ["concept A"]
+
+    second = client.get(f"{QUESTIONS}/{current}", params={"lang": "en"}).json()
+    assert sorted(second["concepts"]) == ["[en] 概念B", "concept A"]
+    # Only the missing name was sent to the translator, and only once.
+    assert calls == ["概念B"]
+
+
+def test_concept_translation_colliding_with_an_existing_name_is_skipped(
+    admin_client, client, db, monkeypatch
+):
+    current = _create(admin_client, "力ってなに？", True, monkeypatch)
+    monkeypatch.setattr(
+        translation_service,
+        "translate_qa",
+        lambda q, a, source, target: ("concept A", "concept A"),
+    )
+
+    client.get(f"{QUESTIONS}/{current}", params={"lang": "en"})
+    again = client.get(f"{QUESTIONS}/{current}", params={"lang": "en"}).json()
+
+    assert again["concepts"] == ["concept A"]

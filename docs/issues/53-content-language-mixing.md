@@ -76,3 +76,15 @@ Students only ever read the language they chose.
   stored language" (fails without the guard, verified). pytest 492,
   ruff, mypy, lint, tsc, vitest 159, build: all pass.
 - Left open for the owner to verify in the UI.
+
+### 2026-11-09 - concept names are translated too
+
+Owner's decision: translate missing concept names, no separate step, no
+prompt change. `concept_service.translate_missing_name` passes the name
+through the existing `translate_qa` (glossary included) and stores it;
+names are queued from the detail, related and prerequisite endpoints for
+students, once per concept. A result that collides with another
+concept's unique name is skipped (logged), not merged. `deep_translator`
+was considered and not used: it calls Google's unofficial endpoint, a
+new third party the privacy page does not list. Tests: 2 more in
+`test_language_strict.py`; pytest 494 pass.

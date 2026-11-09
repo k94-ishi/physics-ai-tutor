@@ -12,11 +12,12 @@ import threading
 from physics_ai_tutor.database.database import SessionLocal
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.schemas.question import QuestionStatus
-from physics_ai_tutor.services import question_service
+from physics_ai_tutor.services import concept_service, question_service
 
 logger = logging.getLogger(__name__)
 
 _in_flight: set[int] = set()
+_concepts_in_flight: set[int] = set()
 _lock = threading.Lock()
 
 
@@ -52,5 +53,36 @@ def translate_missing(question_ids: list[int]) -> None:
                 db.rollback()
             finally:
                 _release(question_id)
+    finally:
+        db.close()
+
+
+def claim_concepts(concept_ids: list[int]) -> list[int]:
+    """Reserve concept ids whose name is not already being translated."""
+    with _lock:
+        claimed = [
+            cid for cid in dict.fromkeys(concept_ids) if cid not in _concepts_in_flight
+        ]
+        _concepts_in_flight.update(claimed)
+    return claimed
+
+
+def translate_concept_names(concept_ids: list[int]) -> None:
+    """Background task body for missing concept names; never raises."""
+    db = SessionLocal()
+    try:
+        for concept_id in concept_ids:
+            try:
+                concept_service.translate_missing_name(db, concept_id)
+            except Exception:
+                logger.warning(
+                    "Concept name translation failed: concept_id=%d",
+                    concept_id,
+                    exc_info=True,
+                )
+                db.rollback()
+            finally:
+                with _lock:
+                    _concepts_in_flight.discard(concept_id)
     finally:
         db.close()

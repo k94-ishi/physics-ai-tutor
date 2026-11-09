@@ -180,6 +180,8 @@ Notes:
   translated at most once (in-flight ids are de-duplicated; a translated
   row never qualifies again), so the total is bounded by the number of
   approved rows, not by traffic.
+  Concept names missing a language are translated the same way, once per
+  concept, through the same translator; no new third party receives data.
 - Each created row also triggers one translation call and one extra
   embedding call for the other language. These run at creation (AI answers
   translate in a background task), so they are bounded by the same ask rate

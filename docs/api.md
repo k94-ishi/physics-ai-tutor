@@ -89,7 +89,7 @@ missing language is machine translated at creation.
 
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
-| GET | `/api/v1/questions?lang=` | Public | Paginated list with optional keyword (matches any language) and status filter. Non-admins only see `APPROVED` rows that have text in `lang`. Admins may also pass `sort` (`oldest`, `ai_confidence`, `asked_count`) and `ai_verdict` (`APPROVE`, `EDIT`, `REJECT`, `NONE` = no AI review); both are ignored for other callers. Anyone may pass `concept=<name>` (matched against either language's concept name) to list the questions linked to that concept, which is what the student concept chips use; the usual visibility rules still apply, so non-admins only see APPROVED rows. Admins may also pass `ids` (comma-separated, 1-100, e.g. `ids=54,848`) to list exactly those questions; it is ignored for other callers, and 422 when it is empty, over 100 ids, or not integers. Admin items carry `ai_review` (latest verdict, confidence, reasons, rationale, suggested answer) and `generation`; public items return `null` for both. Every item carries the two-axis difficulty of the QA pair, `physics_level`/`math_level` (0-4 by what a reader needs to follow the answer, or null = unrated; LLM-assigned at approval time, teacher-correctable via `PUT /questions/{id}`, which also accepts a levels-only body). |
+| GET | `/api/v1/questions?lang=` | Public | Paginated list with optional keyword (matches any language) and status filter. Non-admins only see `APPROVED` rows that have text in `lang`. Admins may also pass `sort` (`oldest`, `ai_confidence`, `asked_count`) and `ai_verdict` (`APPROVE`, `EDIT`, `REJECT`, `NONE` = no AI review); both are ignored for other callers. Anyone may pass `concept=<word>` to list the questions linked to any sense having that word in either language (so an English word finds Japanese-only rows), which is what the student concept chips use, or `concept_id=<id>` for exactly one sense ([55]); the usual visibility rules still apply, so non-admins only see APPROVED rows. Admins may also pass `ids` (comma-separated, 1-100, e.g. `ids=54,848`) to list exactly those questions; it is ignored for other callers, and 422 when it is empty, over 100 ids, or not integers. Admin items carry `ai_review` (latest verdict, confidence, reasons, rationale, suggested answer) and `generation`; public items return `null` for both. Every item carries the two-axis difficulty of the QA pair, `physics_level`/`math_level` (0-4 by what a reader needs to follow the answer, or null = unrated; LLM-assigned at approval time, teacher-correctable via `PUT /questions/{id}`, which also accepts a levels-only body). |
 | GET | `/api/v1/questions/exact-match?question=&lang=` | Public | Look up a question by exact text in the `lang` column. Non-admins only match `APPROVED` rows. |
 | GET | `/api/v1/questions/{id}?lang=` | Public | Question detail with concepts and referenced questions in `lang`. 404 for non-admins unless `APPROVED`. |
 | GET | `/api/v1/questions/{id}/related?lang=` | Public | Concept- and embedding-based recommendations, compared within `lang`. For non-admins, rows without text in `lang` are left out and translated once in a background task after the response ([53]); admins get the original-language fallback. |
@@ -119,6 +119,24 @@ JSONL import format, one object per line, in either shape:
 {"question": "速度ってなに？", "answer": "..."}
 {"question_ja": "速度ってなに？", "answer_ja": "...", "question_en": "What is velocity?", "answer_en": "..."}
 ```
+
+## Concepts
+
+A concept is a **sense** (one meaning); its words live in `concept_terms`,
+any number per language, and the same word may belong to several senses
+(位相 = phase / topology, "phase" = 位相 / 相) ([55]).
+
+| Method | Path | Access | Purpose |
+| --- | --- | --- | --- |
+| GET | `/api/v1/concepts?q=&lang=&limit=` | Public | Senses whose words (either language) contain `q`, best match first (exact label, exact alias, prefix, contains; then question count). Each item: `id`, `label` (preferred word in `lang`), `gloss`, `matched_term`, `question_count`. Non-admins only get senses with APPROVED questions and a label in `lang`. Empty `q` lists the most used senses. |
+| GET | `/api/v1/admin/concepts?q=&review_filter=&page=&size=` | Admin | Senses for the editor; `review_filter` is `all`, `review` (machine words or a language without a word) or `shared` (a word also used by another sense). Items carry `terms` (with `source` `EXTRACTED`/`MACHINE`/`TEACHER`), `question_count`, `shares_word_with`. |
+| GET | `/api/v1/admin/concepts/{id}?lang=` | Admin | One sense with its linked `questions` |
+| PATCH | `/api/v1/admin/concepts/{id}` | Admin | Set `gloss_ja` / `gloss_en` |
+| POST | `/api/v1/admin/concepts/{id}/terms` | Admin | Add a word (`language`, `term`, `is_preferred`); 409 if the sense already has it (compared after NFKC, case and spacing normalisation) |
+| PATCH | `/api/v1/admin/concepts/terms/{term_id}` | Admin | Edit a word or make it the label; the word becomes `TEACHER` (an empty body marks a machine word as checked) |
+| DELETE | `/api/v1/admin/concepts/terms/{term_id}` | Admin | Remove a word; if it was the label, the oldest remaining word of that language takes over |
+| POST | `/api/v1/admin/concepts/{id}/merge` | Admin | Fold this sense into `into_id`: links and words move, this sense is deleted |
+| POST | `/api/v1/admin/concepts/{id}/split` | Admin | Move `question_ids` to a new sense named by `terms`, with optional glosses |
 
 ## AI
 

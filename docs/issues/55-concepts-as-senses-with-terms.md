@@ -137,3 +137,40 @@ flagged until a teacher touches them.
 - Supersedes the name-collision handling of [53].
 - Blocks: [41]'s concept filter (build it on terms, not names).
 - Related: [38] (definers matched by term), [54] (production migration).
+
+## Log
+
+### 2026-11-10 - implemented (owner approved; admin editor now; automatic split)
+
+- Schema `e2f3a4b5c6d7`: `concept_terms` + glosses; names copied as
+  preferred words; name uniqueness dropped; `name_ja`/`name_en` kept as
+  mirrors (stage 5, dropping them, is left for later). Upgrade, downgrade
+  and upgrade again verified on the local 144-QA corpus (780 senses ->
+  1,560 words).
+- Matching: both words known -> that sense, no embedding call; one word
+  shared -> embedding similarity of the pairs vs
+  `CONCEPT_SENSE_MATCH_THRESHOLD` (0.75) -> alias or new sense.
+- Search `GET /concepts`, list filter `concept=<word>` across languages and
+  `concept_id=<id>`; home page `ConceptFilter` + "which meaning?" chooser.
+- Admin editor `/admin/manage/concepts` (alias, label, mark checked,
+  delete, gloss, merge, split; filters "needs review" and "shares a word").
+- Automatic split: `split_merged_concepts` (dry-run offline, re-extraction
+  under the new rules). On production, [54]'s backfill does the same.
+- [53]'s concept translation now adds a `MACHINE` word and passes a QA
+  that uses the concept as context.
+- Tests: `test_concept_senses.py` (19); a threshold of -1 (old "merge on
+  any shared word" behaviour) fails the 4 homonym tests, as it should.
+  pytest 515, ruff, mypy, lint, tsc, vitest 160, build: pass.
+
+Open points:
+
+- **Threshold not tuned.** The fake embeddings in tests are exact; real
+  `text-embedding-3-small` vectors for "相 | phase" and "位相 | phase" may
+  be close because both contain "phase". Tune on a small labelled list
+  (the cases in this issue) when OpenAI calls are allowed; if pairs alone
+  cannot separate them, embed the pair with a QA context.
+- **Split heuristic is broad** (236 candidate links on 105/144 questions
+  locally): the old rule discarded the evidence. Re-extraction is safe but
+  costs one DeepSeek call per question.
+- Not run locally: re-extraction (external services off for the browser
+  check).

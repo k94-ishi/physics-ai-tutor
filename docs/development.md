@@ -173,6 +173,7 @@ Layout of `backend/tests/`:
 | `test_cli.py` | `create_user` and `translate_missing` CLIs and the seed script |
 | `test_language_strict.py` | Students never get the other language on related/prerequisites/concepts; hidden rows are translated once in the background ([53]) |
 | `test_language.py` | Bilingual rows: eager translation, provenance, `lang` resolution, English ask flow, cache tiers, review in either language, translate endpoint, import shapes |
+| `test_concept_senses.py` | Concept senses ([55]): homonyms and synonyms at extraction, cross-language search and filter, admin editor (alias, label, merge, split), split CLI |
 | `test_logging.py` | Request logging middleware |
 
 Conventions:
@@ -476,6 +477,26 @@ Actions workflow (`workflow_dispatch`) runs the same thing with the
 repository's `DEEPSEEK_API_KEY`; no database is needed. Run it before
 merging changes to the `answer` or `ai_review` prompt families (rule in
 `AGENTS.md`).
+
+### Splitting concepts merged by the old rule ([55])
+
+Before [55] an extracted pair joined any concept sharing one of its words,
+and the other word was dropped (相 | phase landed on 位相 | phase). The
+stored data no longer says which word was dropped, so detection is a
+heuristic: a link is a candidate when the question's own text uses none of
+the sense's words in its original language. That also catches many
+correct links whose concept the text only implies (236 links on 105 of the
+144 seed questions), which is safe: re-extraction only replaces that
+question's links, under the new matching.
+
+```bash
+uv run python -m physics_ai_tutor.cli.split_merged_concepts --dry-run   # report, offline
+uv run python -m physics_ai_tutor.cli.split_merged_concepts --limit 50  # re-extract (DeepSeek)
+```
+
+On production the `backfill_levels` pass ([54]) re-extracts every APPROVED
+question anyway, which applies the same split. Remaining mistakes are fixed
+by hand in `/admin/manage/concepts` (merge / split / alias).
 
 ### Exporting the review dataset
 

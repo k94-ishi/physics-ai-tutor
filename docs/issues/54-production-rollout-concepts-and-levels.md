@@ -55,3 +55,13 @@ On hold: the owner cannot touch production yet (2026-11-09).
 
 - Blocked by: owner access to production
 - Related: [03] (same migration step), [52] (production sample), [53], [55]
+
+## Log
+
+### 2026-11-10 - [55] landed
+
+Head is now `e2f3a4b5c6d7` (concept senses). Step 4's `backfill_levels`
+re-extracts under the new matching, which also splits senses the old rule
+had merged; tune `CONCEPT_SENSE_MATCH_THRESHOLD` first ([55] open point).
+Then run `split_merged_concepts --dry-run` to see what is left, and fix
+stragglers in `/admin/manage/concepts`.

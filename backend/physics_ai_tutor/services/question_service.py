@@ -307,6 +307,11 @@ def _embed_language(db: Session, question: Question, language: Language) -> None
         )
 
 
+def extract_concepts_best_effort(db: Session, question: Question) -> None:
+    """Public entry for callers that import rows without stored tags."""
+    _attach_concepts_best_effort(db, question)
+
+
 def _attach_concepts_best_effort(db: Session, question: Question) -> None:
     text = question.original_text()
     try:
@@ -449,7 +454,9 @@ def import_questions_from_jsonl(
     status: str,
     source: str,
     language: Language | str = Language.JA,
+    extract_concepts: bool = True,
 ) -> list[Question]:
+    """Create rows; `extract_concepts=False` lets the seed supply stored tags."""
     duplicates = _find_duplicate_texts(db, rows)
 
     if duplicates:
@@ -470,7 +477,7 @@ def import_questions_from_jsonl(
             for lang in Language:
                 _embed_language(db, db_question, lang)
 
-            if status == QuestionStatus.APPROVED:
+            if extract_concepts and status == QuestionStatus.APPROVED:
                 _attach_concepts_best_effort(db, db_question)
 
             _translate_missing(db, db_question)

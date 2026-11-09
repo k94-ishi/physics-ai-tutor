@@ -1,3 +1,14 @@
+"""Load seed.json into an empty database ([40], [53], [55]).
+
+Everything an LLM produced and a teacher may rely on is stored in the
+file, so a disposable local stack can be rebuilt without DeepSeek:
+machine translations (with their provenance), tags (`"<ja> | <en>"`
+pairs, the extraction format) and the two difficulty levels. Embeddings
+are not stored: they are a deterministic function of the text and the
+embedding model, so the seed recomputes them (OpenAI only). Entries
+without `tags` fall back to concept extraction (DeepSeek).
+"""
+
 import json
 from pathlib import Path
 
@@ -5,26 +16,30 @@ from pydantic import BaseModel, Field
 
 from physics_ai_tutor.database.database import SessionLocal
 from physics_ai_tutor.models.question import Question
+from physics_ai_tutor.schemas.language import TextProvenance
 from physics_ai_tutor.schemas.question import (
     QuestionCreate,
     QuestionSource,
     QuestionStatus,
 )
-from physics_ai_tutor.services.question_service import import_questions_from_jsonl
+from physics_ai_tutor.services import concept_service, question_service
 
 
-class SeedLevels(BaseModel):
-    """Difficulty ratings stored in seed.json so a fresh stack has them ([40])."""
+class SeedExtras(BaseModel):
+    """The non-text fields of a seed entry."""
 
     physics_level: int | None = Field(default=None, ge=0, le=4)
     math_level: int | None = Field(default=None, ge=0, le=4)
+    ja_provenance: TextProvenance | None = None
+    en_provenance: TextProvenance | None = None
+    tags: list[str] | None = None
 
 
-LEVEL_KEYS = ("physics_level", "math_level")
+EXTRA_KEYS = tuple(SeedExtras.model_fields)
 
 
-def load_seed_file(seed_file: Path) -> list[tuple[QuestionCreate, SeedLevels]]:
-    """Read seed.json into question texts plus their optional levels.
+def load_seed_file(seed_file: Path) -> list[tuple[QuestionCreate, SeedExtras]]:
+    """Read seed.json into question texts plus their stored extras.
 
     Entries may use `question`/`answer` (Japanese) or the explicit
     `question_ja`/`answer_ja`/`question_en`/`answer_en` columns; missing
@@ -35,8 +50,8 @@ def load_seed_file(seed_file: Path) -> list[tuple[QuestionCreate, SeedLevels]]:
 
     rows = []
     for entry in data:
-        levels = {key: entry.pop(key) for key in LEVEL_KEYS if key in entry}
-        rows.append((QuestionCreate(**entry), SeedLevels(**levels)))
+        extras = {key: entry.pop(key) for key in EXTRA_KEYS if key in entry}
+        rows.append((QuestionCreate(**entry), SeedExtras(**extras)))
     return rows
 
 
@@ -44,13 +59,24 @@ def load_seed_entries(seed_file: Path) -> list[QuestionCreate]:
     return [question for question, _ in load_seed_file(seed_file)]
 
 
-def apply_seed_levels(questions: list[Question], levels: list[SeedLevels]) -> None:
-    # Seeded ratings win over the ones concept extraction just produced.
-    for question, seed_levels in zip(questions, levels, strict=True):
-        if seed_levels.physics_level is not None:
-            question.physics_level = seed_levels.physics_level
-        if seed_levels.math_level is not None:
-            question.math_level = seed_levels.math_level
+def apply_seed_extras(db, question: Question, extras: SeedExtras) -> None:
+    """Attach stored tags, then let stored values win over computed ones."""
+    if extras.tags is None:
+        question_service.extract_concepts_best_effort(db, question)
+    else:
+        concept_service.attach_concepts_to_question(
+            db, question.id, extras.tags, language=question.original_language
+        )
+
+    # After extraction, which writes levels of its own.
+    if extras.physics_level is not None:
+        question.physics_level = extras.physics_level
+    if extras.math_level is not None:
+        question.math_level = extras.math_level
+    if extras.ja_provenance is not None and question.question_ja is not None:
+        question.ja_provenance = extras.ja_provenance
+    if extras.en_provenance is not None and question.question_en is not None:
+        question.en_provenance = extras.en_provenance
 
 
 def seed():
@@ -60,13 +86,15 @@ def seed():
     db = SessionLocal()
 
     try:
-        questions = import_questions_from_jsonl(
+        questions = question_service.import_questions_from_jsonl(
             db,
             [question for question, _ in rows],
             status=QuestionStatus.APPROVED,
             source=QuestionSource.MANUAL,
+            extract_concepts=False,
         )
-        apply_seed_levels(questions, [levels for _, levels in rows])
+        for question, (_, extras) in zip(questions, rows, strict=True):
+            apply_seed_extras(db, question, extras)
         db.commit()
     finally:
         db.close()

@@ -95,3 +95,10 @@ links the help page ([21]) will carry.
   `resolved` and the restore waits for it; a regression test pins
   one-search-in-`en`. Left open for the owner to verify; flip the row in
   status.md when satisfied.
+
+### 2026-11-10 - closed
+
+Closed on the owner's instruction (close when the coding checks pass).
+Checks at closing: pytest 517, ruff, mypy, lint, tsc, vitest 164, build.
+
+No change since the 2026-11-02 log.

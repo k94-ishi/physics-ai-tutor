@@ -101,3 +101,10 @@ Acceptance:
 - Admin-queue concept filter (by tag) is still open.
 - Tests: QuestionList cards (chips outside the link, 5 + more, no search
   box), QuestionDetail related-card chips and no heading. vitest 162.
+
+### 2026-11-10 - closed
+
+Closed on the owner's instruction (close when the coding checks pass).
+Checks at closing: pytest 517, ruff, mypy, lint, tsc, vitest 164, build.
+
+Admin queue: tags on each card are buttons that filter the queue on the server (`?concept=` in the URL, page totals correct, banner with a clear button). Vitest `admin/questions/__tests__/page.test.tsx`.

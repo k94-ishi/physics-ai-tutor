@@ -611,10 +611,28 @@ docker compose exec backend uv run python -m physics_ai_tutor.database.seed
 ### Seed data
 
 `seed.json` holds 144 entries: 21 hand-translated bilingual pairs plus 123
-teacher-approved Q&A exported from production on 2026-10-30 (Japanese
-only; the English side is machine translated on import). Refresh the
-production part by exporting `questions` with `status = 'APPROVED'` again
-after a review pass.
+teacher-approved Q&A exported from production on 2026-10-30. The local
+database is **disposable**: everything in it that an LLM produced is also
+in the file (2026-11-10), so a reset loses nothing:
+
+| Field | Meaning |
+| --- | --- |
+| `question_ja`, `answer_ja`, `question_en`, `answer_en` | Both languages for every entry |
+| `en_provenance` (optional) | `MACHINE` for the 123 machine translations; absent = hand-written (`HUMAN`) |
+| `physics_level`, `math_level` | Difficulty ratings ([40]); applied after any extraction so they win |
+| `tags` | The entry's tags as `"<ja> \| <en>"` pairs, the concept-extraction output format ([55]) |
+
+All LLM-made fields come from one extraction run (the `elm` stack of the
+[40] trial), so tags and levels belong together. Embeddings are not
+stored: they are a deterministic function of text and embedding model.
+
+So seeding needs `OPENAI_API_KEY` (embeddings) but **no DeepSeek call**.
+Entries without `tags` fall back to concept extraction, and entries
+missing a language fall back to translation (both DeepSeek). After
+changing data in a local database that should survive a reset, write it
+back with `python -m physics_ai_tutor.cli.export_seed` (no API calls; it
+keeps the file's order and reports aliases and glosses, which the format
+does not carry yet).
 
 `backend/physics_ai_tutor/database/seed.py` loads
 `backend/physics_ai_tutor/database/seed.json` and inserts each entry as an
@@ -645,8 +663,9 @@ after concept extraction, so they win over a fresh rating and every new
 stack shows the two-axis grid. They are advisory like any rating; the
 production rows still need `backfill_levels`.
 
-`seed.jsonl` in the same directory holds the same content in JSONL form and
-is the format accepted by the admin import endpoint
+`seed.jsonl` in the same directory holds the question texts in JSONL form
+(no tags, levels or translations) and is the format accepted by the admin
+import endpoint
 (`POST /api/v1/questions/import`) and the "Upload" page in the admin UI.
 
 ### Creating an admin user

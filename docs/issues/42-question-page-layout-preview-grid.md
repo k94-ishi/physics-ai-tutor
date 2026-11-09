@@ -170,3 +170,10 @@ plain related list instead, because "Read these first" ([38]) already
 answers "what is below me?". `QuestionLevelGrid`, its test and the
 `grid.*` strings are deleted; the levels stay in the data for [38]'s
 ranking. Acceptance item 3 (grid placement) is dropped.
+
+### 2026-11-10 - closed
+
+Closed on the owner's instruction (close when the coding checks pass).
+Checks at closing: pytest 517, ruff, mypy, lint, tsc, vitest 164, build.
+
+Remaining item (home-page preview) moved to [56]; the grid was dropped by the owner, the loading state shipped.

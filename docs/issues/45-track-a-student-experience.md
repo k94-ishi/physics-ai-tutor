@@ -15,11 +15,11 @@ Ordered queue; details live in each issue.
 4. ~~[41] concept chips for students~~ done
 5. ~~[38] prerequisite links, not just similar~~ done 2026-11-04
 6. ~~[42] more related + preview modal + two-axis grid~~ done 2026-11-04
-7. [43] `be0e1aa` sticky ask bar (shipped in bc4d4b4; close after a look)
-8. [53] language mixing in English mode - **next up** (2026-11-09)
-9. [42] reopened: home-page preview (loading headings done; grid removed 2026-11-09)
-10. [55] concepts as senses with terms - design awaiting owner approval
-11. [41] reopened: tag chips on cards done 2026-11-10; admin-queue tag filter open
+7. ~~[43] sticky ask bar~~ closed 2026-11-10
+8. ~~[53] language mixing~~ closed 2026-11-10
+9. ~~[42] related list, preview, loading~~ closed 2026-11-10 -> [56] home-page preview (**next up**)
+10. [55] tags as senses - implemented; open points in its log
+11. ~~[41] tag chips and admin tag filter~~ closed 2026-11-10
 12. [21] `ef104ba` /help page
 
 Gate between 2. and 5./6.: **passed locally 2026-11-04** ([52]: within

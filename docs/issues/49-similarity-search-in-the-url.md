@@ -103,3 +103,10 @@ shared search almost free:
   *recipient's* language embeddings and can quietly return nothing.
   Filed as [50]; not folded in here because it touches the language
   provider and every page, not just this parameter.
+
+### 2026-11-10 - closed
+
+Closed on the owner's instruction (close when the coding checks pass).
+Checks at closing: pytest 517, ruff, mypy, lint, tsc, vitest 164, build.
+
+No change since the 2026-11-02 log.

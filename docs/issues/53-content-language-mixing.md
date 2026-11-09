@@ -94,3 +94,10 @@ new third party the privacy page does not list. Tests: 2 more in
 The "skip on unique-name collision" rule is a stopgap. Owner: 位相 =
 phase/topology and speed = 速さ/速度 need a general structure; designed in
 [55] (senses with many terms per language).
+
+### 2026-11-10 - closed
+
+Closed on the owner's instruction (close when the coding checks pass).
+Checks at closing: pytest 517, ruff, mypy, lint, tsc, vitest 164, build.
+
+Concept-name collisions are now handled structurally by [55].

@@ -96,6 +96,8 @@ const ADMIN_QUERY_DEFAULTS = {
     ids: "",
     status: "",
     conceptFilter: "",
+    // タグで絞り込む([41])。サーバー側で絞るので件数とページ送りが正しい。
+    concept: "",
     sort: "",
     aiVerdict: "",
 };
@@ -219,7 +221,8 @@ function AdminQuestionsPageInner() {
             status: QuestionStatus | "",
             sort: QuestionSort | "" = "",
             aiVerdict: AiVerdictFilter | "" = "",
-            ids: string = ""
+            ids: string = "",
+            concept: string = ""
         ) => {
             const requestId = ++listRequestId.current;
             setListLoading(true);
@@ -235,6 +238,7 @@ function AdminQuestionsPageInner() {
                     sort: sort || undefined,
                     aiVerdict: aiVerdict || undefined,
                     ids: idFilter ?? undefined,
+                    concept: concept || undefined,
                 });
 
                 if (requestId !== listRequestId.current) {
@@ -300,6 +304,7 @@ function AdminQuestionsPageInner() {
     }, [
         queryState.keyword,
         queryState.ids,
+        queryState.concept,
         statusFilter,
         conceptFilter,
         sortOption,
@@ -309,13 +314,14 @@ function AdminQuestionsPageInner() {
 
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter, queryState.ids);
+        loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter, queryState.ids, queryState.concept);
     }, [
         loadList,
         page,
         size,
         queryState.keyword,
         queryState.ids,
+        queryState.concept,
         statusFilter,
         sortOption,
         aiVerdictFilter,
@@ -404,7 +410,7 @@ function AdminQuestionsPageInner() {
 
         try {
             await deleteQuestion(deleteTarget.id);
-            await loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter, queryState.ids);
+            await loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter, queryState.ids, queryState.concept);
             showToast(t("admin.questionDeleted"));
             setDeleteTarget(null);
         } catch (error) {
@@ -508,7 +514,7 @@ function AdminQuestionsPageInner() {
 
             setSelectedIds(new Set());
             setBulkAction(null);
-            await loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter, queryState.ids);
+            await loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter, queryState.ids, queryState.concept);
         } catch (error) {
             console.error(error);
             showToast(t("admin.bulkActionFailed"), "error");
@@ -867,6 +873,23 @@ function AdminQuestionsPageInner() {
                 </>
             ) : (
                 <>
+                    {queryState.concept && (
+                        <div className="flex flex-wrap items-center gap-3 rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                            <span>
+                                {t("concepts.filterBanner", {
+                                    concept: queryState.concept,
+                                })}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setQueryState({ concept: "", page: "1" })}
+                                className="cursor-pointer font-medium underline underline-offset-2"
+                            >
+                                {t("concepts.clearFilter")}
+                            </button>
+                        </div>
+                    )}
+
                     {listLoading && <LoadingState />}
 
                     {!listLoading && listError && (
@@ -874,7 +897,7 @@ function AdminQuestionsPageInner() {
                             variant="error"
                             message={t("admin.fetchFailed")}
                             onRetry={() =>
-                                loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter, queryState.ids)
+                                loadList(page, size, queryState.keyword, statusFilter, sortOption, aiVerdictFilter, queryState.ids, queryState.concept)
                             }
                         />
                     )}
@@ -1168,12 +1191,26 @@ function AdminQuestionsPageInner() {
                                                     {hasConcepts && (
                                                         <div className="flex flex-wrap gap-1">
                                                             {question.concepts.map((concept) => (
-                                                                <span
+                                                                <button
                                                                     key={concept}
-                                                                    className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600"
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setQueryState({
+                                                                            concept,
+                                                                            page: "1",
+                                                                        })
+                                                                    }
+                                                                    title={t("concepts.chipTitle", {
+                                                                        concept,
+                                                                    })}
+                                                                    className={`cursor-pointer rounded-full px-2 py-0.5 text-xs transition-colors ${
+                                                                        concept === queryState.concept
+                                                                            ? "bg-blue-600 text-white"
+                                                                            : "bg-gray-100 text-gray-600 hover:bg-blue-50 hover:text-blue-700"
+                                                                    }`}
                                                                 >
                                                                     {concept}
-                                                                </span>
+                                                                </button>
                                                             ))}
                                                         </div>
                                                     )}

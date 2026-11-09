@@ -62,3 +62,10 @@ without scrolling back - the chat-like reading position.
 - The bar did not need the planned collapse-on-blur: the component only
   renders results after a search, so its resting height already is one
   input line.
+
+### 2026-11-10 - closed
+
+Closed on the owner's instruction (close when the coding checks pass).
+Checks at closing: pytest 517, ruff, mypy, lint, tsc, vitest 164, build.
+
+No change since the 2026-11-02 log; the sticky bar is in the shipped code and covered by `StickyAskBar.test.tsx`.

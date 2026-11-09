@@ -87,11 +87,12 @@ def test_seed_keeps_hand_translations(db, _bind_cli_sessions):
     hand_translated = {
         entry["question_ja"]
         for entry in _seed_file_entries()
-        if entry.get("question_en")
+        if entry.get("question_en") and "en_provenance" not in entry
     }
+    assert len(hand_translated) == 21
     assert all(q.question_en is not None for q in questions)
     assert all(q.ja_provenance == "ORIGINAL" for q in questions)
-    # Hand translations stay HUMAN; production entries get MACHINE ones.
+    # Hand translations stay HUMAN; stored machine ones keep MACHINE.
     for q in questions:
         expected = "HUMAN" if q.question_ja in hand_translated else "MACHINE"
         assert q.en_provenance == expected, q.question_ja
@@ -138,3 +139,37 @@ def test_seed_levels_override_extracted_levels(db, _bind_cli_sessions):
         question = by_text[entry["question_ja"]]
         assert question.physics_level == entry["physics_level"]
         assert question.math_level == entry["math_level"]
+
+
+def test_seed_needs_no_deepseek_call(db, _bind_cli_sessions, monkeypatch):
+    # Translations and tags come from the file, so DeepSeek is never asked.
+    from physics_ai_tutor.services import concept_service, translation_service
+
+    def _forbidden(*args, **kwargs):
+        raise AssertionError("seed must not call DeepSeek")
+
+    monkeypatch.setattr(concept_service, "extract_concept_names", _forbidden)
+    monkeypatch.setattr(translation_service, "translate_qa", _forbidden)
+
+    seed_module.seed()
+
+    entries = _seed_file_entries()
+    by_text = {q.question_ja: q for q in db.query(Question).all()}
+    for entry in entries:
+        question = by_text[entry["question_ja"]]
+        assert question.question_en == entry["question_en"]
+        assert question.en_provenance == entry.get("en_provenance", "HUMAN")
+
+
+def test_export_seed_round_trips_the_seed_file(db, _bind_cli_sessions):
+    from physics_ai_tutor.cli import export_seed
+
+    seed_module.seed()
+    entries = _seed_file_entries()
+
+    exported, notes = export_seed.build_entries(
+        db, [entry["question_ja"] for entry in entries]
+    )
+
+    assert exported == entries
+    assert notes == []

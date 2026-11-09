@@ -602,6 +602,12 @@ exists in the database (or appears twice in the file), a
 an already seeded database, import only the new rows through the admin
 import endpoint, or reset the database first.
 
+Every entry also carries `physics_level` and `math_level` (0-4), the
+LLM ratings from the 2026-11-03 local run ([40]). The seed writes them
+after concept extraction, so they win over a fresh rating and every new
+stack shows the two-axis grid. They are advisory like any rating; the
+production rows still need `backfill_levels`.
+
 `seed.jsonl` in the same directory holds the same content in JSONL form and
 is the format accepted by the admin import endpoint
 (`POST /api/v1/questions/import`) and the "Upload" page in the admin UI.

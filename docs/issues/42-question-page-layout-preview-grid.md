@@ -123,3 +123,34 @@ Acceptance:
 - [ ] Home-page cards and similarity results open the preview modal.
 - [ ] Both headings and spinners are visible while loading.
 - [ ] With all related QAs at one physics level, the grid still shows five columns.
+
+### 2026-11-09 - local data check (read-only)
+
+- Production has no ratings (owner checked `/admin/manage/levels`). With
+  no levels, `showGrid` is false and the page falls back to the flat
+  list - the "single column" the owner saw is that list, not a collapsed
+  grid. The grid code itself is not proven broken by this report.
+- The 144 ratings exist only in local volumes: `elm` (at head
+  `d1e2f3a4b5c6`, `physics_level`/`math_level`, 144/144 rated) and `oak`
+  (one revision behind, still `answer_*_level`, 144/144 rated). The
+  default stack is at `7f3b1c9d4e21` with 30 rows and no level columns.
+  `seed.json` carries no levels, so a fresh seed never has a grid.
+- Distribution on `elm` (APPROVED, rows = math, columns = physics 0-4):
+
+  | math \ physics | 0 | 1 | 2 | 3 | 4 |
+  | --- | --- | --- | --- | --- | --- |
+  | 3 | 0 | 1 | 5 | 1 | 0 |
+  | 2 | 0 | 15 | 17 | 11 | 0 |
+  | 1 | 0 | 26 | 31 | 8 | 0 |
+  | 0 | 1 | 18 | 7 | 3 | 0 |
+
+  Physics spreads over 1-3, so related QAs normally span several columns;
+  the full 0-4 axis fix is still worth doing for sparse cases.
+
+### 2026-11-09 - levels added to seed.json
+
+The `elm` ratings (144/144, matched by Japanese question text) are now
+in `seed.json`; `seed.py` applies them after import so concept
+extraction cannot overwrite them. Production is on hold (owner cannot
+touch it yet), so the grid stays a local-only feature until the
+backfill.

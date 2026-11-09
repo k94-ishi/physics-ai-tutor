@@ -121,3 +121,20 @@ def test_translate_missing_cli_dry_run_changes_nothing(db, _bind_cli_sessions, c
     assert "would translate" in capsys.readouterr().out
     db.refresh(legacy)
     assert legacy.question_en is None
+
+
+def test_seed_file_carries_levels_for_every_entry():
+    # Fresh stacks need ratings for the two-axis grid without an LLM call ([42]).
+    for entry in _seed_file_entries():
+        assert 0 <= entry["physics_level"] <= 4
+        assert 0 <= entry["math_level"] <= 4
+
+
+def test_seed_levels_override_extracted_levels(db, _bind_cli_sessions):
+    seed_module.seed()
+
+    by_text = {q.question_ja: q for q in db.query(Question).all()}
+    for entry in _seed_file_entries():
+        question = by_text[entry["question_ja"]]
+        assert question.physics_level == entry["physics_level"]
+        assert question.math_level == entry["math_level"]

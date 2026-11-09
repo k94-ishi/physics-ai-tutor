@@ -11,7 +11,8 @@ import Pagination from "@/components/ui/Pagination";
 import MarkdownContent from "@/components/ui/MarkdownContent";
 import ReferencedQuestions from "@/components/ui/ReferencedQuestions";
 import QuestionSearchAndAsk from "@/components/QuestionSearchAndAsk";
-import ConceptFilter, { MeaningChooser } from "@/components/ui/ConceptFilter";
+import ConceptChips from "@/components/ui/ConceptChips";
+import MeaningChooser from "@/components/ui/MeaningChooser";
 import { ConceptSearchItem } from "@/types/concept";
 import { useQueryState } from "@/lib/hooks/useQueryState";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
@@ -19,6 +20,8 @@ import { useLanguage } from "@/lib/i18n/LanguageContext";
 type Mode = "similarity" | "keyword";
 
 const KEYWORD_DEBOUNCE_MS = 300;
+// カードではタグを少なめに出し、残りは「ほかN件」で開く。
+const CARD_TAGS_VISIBLE = 5;
 
 const LIST_QUERY_DEFAULTS = {
     page: "1",
@@ -205,8 +208,6 @@ function QuestionListInner() {
 
     const browseList = (
         <>
-            <ConceptFilter onSelect={chooseSense} />
-
             {conceptBanner}
 
             {queryState.concept && !queryState.conceptId && (
@@ -257,7 +258,7 @@ function QuestionListInner() {
                         {listItems.map((question) => (
                             <Card
                                 key={question.id}
-                                className="transition-colors hover:border-blue-300 hover:bg-blue-50/50"
+                                className="flex flex-col gap-2 transition-colors hover:border-blue-300 hover:bg-blue-50/50"
                             >
                                 <Link href={`/questions/${question.id}`}>
                                     <span className="font-medium text-gray-900">
@@ -269,6 +270,12 @@ function QuestionListInner() {
                                         variant="preview"
                                     />
                                 </Link>
+
+                                {/* Chips are links too, so they sit beside the card link. */}
+                                <ConceptChips
+                                    concepts={question.concepts}
+                                    visible={CARD_TAGS_VISIBLE}
+                                />
 
                                 <ReferencedQuestions
                                     items={question.retrieved_questions}

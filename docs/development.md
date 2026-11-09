@@ -256,6 +256,16 @@ button never bounces forward. Query embeddings are cached server-side in
 model upgrade misses the cache by construction instead of mixing
 incompatible vectors.
 
+### Naming: "tag" on screen, "concept" in code
+
+Students and teachers see **タグ / tag** (owner, 2026-11-10); the code,
+tables and API keep the developer name `concept` (`concepts`,
+`concept_terms`, `?concept=`, `ConceptChips`). Translation keys keep their
+`concepts.*` prefix. Keep physics wording that is not about the tag
+feature (「抽象概念」 in the level rubric, the `UNNEEDED_TOOLS` reason
+text) as it is. Tag chips carry no visible heading; the list has the
+accessible name "タグ"/"Tags".
+
 ### The sticky ask bar
 
 `StickyAskBar` ([43]) fixes the ask box to the bottom of the question

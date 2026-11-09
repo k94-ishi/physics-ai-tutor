@@ -170,15 +170,27 @@ describe("concept chips", () => {
         );
     });
 
-    it("shows no concept section when the question has none", async () => {
+    it("shows tags without a heading, and nothing when there are none", async () => {
         mocked.fetchQuestion.mockResolvedValue(makeQuestion({ concepts: [] }));
         mocked.fetchRelatedQuestions.mockResolvedValue([]);
         renderDetail();
 
         await screen.findByText("速度ってなに？");
-        expect(
-            screen.queryByText("この回答に出てくる概念")
-        ).not.toBeInTheDocument();
+        expect(screen.queryByRole("list", { name: "タグ" })).not.toBeInTheDocument();
+        expect(screen.queryByText(/概念/)).not.toBeInTheDocument();
+    });
+
+    it("shows each related card's tags beside its preview button", async () => {
+        mocked.fetchQuestion.mockResolvedValue(makeQuestion({ concepts: [] }));
+        mocked.fetchRelatedQuestions.mockResolvedValue([
+            makeQuestion({ id: 2, question: "加速度ってなに？", concepts: ["加速度"] }),
+        ]);
+        renderDetail();
+
+        const chip = await screen.findByRole("link", { name: "加速度" });
+        expect(chip).toHaveAttribute("href", "/?concept=%E5%8A%A0%E9%80%9F%E5%BA%A6");
+        // The tag link is not nested inside the card's preview button.
+        expect(chip.closest("button")).toBeNull();
     });
 });
 

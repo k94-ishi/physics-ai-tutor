@@ -28,6 +28,7 @@ const RELATED_FETCH_LIMIT = 20;
 const RELATED_VISIBLE = 10;
 // 前提の「穴」チップの初期表示数(ConceptChipsと同じ発想)。
 const GAPS_VISIBLE = 8;
+const CARD_TAGS_VISIBLE = 5;
 
 /**
  * Client-side question view: refetches in the active UI language, so
@@ -199,7 +200,7 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
                         {prerequisites?.items.map((item) => (
                             <Card
                                 key={item.id}
-                                className="transition-colors hover:border-emerald-300 hover:bg-emerald-50/50"
+                                className="flex flex-col gap-2 transition-colors hover:border-emerald-300 hover:bg-emerald-50/50"
                             >
                                 <button
                                     type="button"
@@ -215,6 +216,11 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
                                         variant="preview"
                                     />
                                 </button>
+
+                                <ConceptChips
+                                    concepts={item.concepts}
+                                    visible={CARD_TAGS_VISIBLE}
+                                />
                             </Card>
                         ))}
 
@@ -281,7 +287,7 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
                         {visibleRelated.map((item) => (
                             <Card
                                 key={item.id}
-                                className="transition-colors hover:border-blue-300 hover:bg-blue-50/50"
+                                className="flex flex-col gap-2 transition-colors hover:border-blue-300 hover:bg-blue-50/50"
                             >
                                 <button
                                     type="button"
@@ -297,6 +303,11 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
                                         variant="preview"
                                     />
                                 </button>
+
+                                <ConceptChips
+                                    concepts={item.concepts}
+                                    visible={CARD_TAGS_VISIBLE}
+                                />
                             </Card>
                         ))}
                     </div>

@@ -8,7 +8,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
 });
 
 import * as api from "@/lib/api";
-import ConceptFilter, { MeaningChooser } from "@/components/ui/ConceptFilter";
+import MeaningChooser from "@/components/ui/MeaningChooser";
 import { LanguageProvider } from "@/lib/i18n/LanguageContext";
 import { ConceptSearchItem } from "@/types/concept";
 
@@ -31,29 +31,6 @@ const matter: ConceptSearchItem = {
 
 beforeEach(() => {
     mocked.searchConcepts.mockReset();
-});
-
-describe("ConceptFilter", () => {
-    it("lists every meaning of a typed word and returns the chosen one", async () => {
-        mocked.searchConcepts.mockResolvedValue([wave, matter]);
-        const onSelect = vi.fn();
-        render(
-            <LanguageProvider>
-                <ConceptFilter onSelect={onSelect} />
-            </LanguageProvider>
-        );
-
-        await userEvent.type(screen.getByRole("combobox"), "phase");
-
-        expect(await screen.findByText("位相 — 波の位相")).toBeInTheDocument();
-        expect(screen.getByText("相 — 物質の状態")).toBeInTheDocument();
-        await userEvent.click(screen.getByText("相 — 物質の状態"));
-
-        expect(onSelect).toHaveBeenCalledWith(matter);
-        // Debounced: one request for the whole word, not one per key.
-        expect(mocked.searchConcepts).toHaveBeenCalledTimes(1);
-        expect(mocked.searchConcepts).toHaveBeenCalledWith("phase", "ja");
-    });
 });
 
 describe("MeaningChooser", () => {

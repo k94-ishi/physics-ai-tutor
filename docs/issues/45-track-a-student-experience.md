@@ -19,7 +19,7 @@ Ordered queue; details live in each issue.
 8. [53] language mixing in English mode - **next up** (2026-11-09)
 9. [42] reopened: home-page preview (loading headings done; grid removed 2026-11-09)
 10. [55] concepts as senses with terms - design awaiting owner approval
-11. [41] reopened: concept filter (on [55]'s terms), concepts on related cards
+11. [41] reopened: tag chips on cards done 2026-11-10; admin-queue tag filter open
 12. [21] `ef104ba` /help page
 
 Gate between 2. and 5./6.: **passed locally 2026-11-04** ([52]: within

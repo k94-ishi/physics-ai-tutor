@@ -88,3 +88,16 @@ Acceptance:
 - [ ] An admin can filter the queue by a concept; totals and pagination are correct.
 - [ ] Each related card shows its concepts; clicking one opens the concept list,
       clicking the question opens the preview.
+
+### 2026-11-10 - tag chips on cards instead of a search box (owner)
+
+- After trying the concept search box ([55]), the owner preferred chips on
+  every card: the home-page cards and the related / "Read these first"
+  cards on the question page now show up to 5 tags (+ "more"), as links
+  beside the card link (never nested). The search box is removed; the
+  `GET /concepts` endpoint stays for the "which meaning?" chooser.
+- Naming: the UI calls them **タグ / tag**; the heading "この回答に出てくる
+  概念 / Concepts in this answer" is removed. Code keeps `concept`.
+- Admin-queue concept filter (by tag) is still open.
+- Tests: QuestionList cards (chips outside the link, 5 + more, no search
+  box), QuestionDetail related-card chips and no heading. vitest 162.

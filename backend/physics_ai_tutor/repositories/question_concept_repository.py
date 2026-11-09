@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from physics_ai_tutor.models import Concept, QuestionConcept
+from physics_ai_tutor.models import Concept, Question, QuestionConcept
 
 
 def link(db: Session, question_id: int, concept_id: int) -> None:
@@ -107,3 +107,16 @@ def delete_by_question_id(db: Session, question_id: int) -> None:
         .delete()
     )
     db.flush()
+
+
+def context_question(db: Session, concept_id: int, language: str) -> str | None:
+    """A question text in `language` that uses the concept, for translation."""
+    column = Question.question_ja if language == "ja" else Question.question_en
+    row = (
+        db.query(column)
+        .join(QuestionConcept, QuestionConcept.question_id == Question.id)
+        .filter(QuestionConcept.concept_id == concept_id, column.is_not(None))
+        .order_by(Question.status != "APPROVED", Question.id)
+        .first()
+    )
+    return row[0] if row else None

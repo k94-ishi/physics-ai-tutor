@@ -174,6 +174,7 @@ def fetch_questions(
     ai_verdict: str | None = None,
     ids: list[int] | None = None,
     concept: str | None = None,
+    concept_id: int | None = None,
 ) -> QuestionListResponse:
     offset = (page - 1) * size
     language_filter = Language(language) if only_with_language else None
@@ -192,6 +193,7 @@ def fetch_questions(
         ai_verdict=ai_verdict,
         ids=ids,
         concept=concept,
+        concept_id=concept_id,
     )
 
     total = question_repository.count_questions(
@@ -205,6 +207,7 @@ def fetch_questions(
         ai_verdict=ai_verdict,
         ids=ids,
         concept=concept,
+        concept_id=concept_id,
     )
 
     prepare_for_response(db, questions, language, strict_language=only_with_language)

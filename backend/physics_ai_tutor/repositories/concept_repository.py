@@ -1,7 +1,9 @@
+import unicodedata
+
 from sqlalchemy import func
 from sqlalchemy.orm import Session, aliased
 
-from physics_ai_tutor.models import Concept, QuestionConcept
+from physics_ai_tutor.models import Concept, ConceptTerm, QuestionConcept
 
 
 def get_by_name(db: Session, name: str, language: str = "ja") -> Concept | None:
@@ -19,12 +21,10 @@ def create(
     name_en: str | None = None,
     name: str | None = None,
 ) -> Concept:
+    """A new sense; given names become its preferred terms ([55])."""
     # Legacy single-name form means Japanese.
     if name is not None:
         name_ja = name
-
-    if name_ja is None and name_en is None:
-        raise ValueError("A concept needs a name in at least one language")
 
     concept = Concept(
         name_ja=name_ja,
@@ -34,11 +34,27 @@ def create(
         embedding_model=embedding_model,
         extraction_prompt_version=extraction_prompt_version,
     )
+    for language, word in (("ja", name_ja), ("en", name_en)):
+        if word:
+            concept.terms.append(
+                ConceptTerm(
+                    language=language,
+                    term=word,
+                    normalized=normalize(word),
+                    is_preferred=True,
+                    source="EXTRACTED",
+                )
+            )
 
     db.add(concept)
     db.flush()
 
     return concept
+
+
+def normalize(term: str) -> str:
+    """NFKC, collapsed whitespace, case-folded: the term matching key."""
+    return " ".join(unicodedata.normalize("NFKC", term).split()).casefold()
 
 
 def list_all(db: Session) -> list[Concept]:

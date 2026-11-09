@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     # API
     openai_api_key: str
     embedding_model: str = "text-embedding-3-small"
+    # Cosine similarity above which an extracted pair joins a sense that
+    # shares only one of its words ([55]); below it a new sense is created.
+    concept_sense_match_threshold: float = 0.75
     deepseek_api_key: str
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_chat_model: str = "deepseek-chat"

@@ -1,6 +1,7 @@
 from .ai_review import AiReview  # noqa: F401
 from .ai_review_run import AiReviewRun  # noqa: F401
 from .concept import Concept  # noqa: F401
+from .concept_term import ConceptTerm  # noqa: F401
 from .embedding import QuestionEmbedding  # noqa: F401
 from .query_embedding import QueryEmbedding  # noqa: F401
 from .question import Question  # noqa: F401
@@ -14,6 +15,7 @@ __all__ = [
     "AiReview",
     "AiReviewRun",
     "Concept",
+    "ConceptTerm",
     "Question",
     "QuestionAsk",
     "QueryEmbedding",

@@ -156,7 +156,10 @@ def get_questions(
         default=None,
         min_length=1,
         max_length=255,
-        description="Questions linked to this concept (name in either language).",
+        description="Questions linked to any sense having this word (either language).",
+    ),
+    concept_id: int | None = Query(
+        default=None, ge=1, description="Questions linked to exactly this sense."
     ),
     db: Session = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
@@ -181,6 +184,7 @@ def get_questions(
         ai_verdict=ai_verdict.value if ai_verdict and is_admin else None,
         ids=_parse_ids(ids) if is_admin else None,
         concept=concept,
+        concept_id=concept_id,
     )
 
 

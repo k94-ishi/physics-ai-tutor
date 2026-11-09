@@ -47,9 +47,14 @@ def _is_definition_question(text: str | None, concept_name: str | None) -> bool:
 
 
 def _defines(question: Question, concept: Concept) -> bool:
-    return _is_definition_question(
-        question.question_ja, concept.name_ja
-    ) or _is_definition_question(question.question_en, concept.name_en)
+    # Any word of the sense counts: 速度 is defined by "what is velocity?" too ([55]).
+    return any(
+        _is_definition_question(question.question_ja, term.term)
+        for term in concept.terms_in("ja")
+    ) or any(
+        _is_definition_question(question.question_en, term.term)
+        for term in concept.terms_in("en")
+    )
 
 
 def _not_more_advanced(candidate: Question, current: Question) -> bool:

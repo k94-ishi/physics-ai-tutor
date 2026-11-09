@@ -1,7 +1,13 @@
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from physics_ai_tutor.models import Concept, Question, QuestionConcept, QuestionReview
+from physics_ai_tutor.models import (
+    Concept,
+    ConceptTerm,
+    Question,
+    QuestionConcept,
+    QuestionReview,
+)
 from physics_ai_tutor.services.user_service import create_user
 
 
@@ -34,11 +40,43 @@ def test_question_defaults_status_and_source(db):
     assert q.source == "MANUAL"
 
 
-def test_concept_name_must_be_unique(db):
-    _create_concept(db, "重複概念")
+def test_two_senses_may_share_a_name(db):
+    # 位相 is both a wave's phase and topology ([55]).
+    _create_concept(db, "位相")
+    _create_concept(db, "位相")
+    db.commit()
+
+    assert db.query(Concept).filter(Concept.name_ja == "位相").count() == 2
+
+
+def test_a_sense_cannot_hold_the_same_word_twice(db):
+    concept = _create_concept(db)
+    for _ in range(2):
+        db.add(
+            ConceptTerm(
+                concept_id=concept.id, language="en", term="phase", normalized="phase"
+            )
+        )
 
     with pytest.raises(IntegrityError):
-        _create_concept(db, "重複概念")
+        db.flush()
+
+
+def test_one_preferred_word_per_language(db):
+    concept = _create_concept(db)
+    for word in ("speed", "velocity"):
+        db.add(
+            ConceptTerm(
+                concept_id=concept.id,
+                language="en",
+                term=word,
+                normalized=word,
+                is_preferred=True,
+            )
+        )
+
+    with pytest.raises(IntegrityError):
+        db.flush()
 
 
 def test_question_concept_cascades_on_question_delete(db):

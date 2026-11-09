@@ -4,27 +4,37 @@ from sqlalchemy.orm import Query, Session
 from physics_ai_tutor.models import (
     AiReview,
     Concept,
+    ConceptTerm,
     Question,
     QuestionAsk,
     QuestionConcept,
 )
+from physics_ai_tutor.repositories.concept_repository import normalize
 from physics_ai_tutor.schemas.language import Language, TextProvenance
 from physics_ai_tutor.schemas.question import QuestionCreate, QuestionUpdate
 
 
-def _filter_by_concept(query: Query, db: Session, concept: str | None) -> Query:
-    """Keep questions linked to a concept, matched by either language's name.
+def _filter_by_concept(
+    query: Query, db: Session, concept: str | None, concept_id: int | None = None
+) -> Query:
+    """Keep questions linked to a concept sense ([55]).
 
-    The chip in the student UI only knows the displayed name, so the
-    filter takes a name rather than an id; names are unique per column.
+    `concept_id` names one sense exactly. A `concept` word matches every
+    sense having that word in either language, so a chip or a typed word
+    finds QAs whatever language their concept was first named in.
     """
-    if not concept:
+    if concept_id is not None:
+        senses = db.query(Concept.id).filter(Concept.id == concept_id)
+    elif concept:
+        senses = db.query(ConceptTerm.concept_id).filter(
+            ConceptTerm.normalized == normalize(concept)
+        )
+    else:
         return query
 
     linked = (
         db.query(QuestionConcept.question_id)
-        .join(Concept, Concept.id == QuestionConcept.concept_id)
-        .filter(or_(Concept.name_ja == concept, Concept.name_en == concept))
+        .filter(QuestionConcept.concept_id.in_(senses.scalar_subquery()))
         .scalar_subquery()
     )
 
@@ -136,6 +146,7 @@ def _list_query(
     join_ai_review: bool,
     ids: list[int] | None = None,
     concept: str | None = None,
+    concept_id: int | None = None,
 ):
     query = db.query(Question)
 
@@ -145,7 +156,7 @@ def _list_query(
     if ids is not None:
         query = query.filter(Question.id.in_(ids))
 
-    query = _filter_by_concept(query, db, concept)
+    query = _filter_by_concept(query, db, concept, concept_id)
     query = _filter_by_keyword(query, keyword, search_question, search_answer)
     query = _filter_by_status(query, status, exclude_statuses)
     query = _filter_by_language(query, language)
@@ -167,6 +178,7 @@ def get_questions(
     ai_verdict: str | None = None,
     ids: list[int] | None = None,
     concept: str | None = None,
+    concept_id: int | None = None,
 ) -> list[Question]:
     query = _list_query(
         db,
@@ -180,6 +192,7 @@ def get_questions(
         join_ai_review=sort == "ai_confidence",
         ids=ids,
         concept=concept,
+        concept_id=concept_id,
     )
 
     return _apply_sort(db, query, sort).offset(offset).limit(limit).all()
@@ -196,6 +209,7 @@ def count_questions(
     ai_verdict: str | None = None,
     ids: list[int] | None = None,
     concept: str | None = None,
+    concept_id: int | None = None,
 ) -> int:
     query = _list_query(
         db,
@@ -209,6 +223,7 @@ def count_questions(
         join_ai_review=False,
         ids=ids,
         concept=concept,
+        concept_id=concept_id,
     )
 
     return query.count()

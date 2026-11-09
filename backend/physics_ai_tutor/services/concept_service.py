@@ -11,10 +11,12 @@ from physics_ai_tutor.core.prompt_library import load_library
 from physics_ai_tutor.models import Concept
 from physics_ai_tutor.repositories import (
     concept_repository,
+    concept_term_repository,
     question_concept_repository,
 )
 from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.services import (
+    concept_sense_service,
     deepseek_service,
     embedding_service,
     translation_service,
@@ -148,14 +150,60 @@ def extract_concept_names(
     return lines
 
 
-def _find_existing(db: Session, name: ConceptName) -> Concept | None:
-    if name.ja is not None:
-        found = concept_repository.get_by_name(db, name.ja, language="ja")
-        if found is not None:
-            return found
-    if name.en is not None:
-        return concept_repository.get_by_name(db, name.en, language="en")
-    return None
+def _pair_text(ja: str | None, en: str | None) -> str:
+    return " | ".join(part for part in (ja, en) if part)
+
+
+def _sense_pair_text(concept: Concept) -> str:
+    return _pair_text(concept.name_ja, concept.name_en)
+
+
+def _resolve_sense(
+    db: Session, name: ConceptName
+) -> tuple[Concept | None, list[float] | None]:
+    """The existing sense this pair means, or None (+ its embedding if computed).
+
+    Both words known on one sense -> that sense. A sense sharing only one
+    word is a synonym or a homonym (速度 = velocity / speed, 位相 = phase /
+    topology): decided by embedding similarity of the two pairs ([55]).
+    """
+    sides = [(lang, word) for lang, word in (("ja", name.ja), ("en", name.en)) if word]
+    candidates: dict[int, Concept] = {}
+    for lang, word in sides:
+        for concept in concept_term_repository.senses_with_term(
+            db, lang, concept_sense_service.normalize_term(word)
+        ):
+            candidates[concept.id] = concept
+    if not candidates:
+        return None, None
+
+    full = [
+        concept
+        for concept in candidates.values()
+        if all(concept_sense_service.has_term(concept, lang, w) for lang, w in sides)
+    ]
+    if len(full) == 1:
+        return full[0], None
+
+    pool = full or list(candidates.values())
+    vectors = embedding_service.create_embeddings(
+        [_pair_text(name.ja, name.en), *(_sense_pair_text(c) for c in pool)]
+    )
+    mine, others = vectors[0], vectors[1:]
+    scored = sorted(
+        zip((concept_sense_service.cosine(mine, v) for v in others), pool, strict=True),
+        key=lambda item: item[0],
+        reverse=True,
+    )
+    best_score, best = scored[0]
+    if full or best_score >= settings.concept_sense_match_threshold:
+        return best, mine
+    logger.info(
+        "New concept sense for a shared word: pair=%r best=%.3f",
+        _pair_text(name.ja, name.en),
+        best_score,
+    )
+    return None, mine
 
 
 def attach_concepts_to_question(
@@ -166,6 +214,7 @@ def attach_concepts_to_question(
 ) -> list[Concept]:
     concepts = []
     seen: set[tuple[str | None, str | None]] = set()
+    linked: set[int] = set()
 
     for raw in concept_names:
         name = parse_concept_line(raw, language)
@@ -173,27 +222,32 @@ def attach_concepts_to_question(
             continue
         seen.add((name.ja, name.en))
 
-        concept = _find_existing(db, name)
+        concept, embedding = _resolve_sense(db, name)
 
         if concept is None:
-            embedding = embedding_service.create_embeddings([name.primary(language)])[0]
+            if embedding is None:
+                embedding = embedding_service.create_embeddings(
+                    [_pair_text(name.ja, name.en)]
+                )[0]
             concept = concept_repository.create(
                 db,
-                name_ja=name.ja,
-                name_en=name.en,
                 embedding=embedding,
                 extraction_model=settings.deepseek_chat_model,
                 embedding_model=settings.embedding_model,
                 extraction_prompt_version=CONCEPT_EXTRACTION_PROMPT_VERSION,
             )
-        else:
-            # Fill in a missing translation of a known concept.
-            if concept.name_ja is None and name.ja is not None:
-                concept.name_ja = name.ja
-            if concept.name_en is None and name.en is not None:
-                concept.name_en = name.en
-            db.flush()
 
+        # New words of a known sense become aliases; the first word per
+        # language becomes its preferred label.
+        for lang, word in (("ja", name.ja), ("en", name.en)):
+            if word:
+                concept_sense_service.add_term(
+                    db, concept, lang, word, concept_sense_service.TermSource.EXTRACTED
+                )
+
+        if concept.id in linked:
+            continue
+        linked.add(concept.id)
         question_concept_repository.link(
             db, question_id=question_id, concept_id=concept.id
         )
@@ -203,32 +257,42 @@ def attach_concepts_to_question(
 
 
 def translate_missing_name(db: Session, concept_id: int) -> bool:
-    """Fill a concept's missing name via the existing QA translator; commits.
+    """Add a machine term for a language the sense has no word in; commits.
 
-    Reuses `translation_service.translate_qa` (glossary included) with the
-    name in both slots, so no new prompt is needed ([53]). A translation
-    that collides with another concept's name is skipped, not merged.
+    Reuses `translation_service.translate_qa` with the word as the question
+    and a QA that uses it as the answer, so the translator sees the context
+    that separates 位相 (phase) from 位相 (topology). No new prompt ([53]).
     """
     concept = db.get(Concept, concept_id)
-    if concept is None or (concept.name_ja and concept.name_en):
+    if concept is None:
+        return False
+    missing = [
+        lang
+        for lang in ("ja", "en")
+        if concept_sense_service.preferred_term(concept, lang) is None
+    ]
+    present = [lang for lang in ("ja", "en") if lang not in missing]
+    if not missing or not present:
         return False
 
-    source, target = (
-        (Language.JA, Language.EN) if concept.name_ja else (Language.EN, Language.JA)
-    )
-    name = concept.name_in(source.value)
-    assert name is not None
+    source, target = Language(present[0]), Language(missing[0])
+    word = concept_sense_service.preferred_term(concept, source.value)
+    assert word is not None
+    context = question_concept_repository.context_question(db, concept_id, source.value)
     try:
-        translated, _ = translation_service.translate_qa(name, name, source, target)
+        translated, _ = translation_service.translate_qa(
+            word.term, context or word.term, source, target
+        )
     except TranslationError:
         logger.warning("Concept name translation failed: concept_id=%d", concept_id)
         return False
 
-    translated = translated.strip()[:255]
-    if not translated or concept_repository.get_by_name(db, translated, target.value):
-        logger.warning("Concept name translation unusable: concept_id=%d", concept_id)
-        return False
-
-    setattr(concept, f"name_{target.value}", translated)
+    added = concept_sense_service.add_term(
+        db,
+        concept,
+        target.value,
+        translated,
+        concept_sense_service.TermSource.MACHINE,
+    )
     db.commit()
-    return True
+    return added is not None

@@ -139,17 +139,23 @@ def test_concept_name_missing_in_lang_is_translated_once(
     assert calls == ["概念B"]
 
 
-def test_concept_translation_colliding_with_an_existing_name_is_skipped(
+def test_translated_concept_word_may_equal_another_senses_word(
     admin_client, client, db, monkeypatch
 ):
+    # Two senses sharing an English word is now legal ([55]), so the
+    # translation is stored instead of being dropped as a collision.
     current = _create(admin_client, "力ってなに？", True, monkeypatch)
-    monkeypatch.setattr(
-        translation_service,
-        "translate_qa",
-        lambda q, a, source, target: ("concept A", "concept A"),
-    )
+    seen: list[tuple[str, str]] = []
+
+    def _translate(question, answer, source, target):
+        seen.append((question, answer))
+        return "concept A", "context"
+
+    monkeypatch.setattr(translation_service, "translate_qa", _translate)
 
     client.get(f"{QUESTIONS}/{current}", params={"lang": "en"})
     again = client.get(f"{QUESTIONS}/{current}", params={"lang": "en"}).json()
 
-    assert again["concepts"] == ["concept A"]
+    assert again["concepts"] == ["concept A", "concept A"]
+    # The translator got a question using the concept as context.
+    assert seen == [("概念B", "力ってなに？")]

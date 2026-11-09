@@ -46,6 +46,8 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
     const [relatedExpanded, setRelatedExpanded] = useState(false);
     const [preview, setPreview] = useState<Question | null>(null);
     const [loading, setLoading] = useState(true);
+    // 本文は先に出し、前提・関連は見出しとスピナーで待たせる([42])。
+    const [relatedLoading, setRelatedLoading] = useState(true);
     const [notFoundError, setNotFoundError] = useState(false);
     const [loadError, setLoadError] = useState(false);
     const requestId = useRef(0);
@@ -55,6 +57,7 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
         setLoading(true);
         setLoadError(false);
         setNotFoundError(false);
+        setRelatedLoading(true);
         // 言語が変わったら前の言語の結果を残さない([53])。
         setRelated([]);
         setPrerequisites(null);
@@ -79,8 +82,11 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
             }
             setQuestion(null);
             setLoading(false);
+            setRelatedLoading(false);
             return;
         }
+
+        setLoading(false);
 
         try {
             // 前提ブロックと関連リストは独立に失敗してよい(片方は出す)。
@@ -100,7 +106,7 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
             }
         } finally {
             if (current === requestId.current) {
-                setLoading(false);
+                setRelatedLoading(false);
             }
         }
     }, [id, language]);
@@ -187,9 +193,10 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
                 <ReferencedQuestions items={question.retrieved_questions} />
             </Card>
 
-            {prerequisites !== null &&
-                (prerequisites.items.length > 0 ||
-                    prerequisites.gaps.length > 0) && (
+            {(relatedLoading ||
+                (prerequisites !== null &&
+                    (prerequisites.items.length > 0 ||
+                        prerequisites.gaps.length > 0))) && (
                     <div className="flex flex-col gap-3">
                         <h2 className="text-lg font-semibold text-gray-900">
                             {t("prerequisites.heading")}
@@ -199,7 +206,9 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
                             {t("prerequisites.hint")}
                         </p>
 
-                        {prerequisites.items.map((item) => (
+                        {relatedLoading && <LoadingState />}
+
+                        {prerequisites?.items.map((item) => (
                             <Card
                                 key={item.id}
                                 className="transition-colors hover:border-emerald-300 hover:bg-emerald-50/50"
@@ -221,7 +230,7 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
                             </Card>
                         ))}
 
-                        {prerequisites.gaps.length > 0 && (
+                        {prerequisites !== null && prerequisites.gaps.length > 0 && (
                             <div className="flex flex-col gap-2">
                                 <p className="text-xs text-gray-500">
                                     {t("prerequisites.gapsLabel")}
@@ -268,7 +277,7 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
                     </div>
                 )}
 
-            {related.length > 0 && (
+            {(relatedLoading || related.length > 0) && (
                 <div className="flex flex-col gap-3">
                     <h2 className="text-lg font-semibold text-gray-900">
                         {t("questionDetail.relatedQuestions")}
@@ -277,6 +286,8 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
                     <p className="text-xs text-gray-500">
                         {t("questionDetail.relatedHint")}
                     </p>
+
+                    {relatedLoading && <LoadingState />}
 
                     {showGrid && (
                         <div className="hidden md:flex md:flex-col md:gap-3">

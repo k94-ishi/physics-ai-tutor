@@ -56,6 +56,36 @@ beforeEach(() => {
 });
 
 describe("QuestionDetail", () => {
+    it("shows both headings with spinners while related content loads", async () => {
+        mocked.fetchQuestion.mockResolvedValue(makeQuestion());
+        let finish: () => void = () => {};
+        const pending = new Promise<void>((resolve) => {
+            finish = resolve;
+        });
+        mocked.fetchPrerequisites.mockReturnValue(
+            pending.then(() => ({ items: [], gaps: [] }))
+        );
+        mocked.fetchRelatedQuestions.mockReturnValue(pending.then(() => []));
+
+        renderDetail();
+
+        await waitFor(() =>
+            expect(screen.getByText("速度ってなに？")).toBeInTheDocument()
+        );
+        expect(screen.getByText("先に読むとよい質問")).toBeInTheDocument();
+        expect(screen.getByText("関連する質問")).toBeInTheDocument();
+        expect(screen.getAllByRole("status")).toHaveLength(2);
+
+        finish();
+
+        // Empty blocks still disappear once loading ends.
+        await waitFor(() =>
+            expect(screen.queryByText("関連する質問")).not.toBeInTheDocument()
+        );
+        expect(screen.queryByText("先に読むとよい質問")).not.toBeInTheDocument();
+        expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+
     it("fetches once, in the stored language, after it resolves", async () => {
         localStorage.setItem("language", "en");
         mocked.fetchQuestion.mockResolvedValue(makeQuestion());

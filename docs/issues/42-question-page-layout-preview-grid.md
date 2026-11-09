@@ -154,3 +154,11 @@ in `seed.json`; `seed.py` applies them after import so concept
 extraction cannot overwrite them. Production is on hold (owner cannot
 touch it yet), so the grid stays a local-only feature until the
 backfill.
+
+### 2026-11-09 - loading state for "Read these first" and "Related Questions"
+
+The question text now renders as soon as it arrives; the two blocks have
+their own `relatedLoading` state and show their headings with a
+`LoadingState` spinner each until both requests settle. A block that ends
+empty still disappears. Vitest covers the pending and empty-after-load
+cases. Remaining here: full 0-4 grid axes, home-page preview.

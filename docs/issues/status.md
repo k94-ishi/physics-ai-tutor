@@ -74,6 +74,8 @@ including all discussion comments; browse it with `git bug bug` /
 | 51 | closed | 51-rename-too-advanced-unneeded-tools.md | Rename TOO_ADVANCED to UNNEEDED_TOOLS; g10 becomes APPROVE (rubric r5) | — (file-era issue) |
 | 52 | open | 52-difficulty-rating-evaluation.md | Evaluate the LLM difficulty ratings against the teacher (validation gate for [38]/[42]) | — (file-era issue) |
 | 53 | open | 53-content-language-mixing.md | Bug: Japanese text appears in English mode on the question page | — (file-era issue) |
+| 54 | open | 54-production-rollout-concepts-and-levels.md | Production rollout: English concept names and difficulty levels (owner) | — (file-era issue) |
+| 55 | open | 55-concepts-as-senses-with-terms.md | Concepts as language-neutral senses with many terms per language | — (file-era issue) |
 
 ## Notes on the archive column
 

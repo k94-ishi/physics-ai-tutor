@@ -17,9 +17,10 @@ Ordered queue; details live in each issue.
 6. ~~[42] more related + preview modal + two-axis grid~~ done 2026-11-04
 7. [43] `be0e1aa` sticky ask bar (shipped in bc4d4b4; close after a look)
 8. [53] language mixing in English mode - **next up** (2026-11-09)
-9. [42] reopened: home-page preview, loading headings, full-range grid
-10. [41] reopened: concept filter, concepts on related cards
-11. [21] `ef104ba` /help page
+9. [42] reopened: home-page preview (loading headings done; grid removed 2026-11-09)
+10. [55] concepts as senses with terms - design awaiting owner approval
+11. [41] reopened: concept filter (on [55]'s terms), concepts on related cards
+12. [21] `ef104ba` /help page
 
 Gate between 2. and 5./6.: **passed locally 2026-11-04** ([52]: within
 ±1 = 97 % on both axes, decision GO). The production re-check in [52]

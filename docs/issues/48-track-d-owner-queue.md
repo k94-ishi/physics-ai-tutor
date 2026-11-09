@@ -24,3 +24,4 @@ docs/operator-checklist.md.
    2026-11-03 they stay edits; redo them through 保存して承認 so the
    history carries the diff and reason)
 7. [30] `4ef75f5` close when nothing further is wanted
+8. [54] production rollout of concept names and levels (on hold 2026-11-09)

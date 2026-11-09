@@ -162,3 +162,11 @@ their own `relatedLoading` state and show their headings with a
 `LoadingState` spinner each until both requests settle. A block that ends
 empty still disappears. Vitest covers the pending and empty-after-load
 cases. Remaining here: full 0-4 grid axes, home-page preview.
+
+### 2026-11-09 - grid removed (owner's decision)
+
+A 3x3 window around the current QA was considered; the owner chose the
+plain related list instead, because "Read these first" ([38]) already
+answers "what is below me?". `QuestionLevelGrid`, its test and the
+`grid.*` strings are deleted; the levels stay in the data for [38]'s
+ranking. Acceptance item 3 (grid placement) is dropped.

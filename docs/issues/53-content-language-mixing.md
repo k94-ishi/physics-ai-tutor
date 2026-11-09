@@ -88,3 +88,9 @@ concept's unique name is skipped (logged), not merged. `deep_translator`
 was considered and not used: it calls Google's unofficial endpoint, a
 new third party the privacy page does not list. Tests: 2 more in
 `test_language_strict.py`; pytest 494 pass.
+
+### 2026-11-09 - collision handling superseded by [55]
+
+The "skip on unique-name collision" rule is a stopgap. Owner: 位相 =
+phase/topology and speed = 速さ/速度 need a general structure; designed in
+[55] (senses with many terms per language).

@@ -61,3 +61,7 @@ question clearly never needed, or an unnamed concept the student cannot
 look up) is kept and is deliberately separate from the [40] difficulty
 axes. Stored rows keep the old code and render with a "(legacy code)"
 label.
+
+### 2026-11-11 - closed
+
+Owner, 2026-11-11: closed. The 2026-11-03 decision (both cases stay edits; the code was renamed in [51]) needed no label change, so nothing is left to do.

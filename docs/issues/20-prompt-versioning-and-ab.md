@@ -58,3 +58,7 @@ version; that is acceptable and visible in the row.
 ### 2026-11-10 - design note is stale
 
 Prompt texts moved to `core/prompt_library.yaml` (records with family, name, language, version). Redesign the rollout split on that library when this is picked up ([57] review).
+
+### 2026-11-11 - closed
+
+Owner, 2026-11-11: closed as not needed for now. The design predates the YAML prompt library ([24]); if A/B rollouts are wanted later, open a new issue designed on `prompt_library.yaml`.

@@ -11,7 +11,8 @@ priority: P3
 
 A public `/help` page (Japanese and English) explaining how to use the site:
 searching the knowledge base, asking the AI, what the review statuses mean,
-logging in with Google, and the ask limits.
+how tags and "Read these first" lead to easier questions, logging in with
+Google, and the ask limits.
 
 ## Motivation
 
@@ -30,6 +31,16 @@ below the deployment and review-data work.
   answers); signing in with Google and the ask limits per tier; the school
   Workspace "Access blocked" case and using a personal account; where the
   privacy policy is.
+- Finding related material (added 2026-11-11):
+  - **Tags (タグ)**: the chips on every question card and question page;
+    tapping one lists all questions with that tag, whichever language the
+    tag was first written in ([41], [55]).
+  - **"Which meaning?"**: when a tag word has several meanings (位相 =
+    phase of a wave / topology; "phase" = 位相 / 相), the list asks which
+    one the student means ([55]).
+  - **"Read these first" / "Related Questions"** on a question page, and
+    the preview window that opens without leaving the page ([38], [42], [56]).
+- Use the on-screen words only: "tag", never "concept" (the code name).
 - Keep numbers (ask limits) in one place: reuse or mirror the values from
   the rate-limit documentation rather than hard-coding them in prose twice.
 - Link from the header (next to the login link) and from the login page.
@@ -63,6 +74,6 @@ no API calls.
 
 ## Log
 
-### 2026-11-10 - wording
+### 2026-11-11 - description updated
 
-The UI now calls concepts **タグ / tag** ([41]); explain tag chips and the "which meaning?" chooser ([55]) on the page.
+Tags, the meaning chooser, "Read these first" and the preview window added to the scope (owner).

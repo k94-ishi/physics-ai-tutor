@@ -20,8 +20,6 @@ docs/operator-checklist.md.
    v5-r5 pinned 2026-11-03
 5. ~~[52] local difficulty validation~~ done 2026-11-04, decision GO;
    the production sample remains (after 3.)
-6. [44] `fd0b3e9` re-verdict on p-edit-250 and p-edit-4 (owner confirmed
-   2026-11-03 they stay edits; redo them through 保存して承認 so the
-   history carries the diff and reason)
+6. ~~[44] re-verdict on p-edit-250 / p-edit-4~~ closed 2026-11-11
 7. [30] `4ef75f5` close when nothing further is wanted
 8. [54] production rollout of concept names and levels (on hold 2026-11-09)

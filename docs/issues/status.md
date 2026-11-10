@@ -40,7 +40,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 17 | closed | 17-golden-eval-set-and-ci.md | Golden evaluation set and offline prompt regression check | a3119d1 |
 | 18 | open | 18-auto-reject-policy.md | Policy: auto-reject off-topic and unsafe answers with a human audit sample | 70a4933 |
 | 19 | open | 19-auto-approve-policy.md | Policy: auto-approve high-confidence answers that closely match approved content | e6ad07e |
-| 20 | open | 20-prompt-versioning-and-ab.md | Versioned prompt rollouts with A/B comparison | 274f94c |
+| 20 | closed | 20-prompt-versioning-and-ab.md | Versioned prompt rollouts with A/B comparison | 274f94c |
 | 21 | open | 21-usage-guide-page.md | Add a usage guide page (/help) | ef104ba |
 | 22 | closed | 22-robots-allow-privacy.md | robots.txt: allow /privacy (currently Disallow: / blocks the consent-screen check) | 1e98220, e72701a (closed twin) |
 | 23 | open | 23-deleted-user-data-disposal.md | Dispose deleted users' residual data (purge rate-limit rows; UUID tombstone for reviewer history) | c08401a |
@@ -64,7 +64,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 41 | closed | 41-show-concepts-to-students.md | Show concepts to students as clickable chips; concepts are the map, not admin metadata | 796163b, 0e5e4fa (closed twin) |
 | 42 | closed | 42-question-page-layout-preview-grid.md | Question-page layout: more related questions, floating preview, and a two-axis grid | 7584a7d, 9cef53e (closed twin) |
 | 43 | closed | 43-sticky-ask-bar.md | Keep the search/ask box reachable: sticky bar at the bottom of the viewport | be0e1aa, 8e373d4 (closed twin) |
-| 44 | open | 44-teacher-reverdict-too-advanced-edits.md | Teacher re-verdict: the old TOO_ADVANCED edits predate the advanced-content policy | fd0b3e9 |
+| 44 | closed | 44-teacher-reverdict-too-advanced-edits.md | Teacher re-verdict: the old TOO_ADVANCED edits predate the advanced-content policy | fd0b3e9 |
 | 45 | open | 45-track-a-student-experience.md | Track A: student experience - the QA graph becomes walkable | 102900d |
 | 46 | open | 46-track-b-review-pipeline.md | Track B: review pipeline and policies - resumes after [37] | f87b993 |
 | 47 | open | 47-track-c-housekeeping.md | Track C: housekeeping | b904b3d |

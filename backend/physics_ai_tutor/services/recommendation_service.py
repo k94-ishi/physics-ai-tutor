@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
@@ -13,10 +14,21 @@ from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.question import QuestionResponse
 from physics_ai_tutor.services.question_presentation_service import (
     prepare_for_response,
-    split_by_language,
+)
+from physics_ai_tutor.services.response_language import (
+    ResponseLanguage,
+    TranslationNeeds,
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class RelatedQuestions:
+    items: list[QuestionResponse]
+    # Rows and concept names a strict reader missed ([53]).
+    needs: TranslationNeeds
+
 
 # Kept as simple, named constants so the relative weighting of question vs.
 # concept similarity can be tuned later without touching the algorithm.
@@ -144,14 +156,13 @@ def get_related_questions(
     question_id: int,
     limit: int = 5,
     exclude_statuses: list[str] | None = None,
-    language: Language | str = Language.JA,
-    only_with_language: bool = False,
-    missing_language_ids: list[int] | None = None,
-) -> list[QuestionResponse]:
+    language: Language | str | ResponseLanguage = Language.JA,
+) -> RelatedQuestions:
     """Related questions: embedding neighbours plus questions sharing concepts."""
     if exclude_statuses is None:
         exclude_statuses = ["REJECTED"]
-    lang = Language(language)
+    response = ResponseLanguage.of(language)
+    lang = response.language
 
     question_similarity, questions_by_id = _embedding_neighbours(
         db, question_id, lang, exclude_statuses
@@ -168,15 +179,10 @@ def get_related_questions(
         candidate_ids, questions_by_id, question_similarity, concept_similarity
     )
 
-    ranked = [candidate for _, candidate in scored]
-    if only_with_language:
-        # Students never get the other language; report the gaps instead.
-        ranked, missing = split_by_language(ranked, lang)
-        if missing_language_ids is not None:
-            missing_language_ids.extend(missing)
-
+    # Filter before slicing, so a student still gets `limit` readable rows.
+    ranked, missing = response.readable([candidate for _, candidate in scored])
     top_questions = ranked[:limit]
-    prepare_for_response(db, top_questions, lang, strict_language=only_with_language)
+    needs = prepare_for_response(db, top_questions, response)
 
     logger.info(
         "Related questions computed: question_id=%d candidates=%d returned=%d",
@@ -184,4 +190,7 @@ def get_related_questions(
         len(candidate_ids),
         min(limit, len(scored)),
     )
-    return [QuestionResponse.model_validate(question) for question in top_questions]
+    return RelatedQuestions(
+        items=[QuestionResponse.model_validate(q) for q in top_questions],
+        needs=TranslationNeeds(question_ids=missing).merge(needs),
+    )

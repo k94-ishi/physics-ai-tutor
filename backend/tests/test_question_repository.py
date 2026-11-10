@@ -1,5 +1,9 @@
 from physics_ai_tutor.repositories import question_repository
-from physics_ai_tutor.schemas.question import QuestionCreate, QuestionUpdate
+from physics_ai_tutor.schemas.question import (
+    QuestionCreate,
+    QuestionFilters,
+    QuestionUpdate,
+)
 
 
 def _create(db, question: str = "テスト質問", answer: str = "テスト回答"):
@@ -46,7 +50,7 @@ def test_get_questions_filters_by_keyword_in_question(db):
     _create(db, "エネルギー保存則とは何ですか", "エネルギーは保存されます")
 
     questions = question_repository.get_questions(
-        db, offset=0, limit=10, keyword="運動量"
+        db, offset=0, limit=10, filters=QuestionFilters(keyword="運動量")
     )
 
     assert [q.id for q in questions] == [matching.id]
@@ -57,7 +61,7 @@ def test_get_questions_filters_by_keyword_in_answer(db):
     _create(db, "第二法則とは", "力は質量と加速度の積です")
 
     questions = question_repository.get_questions(
-        db, offset=0, limit=10, keyword="運動量"
+        db, offset=0, limit=10, filters=QuestionFilters(keyword="運動量")
     )
 
     assert [q.id for q in questions] == [matching.id]
@@ -67,14 +71,16 @@ def test_count_questions_filters_by_keyword(db):
     _create(db, "運動量保存則とは何ですか", "運動量は保存されます")
     _create(db, "エネルギー保存則とは何ですか", "エネルギーは保存されます")
 
-    assert question_repository.count_questions(db, keyword="運動量") == 1
+    assert question_repository.count_questions(
+        db, filters=QuestionFilters(keyword="運動量")
+    )
 
 
 def test_get_questions_keyword_no_match_returns_empty(db):
     _create(db, "運動量保存則とは何ですか", "運動量は保存されます")
 
     questions = question_repository.get_questions(
-        db, offset=0, limit=10, keyword="存在しないキーワード"
+        db, offset=0, limit=10, filters=QuestionFilters(keyword="存在しないキーワード")
     )
 
     assert questions == []
@@ -88,7 +94,7 @@ def test_get_questions_keyword_and_across_terms(db):
     _create(db, "衝突とは何ですか", "衝突の説明です")
 
     questions = question_repository.get_questions(
-        db, offset=0, limit=10, keyword="運動量 衝突"
+        db, offset=0, limit=10, filters=QuestionFilters(keyword="運動量 衝突")
     )
 
     assert [q.id for q in questions] == [matching.id]
@@ -102,9 +108,9 @@ def test_get_questions_keyword_search_question_only(db):
         db,
         offset=0,
         limit=10,
-        keyword="運動量",
-        search_question=True,
-        search_answer=False,
+        filters=QuestionFilters(
+            keyword="運動量", search_question=True, search_answer=False
+        ),
     )
 
     assert [q.id for q in questions] == [matching.id]
@@ -118,9 +124,9 @@ def test_get_questions_keyword_search_answer_only(db):
         db,
         offset=0,
         limit=10,
-        keyword="運動量",
-        search_question=False,
-        search_answer=True,
+        filters=QuestionFilters(
+            keyword="運動量", search_question=False, search_answer=True
+        ),
     )
 
     assert [q.id for q in questions] == [matching.id]
@@ -264,10 +270,7 @@ def test_get_questions_excludes_status(db):
     )
 
     questions = question_repository.get_questions(
-        db,
-        offset=0,
-        limit=10,
-        exclude_statuses=["REJECTED"],
+        db, offset=0, limit=10, filters=QuestionFilters(exclude_statuses=["REJECTED"])
     )
 
     assert rejected.id not in [q.id for q in questions]
@@ -288,10 +291,7 @@ def test_get_questions_filters_by_status(db):
     )
 
     questions = question_repository.get_questions(
-        db,
-        offset=0,
-        limit=10,
-        status="APPROVED",
+        db, offset=0, limit=10, filters=QuestionFilters(status="APPROVED")
     )
 
     assert [q.id for q in questions] == [approved.id]

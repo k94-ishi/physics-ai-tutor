@@ -276,6 +276,13 @@ enforced by `tests/test_architecture.py`:
   per-language embeddings) and `question_presentation_service` (response
   shaping). Routers: `api/v1/questions.py` (public reads) and
   `api/v1/admin_questions.py` (admin writes), same `/questions` prefix.
+- **Response language** (since [62]): a router builds one
+  `ResponseLanguage.for_caller(lang, admin=...)` per request. Students are
+  `strict` (never the other language, [53]); admins get the fallback.
+  Services take it as `language=` (a plain `Language` means the fallback)
+  and return what a strict response left out as `TranslationNeeds`; the
+  router hands those to the background translator in one call. List
+  filters travel as one `QuestionFilters` object from router to repository.
 - **Background tasks** open their session with `background_session()`
   (`database/session.py`); tests point that one helper at the test
   database. CLIs keep their own `SessionLocal`.

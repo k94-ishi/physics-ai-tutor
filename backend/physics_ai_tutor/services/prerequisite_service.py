@@ -8,6 +8,7 @@ or embedding calls: concepts and levels are already on the rows.
 """
 
 import logging
+from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
@@ -22,10 +23,21 @@ from physics_ai_tutor.schemas.question import (
 )
 from physics_ai_tutor.services.question_presentation_service import (
     prepare_for_response,
-    split_by_language,
+)
+from physics_ai_tutor.services.response_language import (
+    ResponseLanguage,
+    TranslationNeeds,
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class Prerequisites:
+    response: PrerequisitesResponse
+    # Rows and concept names a strict reader missed ([53]).
+    needs: TranslationNeeds
+
 
 # A question "defines" a concept when it reads like a definition request.
 _DEFINITION_MARKERS_JA = ("とは", "ってなに", "って何", "とはなに", "とは何")
@@ -105,10 +117,12 @@ def _definer_candidates(db: Session, question_id: int) -> list[Link]:
     return [(concept, question) for concept, question in rows]
 
 
-def _readable_only(links: list[Link], lang: Language) -> tuple[list[Link], list[int]]:
-    """Drop definers lacking `lang`; a definer the student cannot read is none yet."""
-    readable, missing = split_by_language(
-        list({candidate.id: candidate for _, candidate in links}.values()), lang
+def _readable_only(
+    links: list[Link], response: ResponseLanguage
+) -> tuple[list[Link], list[int]]:
+    """Drop definers a strict reader cannot read; they are not definers yet."""
+    readable, missing = response.readable(
+        list({candidate.id: candidate for _, candidate in links}.values())
     )
     readable_ids = {question.id for question in readable}
     return [link for link in links if link[1].id in readable_ids], missing
@@ -174,26 +188,23 @@ def get_prerequisites(
     db: Session,
     question_id: int,
     limit: int = 5,
-    language: Language | str = Language.JA,
-    only_with_language: bool = False,
-    missing_language_ids: list[int] | None = None,
-) -> PrerequisitesResponse | None:
+    language: Language | str | ResponseLanguage = Language.JA,
+) -> Prerequisites | None:
     """Defining QAs for this QA's concepts, plus the concepts with none ([38])."""
-    lang = Language(language)
+    response = ResponseLanguage.of(language)
+    lang = response.language
     current = db.get(Question, question_id)
     if current is None:
         return None
 
-    links = _definer_candidates(db, question_id)
-    if only_with_language:
-        links, missing = _readable_only(links, lang)
-        if missing_language_ids is not None:
-            missing_language_ids.extend(missing)
-
+    links, missing = _readable_only(_definer_candidates(db, question_id), response)
     best_by_concept = _best_definers(links, current)
-    gaps = _gaps(db, question_id, best_by_concept, lang, only_with_language)
+    gaps = _gaps(db, question_id, best_by_concept, lang, response.strict)
     ordered = _hardest_first(best_by_concept, current, limit)
-    prepare_for_response(db, ordered, lang, strict_language=only_with_language)
+    needs = prepare_for_response(db, ordered, response)
+    if response.strict:
+        # The current QA's own concepts are the gap chips.
+        needs.concept_question_ids.insert(0, question_id)
 
     logger.info(
         "Prerequisites computed: question_id=%d definers=%d gaps=%d",
@@ -201,7 +212,10 @@ def get_prerequisites(
         len(ordered),
         len(gaps),
     )
-    return PrerequisitesResponse(
-        items=[QuestionResponse.model_validate(question) for question in ordered],
-        gaps=gaps,
+    return Prerequisites(
+        response=PrerequisitesResponse(
+            items=[QuestionResponse.model_validate(question) for question in ordered],
+            gaps=gaps,
+        ),
+        needs=TranslationNeeds(question_ids=missing).merge(needs),
     )

@@ -37,7 +37,7 @@ def test_get_related_questions_excludes_self(db):
     vector = [0.1] * 1536
     source = _create_question_with_embedding(db, "元質問", "元回答", vector)
 
-    result = recommendation_service.get_related_questions(db, source.id, limit=5)
+    result = recommendation_service.get_related_questions(db, source.id, limit=5).items
 
     assert source.id not in [q.id for q in result]
 
@@ -55,7 +55,7 @@ def test_get_related_questions_excludes_rejected(db):
         reviewer_id=admin.id,
     )
 
-    result = recommendation_service.get_related_questions(db, source.id, limit=5)
+    result = recommendation_service.get_related_questions(db, source.id, limit=5).items
 
     assert other.id not in [q.id for q in result]
 
@@ -68,7 +68,7 @@ def test_get_related_questions_excludes_unreviewed_by_default(db):
 
     result = recommendation_service.get_related_questions(
         db, source.id, limit=5, exclude_statuses=["REJECTED", "UNREVIEWED"]
-    )
+    ).items
 
     assert other.id not in [q.id for q in result]
 
@@ -81,7 +81,7 @@ def test_get_related_questions_includes_unreviewed_when_allowed(db):
 
     result = recommendation_service.get_related_questions(
         db, source.id, limit=5, exclude_statuses=["REJECTED"]
-    )
+    ).items
 
     assert other.id in [q.id for q in result]
 
@@ -98,7 +98,7 @@ def test_get_related_questions_ranks_by_weighted_score(db):
         db, "似ていない質問", "似ていない回答", far_vector
     )
 
-    result = recommendation_service.get_related_questions(db, source.id, limit=5)
+    result = recommendation_service.get_related_questions(db, source.id, limit=5).items
 
     result_ids = [q.id for q in result]
     assert similar.id in result_ids
@@ -120,7 +120,7 @@ def test_get_related_questions_includes_concept_sharing_candidate(db):
         db, question_id=concept_sharing.id, concept_id=concept.id
     )
 
-    result = recommendation_service.get_related_questions(db, source.id, limit=5)
+    result = recommendation_service.get_related_questions(db, source.id, limit=5).items
 
     assert concept_sharing.id in [q.id for q in result]
 
@@ -129,7 +129,7 @@ def test_get_related_questions_returns_empty_when_no_embedding(db):
     q = question_repository.create_question(db, question="埋め込みなし", answer="回答")
     db.flush()
 
-    result = recommendation_service.get_related_questions(db, q.id, limit=5)
+    result = recommendation_service.get_related_questions(db, q.id, limit=5).items
 
     assert result == []
 
@@ -167,6 +167,6 @@ def test_get_related_questions_includes_candidate_via_rag_reference_concepts(db)
 
     result = recommendation_service.get_related_questions(
         db, rag_question.id, limit=5, exclude_statuses=["REJECTED"]
-    )
+    ).items
 
     assert candidate.id in [q.id for q in result]

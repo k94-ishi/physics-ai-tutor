@@ -11,7 +11,11 @@ from physics_ai_tutor.models import (
     QuestionConcept,
 )
 from physics_ai_tutor.schemas.language import Language, TextProvenance
-from physics_ai_tutor.schemas.question import QuestionCreate, QuestionUpdate
+from physics_ai_tutor.schemas.question import (
+    QuestionCreate,
+    QuestionFilters,
+    QuestionUpdate,
+)
 
 
 def _filter_by_concept(
@@ -134,99 +138,40 @@ def _apply_sort(db: Session, query, sort: str | None):
     return query.order_by(Question.id)
 
 
-def _list_query(
-    db: Session,
-    keyword: str | None,
-    status: str | None,
-    exclude_statuses: list[str] | None,
-    search_question: bool,
-    search_answer: bool,
-    language: Language | str | None,
-    ai_verdict: str | None,
-    join_ai_review: bool,
-    ids: list[int] | None = None,
-    concept: str | None = None,
-    concept_id: int | None = None,
-):
+def _list_query(db: Session, filters: QuestionFilters, join_ai_review: bool):
     query = db.query(Question)
 
-    if join_ai_review or ai_verdict is not None:
+    if join_ai_review or filters.ai_verdict is not None:
         query = _with_latest_ai_review(db, query)
 
-    if ids is not None:
-        query = query.filter(Question.id.in_(ids))
+    if filters.ids is not None:
+        query = query.filter(Question.id.in_(filters.ids))
 
-    query = _filter_by_concept(query, db, concept, concept_id)
-    query = _filter_by_keyword(query, keyword, search_question, search_answer)
-    query = _filter_by_status(query, status, exclude_statuses)
-    query = _filter_by_language(query, language)
+    query = _filter_by_concept(query, db, filters.concept, filters.concept_id)
+    query = _filter_by_keyword(
+        query, filters.keyword, filters.search_question, filters.search_answer
+    )
+    query = _filter_by_status(query, filters.status, filters.exclude_statuses)
+    query = _filter_by_language(query, filters.language)
 
-    return _filter_by_ai_verdict(query, ai_verdict)
+    return _filter_by_ai_verdict(query, filters.ai_verdict)
 
 
 def get_questions(
     db: Session,
     offset: int,
     limit: int,
-    keyword: str | None = None,
-    status: str | None = None,
-    exclude_statuses: list[str] | None = None,
-    search_question: bool = True,
-    search_answer: bool = True,
-    language: Language | str | None = None,
+    filters: QuestionFilters | None = None,
     sort: str | None = None,
-    ai_verdict: str | None = None,
-    ids: list[int] | None = None,
-    concept: str | None = None,
-    concept_id: int | None = None,
 ) -> list[Question]:
     query = _list_query(
-        db,
-        keyword,
-        status,
-        exclude_statuses,
-        search_question,
-        search_answer,
-        language,
-        ai_verdict,
-        join_ai_review=sort == "ai_confidence",
-        ids=ids,
-        concept=concept,
-        concept_id=concept_id,
+        db, filters or QuestionFilters(), join_ai_review=sort == "ai_confidence"
     )
-
     return _apply_sort(db, query, sort).offset(offset).limit(limit).all()
 
 
-def count_questions(
-    db: Session,
-    keyword: str | None = None,
-    status: str | None = None,
-    exclude_statuses: list[str] | None = None,
-    search_question: bool = True,
-    search_answer: bool = True,
-    language: Language | str | None = None,
-    ai_verdict: str | None = None,
-    ids: list[int] | None = None,
-    concept: str | None = None,
-    concept_id: int | None = None,
-) -> int:
-    query = _list_query(
-        db,
-        keyword,
-        status,
-        exclude_statuses,
-        search_question,
-        search_answer,
-        language,
-        ai_verdict,
-        join_ai_review=False,
-        ids=ids,
-        concept=concept,
-        concept_id=concept_id,
-    )
-
-    return query.count()
+def count_questions(db: Session, filters: QuestionFilters | None = None) -> int:
+    return _list_query(db, filters or QuestionFilters(), join_ai_review=False).count()
 
 
 def get_question(

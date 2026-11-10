@@ -12,6 +12,7 @@ from physics_ai_tutor.repositories import (
 )
 from physics_ai_tutor.schemas.question import (
     QuestionCreate,
+    QuestionFilters,
     QuestionSource,
     QuestionStatus,
     QuestionUpdate,
@@ -75,7 +76,7 @@ def test_fetch_questions_filters_by_keyword(db):
     _create(db, "エネルギー保存則とは何ですか", "エネルギーは保存されます")
 
     result = question_read_service.fetch_questions(
-        db, page=1, size=20, keyword="運動量"
+        db, page=1, size=20, filters=QuestionFilters(keyword="運動量")
     )
 
     assert result.total == 1
@@ -99,7 +100,7 @@ def test_fetch_questions_excludes_status(db):
         db,
         page=1,
         size=20,
-        exclude_statuses=[QuestionStatus.REJECTED],
+        filters=QuestionFilters(exclude_statuses=[QuestionStatus.REJECTED]),
     )
 
     remaining_ids = [q.id for q in result.items]
@@ -109,14 +110,14 @@ def test_fetch_questions_excludes_status(db):
 def test_fetch_question_found(db):
     created = _create(db)
 
-    found = question_read_service.fetch_question(db, created.id)
+    found = question_read_service.fetch_question(db, created.id)[0]
 
     assert found is not None
     assert found.id == created.id
 
 
 def test_fetch_question_not_found(db):
-    found = question_read_service.fetch_question(db, 99999)
+    found = question_read_service.fetch_question(db, 99999)[0]
 
     assert found is None
 
@@ -219,7 +220,7 @@ def test_delete_question_existing_returns_true(db):
     result = question_write_service.delete_question(db, created.id)
 
     assert result is True
-    assert question_read_service.fetch_question(db, created.id) is None
+    assert question_read_service.fetch_question(db, created.id)[0] is None
 
 
 def test_delete_question_not_found_returns_false(db):
@@ -301,7 +302,7 @@ def test_update_question_rolls_back_on_embedding_failure(db, monkeypatch):
             QuestionUpdate(question="更新後質問", answer="更新後回答"),
         )
 
-    reloaded = question_read_service.fetch_question(db, created.id)
+    reloaded = question_read_service.fetch_question(db, created.id)[0]
 
     assert reloaded.question == "更新前質問"
     assert reloaded.answer == "更新前回答"
@@ -580,7 +581,7 @@ def test_fetch_questions_includes_concepts(db):
 def test_fetch_question_includes_concepts(db):
     created = _create(db)
 
-    found = question_read_service.fetch_question(db, created.id)
+    found = question_read_service.fetch_question(db, created.id)[0]
 
     assert found.concepts == ["概念A", "概念B"]
 

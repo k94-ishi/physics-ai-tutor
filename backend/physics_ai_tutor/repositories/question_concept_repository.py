@@ -33,11 +33,11 @@ def get_concepts_for_questions(
     db: Session,
     question_ids: list[int],
     language: str = "ja",
-    strict_language: bool = False,
+    strict: bool = False,
 ) -> dict[int, list[str]]:
     """Concept names per question in `language`.
 
-    Falls back to the other language unless `strict_language` is set, in
+    Falls back to the other language unless `strict` is set, in
     which case concepts without a name in `language` are skipped.
     """
     if not question_ids:
@@ -52,11 +52,7 @@ def get_concepts_for_questions(
 
     result: dict[int, list[str]] = {question_id: [] for question_id in question_ids}
     for question_id, concept in rows:
-        name = (
-            concept.name_in(language)
-            if strict_language
-            else concept.display_name(language)
-        )
+        name = concept.name_in(language) if strict else concept.display_name(language)
         if name is not None:
             result[question_id].append(name)
 

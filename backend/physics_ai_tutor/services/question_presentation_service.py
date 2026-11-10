@@ -15,6 +15,10 @@ from physics_ai_tutor.schemas.question import (
     AiReviewSummary,
     GenerationMeta,
 )
+from physics_ai_tutor.services.response_language import (
+    ResponseLanguage,
+    TranslationNeeds,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +35,7 @@ def attach_concept_names(
     db: Session,
     questions: list[Question],
     language: Language | str = Language.JA,
-    strict_language: bool = False,
+    strict: bool = False,
 ) -> None:
     """Populate each question's transient `.concepts` (display names)."""
     if not questions:
@@ -41,7 +45,7 @@ def attach_concept_names(
         db,
         [q.id for q in questions],
         language=Language(language).value,
-        strict_language=strict_language,
+        strict=strict,
     )
 
     for question in questions:
@@ -52,7 +56,7 @@ def attach_retrieved_questions(
     db: Session,
     questions: list[Question],
     language: Language | str = Language.JA,
-    strict_language: bool = False,
+    strict: bool = False,
 ) -> None:
     """Resolve `retrieved_question_ids` to {id, question} summaries."""
     if not questions:
@@ -70,8 +74,10 @@ def attach_retrieved_questions(
         return
 
     referenced = question_repository.get_questions_by_ids(db, list(all_ids))
-    if strict_language:
-        referenced, _ = split_by_language(referenced, language)
+    if strict:
+        referenced, _ = ResponseLanguage(Language(language), strict=True).readable(
+            referenced
+        )
     resolve_language(referenced, language)
     referenced_by_id = {item.id: item for item in referenced}
 
@@ -86,27 +92,22 @@ def attach_retrieved_questions(
 def prepare_for_response(
     db: Session,
     questions: list[Question],
-    language: Language | str = Language.JA,
-    strict_language: bool = False,
-) -> None:
-    """Fill the transient response fields.
+    language: Language | str | ResponseLanguage = Language.JA,
+) -> TranslationNeeds:
+    """Fill the transient response fields; report what a strict reader missed.
 
-    With `strict_language` (student responses) concept names and referenced
-    questions that lack `language` are left out instead of falling back.
+    A plain language is the admin fallback. With a strict ResponseLanguage
+    (students), concept names and referenced questions lacking the language
+    are left out, and the presented questions are reported so their concept
+    names can be translated ([53]).
     """
-    resolve_language(questions, language)
-    attach_concept_names(db, questions, language, strict_language)
-    attach_retrieved_questions(db, questions, language, strict_language)
-
-
-def split_by_language(
-    questions: list[Question], language: Language | str
-) -> tuple[list[Question], list[int]]:
-    """Rows that have text in `language`, and the ids of those that do not."""
-    lang = Language(language)
-    kept = [question for question in questions if question.has(lang)]
-    missing = [question.id for question in questions if not question.has(lang)]
-    return kept, missing
+    response = ResponseLanguage.of(language)
+    resolve_language(questions, response.language)
+    attach_concept_names(db, questions, response.language, response.strict)
+    attach_retrieved_questions(db, questions, response.language, response.strict)
+    if not response.strict:
+        return TranslationNeeds()
+    return TranslationNeeds(concept_question_ids=[q.id for q in questions])
 
 
 def attach_ai_reviews(db: Session, questions: list[Question]) -> None:

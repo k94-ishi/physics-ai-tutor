@@ -1,6 +1,7 @@
 """Read use cases: list, detail, exact match, ask cache."""
 
 import logging
+from dataclasses import replace
 
 from sqlalchemy.orm import Session
 
@@ -11,6 +12,7 @@ from physics_ai_tutor.repositories import (
 )
 from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.question import (
+    QuestionFilters,
     QuestionListResponse,
     QuestionStatus,
 )
@@ -22,6 +24,10 @@ from physics_ai_tutor.services.question_presentation_service import (
 from physics_ai_tutor.services.question_translation_service import (
     translate_into,
 )
+from physics_ai_tutor.services.response_language import (
+    ResponseLanguage,
+    TranslationNeeds,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,59 +36,25 @@ def fetch_questions(
     db: Session,
     page: int,
     size: int,
-    keyword: str | None = None,
-    status: str | None = None,
-    exclude_statuses: list[str] | None = None,
-    search_question: bool = True,
-    search_answer: bool = True,
-    language: Language | str = Language.JA,
-    only_with_language: bool = False,
-    include_generation: bool = False,
+    filters: QuestionFilters | None = None,
+    language: Language | str | ResponseLanguage = Language.JA,
     sort: str | None = None,
-    ai_verdict: str | None = None,
-    ids: list[int] | None = None,
-    concept: str | None = None,
-    concept_id: int | None = None,
+    include_admin_fields: bool = False,
 ) -> QuestionListResponse:
-    offset = (page - 1) * size
-    language_filter = Language(language) if only_with_language else None
+    """One page of questions; strict readers only get rows in their language."""
+    response = ResponseLanguage.of(language)
+    filters = filters or QuestionFilters()
+    if response.strict:
+        filters = replace(filters, language=response.language)
 
     questions = question_repository.get_questions(
-        db,
-        offset=offset,
-        limit=size,
-        keyword=keyword,
-        status=status,
-        exclude_statuses=exclude_statuses,
-        search_question=search_question,
-        search_answer=search_answer,
-        language=language_filter,
-        sort=sort,
-        ai_verdict=ai_verdict,
-        ids=ids,
-        concept=concept,
-        concept_id=concept_id,
+        db, offset=(page - 1) * size, limit=size, filters=filters, sort=sort
     )
+    total = question_repository.count_questions(db, filters)
+    prepare_for_response(db, questions, response)
 
-    total = question_repository.count_questions(
-        db,
-        keyword=keyword,
-        status=status,
-        exclude_statuses=exclude_statuses,
-        search_question=search_question,
-        search_answer=search_answer,
-        language=language_filter,
-        ai_verdict=ai_verdict,
-        ids=ids,
-        concept=concept,
-        concept_id=concept_id,
-    )
-
-    prepare_for_response(db, questions, language, strict_language=only_with_language)
-
-    # Generation metadata is admin-only; attach it while the ORM objects are
-    # still in hand (the response models are built from them next).
-    if include_generation:
+    # Admin-only fields; attach them while the ORM objects are still in hand.
+    if include_admin_fields:
         attach_generation_meta(questions)
         attach_ai_reviews(db, questions)
 
@@ -90,11 +62,10 @@ def fetch_questions(
         "Questions fetched: page=%d size=%d keyword_present=%s results=%d total=%d",
         page,
         size,
-        keyword is not None,
+        filters.keyword is not None,
         len(questions),
         total,
     )
-
     return QuestionListResponse(items=questions, total=total, page=page, size=size)
 
 
@@ -102,40 +73,39 @@ def fetch_question(
     db: Session,
     question_id: int,
     exclude_statuses: list[str] | None = None,
-    language: Language | str = Language.JA,
-    translate_if_missing: bool = False,
-) -> Question | None:
+    language: Language | str | ResponseLanguage = Language.JA,
+) -> tuple[Question | None, TranslationNeeds]:
+    """One question; a strict reader gets a missing language translated now."""
+    response = ResponseLanguage.of(language)
     question = question_repository.get_question(
         db, question_id, exclude_statuses=exclude_statuses
     )
-
     if question is None:
-        return None
+        return None, TranslationNeeds()
 
     # Lazy fill for rows approved before translation existed.
-    if translate_if_missing and not question.has(language):
+    if response.strict and not question.has(response.language):
         with transaction(db, "lazy_translate"):
-            translate_into(db, question, Language(language))
+            translate_into(db, question, response.language)
 
-    prepare_for_response(db, [question], language, strict_language=translate_if_missing)
-
-    return question
+    return question, prepare_for_response(db, [question], response)
 
 
 def fetch_question_by_exact_text(
     db: Session,
     question_text: str,
     exclude_statuses: list[str] | None = None,
-    language: Language | str = Language.JA,
-    strict_language: bool = False,
+    language: Language | str | ResponseLanguage = Language.JA,
 ) -> Question | None:
+    response = ResponseLanguage.of(language)
     question = question_repository.get_by_exact_text(
-        db, question_text, language=language, exclude_statuses=exclude_statuses
+        db,
+        question_text,
+        language=response.language,
+        exclude_statuses=exclude_statuses,
     )
-
     if question is not None:
-        prepare_for_response(db, [question], language, strict_language)
-
+        prepare_for_response(db, [question], response)
     return question
 
 

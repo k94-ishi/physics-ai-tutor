@@ -22,6 +22,7 @@ from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.question import (
     AiVerdictFilter,
     PrerequisitesResponse,
+    QuestionFilters,
     QuestionListResponse,
     QuestionResponse,
     QuestionSort,
@@ -38,6 +39,10 @@ from physics_ai_tutor.services import (
 )
 from physics_ai_tutor.services.embedding_service import (
     search_similar_questions,
+)
+from physics_ai_tutor.services.response_language import (
+    ResponseLanguage,
+    TranslationNeeds,
 )
 
 logger = logging.getLogger(__name__)
@@ -83,31 +88,34 @@ def _hidden_statuses_for(current_user: JWTPayload | None) -> list[str] | None:
     return None if is_admin(current_user) else PUBLIC_HIDDEN_STATUSES
 
 
+def _response_language(
+    lang: Language, current_user: JWTPayload | None
+) -> ResponseLanguage:
+    # Students never read the other language; admins get the fallback ([53]).
+    return ResponseLanguage.for_caller(lang, admin=is_admin(current_user))
+
+
 def _queue_translations(
-    background_tasks: BackgroundTasks, question_ids: list[int]
+    background_tasks: BackgroundTasks,
+    db: Session,
+    needs: TranslationNeeds,
+    language: Language,
 ) -> None:
-    # Rows hidden for lacking the language get translated once, after the response.
-    claimed = background_translation_service.claim(question_ids)
+    """Translate what a strict response left out, once, after the response."""
+    claimed = background_translation_service.claim(needs.question_ids)
     if claimed:
         background_tasks.add_task(
             background_translation_service.translate_missing, claimed
         )
-
-
-def _queue_concept_names(
-    background_tasks: BackgroundTasks,
-    db: Session,
-    question_ids: list[int],
-    language: Language,
-) -> None:
-    # Concept names hidden for lacking the language get translated once.
+    if not needs.concept_question_ids:
+        return
     missing = concept_sense_service.concept_ids_missing_name(
-        db, question_ids, language.value
+        db, needs.concept_question_ids, language.value
     )
-    claimed = background_translation_service.claim_concepts(missing)
-    if claimed:
+    claimed_concepts = background_translation_service.claim_concepts(missing)
+    if claimed_concepts:
         background_tasks.add_task(
-            background_translation_service.translate_concept_names, claimed
+            background_translation_service.translate_concept_names, claimed_concepts
         )
 
 
@@ -142,27 +150,27 @@ def get_questions(
     db: Session = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
-    # Students only see rows that have text in their language; admins see
-    # every row, with the text falling back to the original language.
-    # AI-verdict sorting and filtering are review-queue tools: admins only.
+    # AI-verdict sorting and filtering and the id list are admin tools.
     admin = is_admin(current_user)
-    return question_read_service.fetch_questions(
-        db,
-        page,
-        size,
-        keyword,
+    filters = QuestionFilters(
+        keyword=keyword,
         status=status,
         exclude_statuses=_hidden_statuses_for(current_user),
         search_question=search_question,
         search_answer=search_answer,
-        language=lang,
-        only_with_language=not admin,
-        include_generation=admin,
-        sort=sort.value if sort and admin else None,
         ai_verdict=ai_verdict.value if ai_verdict and admin else None,
         ids=_parse_ids(ids) if admin else None,
         concept=concept,
         concept_id=concept_id,
+    )
+    return question_read_service.fetch_questions(
+        db,
+        page,
+        size,
+        filters,
+        language=_response_language(lang, current_user),
+        sort=sort.value if sort and admin else None,
+        include_admin_fields=admin,
     )
 
 
@@ -180,8 +188,7 @@ def get_exact_match_question(
         db,
         question,
         exclude_statuses=_hidden_statuses_for(current_user),
-        language=lang,
-        strict_language=not is_admin(current_user),
+        language=_response_language(lang, current_user),
     )
 
     if result is None:
@@ -204,13 +211,12 @@ def get_question(
     db: Session = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
-    question = question_read_service.fetch_question(
+    # Rows approved before translation existed are filled on first view.
+    question, needs = question_read_service.fetch_question(
         db,
         question_id,
         exclude_statuses=_hidden_statuses_for(current_user),
-        language=lang,
-        # Rows approved before translation existed are filled on first view.
-        translate_if_missing=not is_admin(current_user),
+        language=_response_language(lang, current_user),
     )
 
     if question is None:
@@ -222,8 +228,7 @@ def get_question(
     if is_admin(current_user):
         question_presentation_service.attach_generation_meta([question])
         question_presentation_service.attach_ai_reviews(db, [question])
-    else:
-        _queue_concept_names(background_tasks, db, [question.id], lang)
+    _queue_translations(background_tasks, db, needs, lang)
 
     return question
 
@@ -240,24 +245,19 @@ def get_related_questions(
     db: Session = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
-    admin = is_admin(current_user)
-    missing: list[int] = []
     related = recommendation_service.get_related_questions(
         db,
         question_id,
         limit=limit,
         exclude_statuses=(
-            [QuestionStatus.REJECTED] if admin else PUBLIC_HIDDEN_STATUSES
+            [QuestionStatus.REJECTED]
+            if is_admin(current_user)
+            else PUBLIC_HIDDEN_STATUSES
         ),
-        language=lang,
-        only_with_language=not admin,
-        missing_language_ids=missing,
+        language=_response_language(lang, current_user),
     )
-    _queue_translations(background_tasks, missing)
-    if not admin:
-        ids = [item.id for item in related]
-        _queue_concept_names(background_tasks, db, ids, lang)
-    return related
+    _queue_translations(background_tasks, db, related.needs, lang)
+    return related.items
 
 
 @router.get(
@@ -277,24 +277,16 @@ def get_prerequisites(
     Students climb down, so only APPROVED rows ever appear, for admins
     too; concepts with no usable definer come back as gaps.
     """
-    admin = is_admin(current_user)
-    missing: list[int] = []
-    response = prerequisite_service.get_prerequisites(
+    result = prerequisite_service.get_prerequisites(
         db,
         question_id,
         limit=limit,
-        language=lang,
-        only_with_language=not admin,
-        missing_language_ids=missing,
+        language=_response_language(lang, current_user),
     )
-    if response is None:
+    if result is None:
         raise HTTPException(status_code=404, detail="Question not found")
-    _queue_translations(background_tasks, missing)
-    if not admin:
-        # The current QA too: its concepts are the gap chips.
-        ids = [question_id, *(item.id for item in response.items)]
-        _queue_concept_names(background_tasks, db, ids, lang)
-    return response
+    _queue_translations(background_tasks, db, result.needs, lang)
+    return result.response
 
 
 @router.post(

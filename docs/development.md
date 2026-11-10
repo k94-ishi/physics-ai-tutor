@@ -58,10 +58,12 @@ inserts every entry as an approved question in both languages. Entries may
 be `{"question", "answer"}` (Japanese, English machine translated) or carry
 explicit `question_ja` / `answer_ja` / `question_en` / `answer_en` columns
 (a supplied English text is kept as a human translation). The file carries the
-translations, tags and difficulty levels, so seeding only generates
-embeddings: `OPENAI_API_KEY` must be set, DeepSeek is not called (see
+translations, tags and difficulty levels, and `seed_embeddings.jsonl.gz`
+next to it carries their embeddings, so seeding calls neither OpenAI nor
+DeepSeek (see
 [docs/database.md](database.md#seed-data); write a local database back
-into the file with `python -m physics_ai_tutor.cli.export_seed`).
+into the files with `python -m physics_ai_tutor.cli.export_seed` and
+`python -m physics_ai_tutor.cli.export_seed_embeddings`).
 The import is all-or-nothing: if any question text already exists, nothing
 is inserted. Reset the database (see [docs/database.md](database.md)) before
 re-seeding.

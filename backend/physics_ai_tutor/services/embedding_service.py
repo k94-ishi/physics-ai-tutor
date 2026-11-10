@@ -18,7 +18,36 @@ from physics_ai_tutor.schemas.language import Language
 logger = logging.getLogger(__name__)
 
 
+# Vectors loaded from seed_embeddings.jsonl.gz while seeding, keyed by
+# vector_key(model, text); empty otherwise.
+_preloaded: dict[str, list[float]] = {}
+
+
+def vector_key(model: str, text: str) -> str:
+    """Stable key of one embedding: the model and the exact text."""
+    return hashlib.sha256(f"{model}\0{text}".encode()).hexdigest()
+
+
+def preload(vectors: dict[str, list[float]]) -> None:
+    """Serve these vectors instead of calling OpenAI (seed only)."""
+    _preloaded.update(vectors)
+
+
+def clear_preloaded() -> None:
+    _preloaded.clear()
+
+
 def create_embeddings(texts: list[str]) -> list[list[float]]:
+    """Embeddings for `texts`; preloaded vectors first, OpenAI for the rest."""
+    keys = [vector_key(settings.embedding_model, text) for text in texts]
+    missing = [
+        text for text, key in zip(texts, keys, strict=True) if key not in _preloaded
+    ]
+    fetched = iter(_request_embeddings(missing) if missing else [])
+    return [_preloaded[key] if key in _preloaded else next(fetched) for key in keys]
+
+
+def _request_embeddings(texts: list[str]) -> list[list[float]]:
     logger.debug("Generating embeddings: count=%d", len(texts))
 
     try:

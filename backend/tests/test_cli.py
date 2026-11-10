@@ -8,6 +8,9 @@ from physics_ai_tutor.cli import create_user as create_user_cli
 from physics_ai_tutor.cli import translate_missing as translate_cli
 from physics_ai_tutor.database import seed as seed_module
 from physics_ai_tutor.models import Question, User
+from physics_ai_tutor.services.embedding_service import (
+    create_embeddings as real_create_embeddings,
+)
 from tests.conftest import engine
 
 
@@ -173,3 +176,52 @@ def test_export_seed_round_trips_the_seed_file(db, _bind_cli_sessions):
 
     assert exported == entries
     assert notes == []
+
+
+def test_seed_needs_no_openai_call_either(db, _bind_cli_sessions, monkeypatch):
+    # Every vector the seed asks for is in seed_embeddings.jsonl.gz ([55]).
+    from physics_ai_tutor.models import Concept, QuestionEmbedding
+    from physics_ai_tutor.services import embedding_service
+
+    def _forbidden(texts):
+        raise AssertionError(f"seed must not call OpenAI: {texts[:1]}")
+
+    monkeypatch.setattr(embedding_service, "create_embeddings", real_create_embeddings)
+    monkeypatch.setattr(embedding_service, "_request_embeddings", _forbidden)
+
+    seed_module.seed()
+
+    assert db.query(QuestionEmbedding).count() == 4 * len(_seed_file_entries())
+    assert db.query(Concept).count() > 0
+    # The preloaded vectors are released after seeding.
+    assert embedding_service._preloaded == {}
+
+
+def test_export_seed_embeddings_round_trips(db, _bind_cli_sessions, monkeypatch):
+    from physics_ai_tutor.cli import export_seed_embeddings
+    from physics_ai_tutor.core.config import settings
+    from physics_ai_tutor.database import seed_embeddings
+    from physics_ai_tutor.services import embedding_service
+
+    monkeypatch.setattr(embedding_service, "create_embeddings", real_create_embeddings)
+    stored = seed_embeddings.read(
+        seed_embeddings.EMBEDDINGS_FILE, settings.embedding_model
+    )
+    seed_module.seed()
+
+    exported = export_seed_embeddings.collect(db, settings.embedding_model)
+
+    assert exported.keys() == stored.keys()
+    # pgvector prints float32 as short decimals; compare at float32 precision.
+    as_f32 = seed_embeddings._encode
+    assert all(as_f32(exported[key]) == as_f32(stored[key]) for key in stored)
+
+
+def test_embeddings_file_for_another_model_is_ignored(tmp_path):
+    from physics_ai_tutor.database import seed_embeddings
+
+    path = tmp_path / "v.jsonl.gz"
+    seed_embeddings.write(path, "model-a", {"k": [0.5, -1.0]})
+
+    assert seed_embeddings.read(path, "model-a") == {"k": [0.5, -1.0]}
+    assert seed_embeddings.read(path, "model-b") == {}

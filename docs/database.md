@@ -623,10 +623,23 @@ in the file (2026-11-10), so a reset loses nothing:
 | `tags` | The entry's tags as `"<ja> \| <en>"` pairs, the concept-extraction output format ([55]) |
 
 All LLM-made fields come from one extraction run (the `elm` stack of the
-[40] trial), so tags and levels belong together. Embeddings are not
-stored: they are a deterministic function of text and embedding model.
+[40] trial), so tags and levels belong together.
 
-So seeding needs `OPENAI_API_KEY` (embeddings) but **no DeepSeek call**.
+The embeddings of those questions and tags live in a separate file,
+`seed_embeddings.jsonl.gz` (about 5.5 MB, 1,366 vectors; kept apart from
+the reviewable `seed.json` on the owner's request). Format: gzip JSON
+lines, a header `{"model", "dimensions", "format": "float32-le-base64"}`,
+then `{"key", "vector"}` per embedding, where `key` is
+`embedding_service.vector_key(model, text)` - a SHA-256 of the model and
+the exact embedded text (question, answer, or a tag's `"<ja> | <en>"`).
+The seed serves these vectors instead of calling OpenAI; a text that is
+not in the file, or an `EMBEDDING_MODEL` other than the header's, falls
+back to OpenAI. Rebuild it with
+`python -m physics_ai_tutor.cli.export_seed_embeddings` (no API calls).
+
+So a full reset needs **no API key at all**: verified 2026-11-10 by
+dropping the local volume and seeding with both providers unreachable
+(144 questions, 790 tags, 2,029 links, 576 embeddings in about 11 s).
 Entries without `tags` fall back to concept extraction, and entries
 missing a language fall back to translation (both DeepSeek). After
 changing data in a local database that should survive a reset, write it

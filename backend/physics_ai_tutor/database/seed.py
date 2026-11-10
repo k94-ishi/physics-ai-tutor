@@ -3,10 +3,11 @@
 Everything an LLM produced and a teacher may rely on is stored in the
 file, so a disposable local stack can be rebuilt without DeepSeek:
 machine translations (with their provenance), tags (`"<ja> | <en>"`
-pairs, the extraction format) and the two difficulty levels. Embeddings
-are not stored: they are a deterministic function of the text and the
-embedding model, so the seed recomputes them (OpenAI only). Entries
-without `tags` fall back to concept extraction (DeepSeek).
+pairs, the extraction format) and the two difficulty levels. The
+embeddings live in seed_embeddings.jsonl.gz next to it, so a rebuild
+needs no OpenAI call either; any vector missing there (new text, another
+embedding model) is fetched from OpenAI. Entries without `tags` fall back
+to concept extraction (DeepSeek).
 """
 
 import json
@@ -14,6 +15,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from physics_ai_tutor.core.config import settings
+from physics_ai_tutor.database import seed_embeddings
 from physics_ai_tutor.database.database import SessionLocal
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.schemas.language import TextProvenance
@@ -22,7 +25,11 @@ from physics_ai_tutor.schemas.question import (
     QuestionSource,
     QuestionStatus,
 )
-from physics_ai_tutor.services import concept_service, question_service
+from physics_ai_tutor.services import (
+    concept_service,
+    embedding_service,
+    question_service,
+)
 
 
 class SeedExtras(BaseModel):
@@ -83,6 +90,9 @@ def seed():
     seed_file = Path(__file__).resolve().parent / "seed.json"
     rows = load_seed_file(seed_file)
 
+    embedding_service.preload(
+        seed_embeddings.read(seed_embeddings.EMBEDDINGS_FILE, settings.embedding_model)
+    )
     db = SessionLocal()
 
     try:
@@ -98,6 +108,7 @@ def seed():
         db.commit()
     finally:
         db.close()
+        embedding_service.clear_preloaded()
 
 
 if __name__ == "__main__":

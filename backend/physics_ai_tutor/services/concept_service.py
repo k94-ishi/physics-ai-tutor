@@ -8,6 +8,7 @@ from physics_ai_tutor.core import prompts
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.exceptions import ConceptExtractionError, TranslationError
 from physics_ai_tutor.core.prompt_library import load_library
+from physics_ai_tutor.core.text import concept_pair_text, normalize_key
 from physics_ai_tutor.models import Concept
 from physics_ai_tutor.repositories import (
     concept_repository,
@@ -150,12 +151,8 @@ def extract_concept_names(
     return lines
 
 
-def _pair_text(ja: str | None, en: str | None) -> str:
-    return " | ".join(part for part in (ja, en) if part)
-
-
 def _sense_pair_text(concept: Concept) -> str:
-    return _pair_text(concept.name_ja, concept.name_en)
+    return concept_pair_text(concept.name_ja, concept.name_en)
 
 
 def _resolve_sense(
@@ -171,7 +168,7 @@ def _resolve_sense(
     candidates: dict[int, Concept] = {}
     for lang, word in sides:
         for concept in concept_term_repository.senses_with_term(
-            db, lang, concept_sense_service.normalize_term(word)
+            db, lang, normalize_key(word)
         ):
             candidates[concept.id] = concept
     if not candidates:
@@ -187,7 +184,7 @@ def _resolve_sense(
 
     pool = full or list(candidates.values())
     vectors = embedding_service.create_embeddings(
-        [_pair_text(name.ja, name.en), *(_sense_pair_text(c) for c in pool)]
+        [concept_pair_text(name.ja, name.en), *(_sense_pair_text(c) for c in pool)]
     )
     mine, others = vectors[0], vectors[1:]
     scored = sorted(
@@ -200,7 +197,7 @@ def _resolve_sense(
         return best, mine
     logger.info(
         "New concept sense for a shared word: pair=%r best=%.3f",
-        _pair_text(name.ja, name.en),
+        concept_pair_text(name.ja, name.en),
         best_score,
     )
     return None, mine
@@ -227,7 +224,7 @@ def attach_concepts_to_question(
         if concept is None:
             if embedding is None:
                 embedding = embedding_service.create_embeddings(
-                    [_pair_text(name.ja, name.en)]
+                    [concept_pair_text(name.ja, name.en)]
                 )[0]
             concept = concept_repository.create(
                 db,

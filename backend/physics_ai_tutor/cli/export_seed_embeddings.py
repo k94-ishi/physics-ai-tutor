@@ -13,6 +13,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core.config import settings
+from physics_ai_tutor.core.text import concept_pair_text
 from physics_ai_tutor.database import seed_embeddings
 from physics_ai_tutor.database.database import SessionLocal
 from physics_ai_tutor.models import (
@@ -22,11 +23,6 @@ from physics_ai_tutor.models import (
     QuestionEmbedding,
 )
 from physics_ai_tutor.services.embedding_service import vector_key
-
-
-def _tag_text(concept: Concept) -> str:
-    # Same text concept_service._pair_text embeds when the seed creates a tag.
-    return " | ".join(part for part in (concept.name_ja, concept.name_en) if part)
 
 
 def collect(db: Session, model: str) -> dict[str, list[float]]:
@@ -61,7 +57,9 @@ def collect(db: Session, model: str) -> dict[str, list[float]]:
         .all()
     )
     for concept in concepts:
-        vectors[vector_key(model, _tag_text(concept))] = list(concept.embedding)
+        vectors[
+            vector_key(model, concept_pair_text(concept.name_ja, concept.name_en))
+        ] = list(concept.embedding)
     return vectors
 
 

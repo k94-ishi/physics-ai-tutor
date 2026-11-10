@@ -1,6 +1,7 @@
 from sqlalchemy import func, nullslast, or_
 from sqlalchemy.orm import Query, Session
 
+from physics_ai_tutor.core.text import normalize_key
 from physics_ai_tutor.models import (
     AiReview,
     Concept,
@@ -9,7 +10,6 @@ from physics_ai_tutor.models import (
     QuestionAsk,
     QuestionConcept,
 )
-from physics_ai_tutor.repositories.concept_repository import normalize
 from physics_ai_tutor.schemas.language import Language, TextProvenance
 from physics_ai_tutor.schemas.question import QuestionCreate, QuestionUpdate
 
@@ -27,7 +27,7 @@ def _filter_by_concept(
         senses = db.query(Concept.id).filter(Concept.id == concept_id)
     elif concept:
         senses = db.query(ConceptTerm.concept_id).filter(
-            ConceptTerm.normalized == normalize(concept)
+            ConceptTerm.normalized == normalize_key(concept)
         )
     else:
         return query

@@ -1,6 +1,5 @@
 import hashlib
 import logging
-import unicodedata
 
 from openai import OpenAIError
 from sqlalchemy.orm import Session
@@ -8,6 +7,7 @@ from sqlalchemy.orm import Session
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.exceptions import EmbeddingGenerationError
 from physics_ai_tutor.core.openai import client
+from physics_ai_tutor.core.text import normalize_text
 from physics_ai_tutor.repositories import query_embedding_repository
 from physics_ai_tutor.repositories.embedding_repository import (
     search_similar_embeddings,
@@ -68,12 +68,6 @@ def _request_embeddings(texts: list[str]) -> list[list[float]]:
     return [item.embedding for item in response.data]
 
 
-def normalize_query(text: str) -> str:
-    """NFKC + whitespace collapse, so trivially different strings share
-    one cache entry (and one embedding)."""
-    return " ".join(unicodedata.normalize("NFKC", text).split())
-
-
 def embed_query(db: Session, text: str) -> list[float]:
     """Embed a search query through the cache ([49]).
 
@@ -81,7 +75,7 @@ def embed_query(db: Session, text: str) -> list[float]:
     retried phrasing, a shared ?similar= link, a re-asked question - costs
     no OpenAI call. A model change misses the cache by construction.
     """
-    normalized = normalize_query(text)
+    normalized = normalize_text(text)
     text_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
     model = settings.embedding_model
 

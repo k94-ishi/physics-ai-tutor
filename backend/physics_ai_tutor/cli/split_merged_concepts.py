@@ -26,10 +26,10 @@ from physics_ai_tutor.cli.review_pending import (
     within_offpeak,
 )
 from physics_ai_tutor.core.config import settings
+from physics_ai_tutor.core.text import normalize_key
 from physics_ai_tutor.database.database import SessionLocal
 from physics_ai_tutor.models import Concept, Question, QuestionConcept
 from physics_ai_tutor.services import question_service
-from physics_ai_tutor.services.concept_sense_service import normalize_term
 
 
 @dataclass
@@ -43,7 +43,7 @@ class SuspectLink:
 def _uses_a_word(question: Question, concept: Concept) -> bool:
     language = question.original_language
     text = question.original_text()
-    haystack = normalize_term(" ".join(text))
+    haystack = normalize_key(" ".join(text))
     return any(term.normalized in haystack for term in concept.terms_in(language))
 
 

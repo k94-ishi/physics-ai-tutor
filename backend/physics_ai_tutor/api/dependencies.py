@@ -238,3 +238,8 @@ def enforce_login_rate_limit(
 
     # Every login attempt counts, successful or not.
     rate_limit_service.record(db, LOGIN_ACTION, bucket_key)
+
+
+def is_admin(current_user: JWTPayload | None) -> bool:
+    """Whether an optional caller is an admin (public routes vary by role)."""
+    return current_user is not None and current_user.role == UserRole.ADMIN

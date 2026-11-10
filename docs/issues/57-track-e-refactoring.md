@@ -36,13 +36,33 @@ reproducible seed, and the test coverage of behaviour.
 
 ## Order (each step is a separate, independently mergeable PR)
 
-1. [58] quick wins - docs drift, shared helpers, slow tests (half a day)
-2. [59] backend layering: routers call services only; one place commits
-3. [60] split `question_service` and `api/v1/questions.py` by use case
-4. [61] tag (concept) domain: one package, legacy name columns removed ([55] stage 5)
-5. [62] language resolution as one response step instead of flags
-6. [63] frontend: shared hooks and card components; split the admin queue page
-7. [64] frontend: split `api.ts` and `translations.ts` by feature
+Revised 2026-11-10 after [58]: test speed comes right after the quick
+wins (every later step runs the suite many times), and comment style is
+its own issue, applied as files are touched.
+
+1. ~~[58] quick wins~~ done 2026-11-10
+2. [66] test suite speed (backend 4.5 min -> under 2 min) - **next up**
+3. [59] backend layering: routers call services only; one place commits
+4. [60] split `question_service` and `api/v1/questions.py` by use case
+5. [61] concept domain: one `services/concepts/` package; legacy name columns removed ([55] stage 5)
+6. [62] language resolution as one response step instead of flags
+7. [63] frontend: shared hooks and card components; split the admin queue page
+8. [64] frontend: split `api.ts` and `translations.ts` by feature
+- Alongside 3-8: [65] English one-sentence comments (166 Japanese comment
+  lines, 70 multi-line docstrings); the CI check lands first.
+
+Naming (owner, 2026-11-10): "concept" in all code; "tag" only on screen.
+
+Other open issues reviewed on 2026-11-10:
+
+- [44] the owner's decision is in its Log (2026-11-03) and no label
+  changed, so nothing is left but closing it - owner to confirm.
+- [20] describes prompts in `core/prompts.py`; since [24] the texts live in
+  `prompt_library.yaml`. Update the design when it is picked up.
+- [21] /help should say "tag" and explain the "which meaning?" chooser.
+- [00] roadmap was last revised 2026-10-28; the tracks [45]-[48], [57]
+  carry the current order. Refresh or mark as historical.
+- [23] (privacy debt) is still open in Track C; independent of [57].
 
 Rules for the whole track:
 

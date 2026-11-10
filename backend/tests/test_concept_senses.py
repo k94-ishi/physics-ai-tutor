@@ -2,9 +2,9 @@
 
 import pytest
 
+from physics_ai_tutor.core.text import normalize_key
 from physics_ai_tutor.models import Concept, ConceptTerm, Question, QuestionConcept
 from physics_ai_tutor.services import (
-    concept_sense_service,
     concept_service,
     embedding_service,
 )
@@ -275,10 +275,8 @@ def test_split_moves_the_chosen_questions_to_a_new_sense(admin_client, db):
     assert [q["id"] for q in remaining] == [wave_q.id]
 
 
-def test_normalize_term_ignores_case_width_and_spacing():
-    assert (
-        concept_sense_service.normalize_term("  Ｐｈａｓｅ   Shift ") == "phase shift"
-    )
+def test_normalize_key_ignores_case_width_and_spacing():
+    assert normalize_key("  Ｐｈａｓｅ   Shift ") == "phase shift"
 
 
 def test_existing_terms_table_is_used_for_preferred_mirror(db):

@@ -12,8 +12,9 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from physics_ai_tutor.core.text import normalize_key
 from physics_ai_tutor.models import Concept, ConceptTerm, QuestionConcept
-from physics_ai_tutor.repositories import concept_repository, concept_term_repository
+from physics_ai_tutor.repositories import concept_term_repository
 from physics_ai_tutor.schemas.concept import (
     AdminConceptListResponse,
     AdminConceptResponse,
@@ -33,11 +34,6 @@ class TermSource:
     TEACHER = "TEACHER"
 
 
-def normalize_term(term: str) -> str:
-    """NFKC, collapsed whitespace, case-folded: the matching key."""
-    return concept_repository.normalize(term)
-
-
 def cosine(a: list[float], b: list[float]) -> float:
     dot = sum(x * y for x, y in zip(a, b, strict=True))
     norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
@@ -45,7 +41,7 @@ def cosine(a: list[float], b: list[float]) -> float:
 
 
 def has_term(concept: Concept, language: str, term: str) -> bool:
-    key = normalize_term(term)
+    key = normalize_key(term)
     return any(t.normalized == key for t in concept.terms_in(language))
 
 
@@ -85,7 +81,7 @@ def add_term(
         concept_id=concept.id,
         language=language,
         term=term,
-        normalized=normalize_term(term),
+        normalized=normalize_key(term),
         is_preferred=make_preferred,
         source=source,
     )
@@ -208,7 +204,7 @@ def label(concept: Concept, language: str) -> tuple[str, bool]:
 
 
 def find_by_word(db: Session, word: str) -> list[Concept]:
-    return concept_term_repository.senses_with_any_term(db, normalize_term(word))
+    return concept_term_repository.senses_with_any_term(db, normalize_key(word))
 
 
 # --- search ([55] stage 3) ------------------------------------------------------
@@ -231,7 +227,7 @@ def search(
     language (the strict rule of [53]); admins get every sense.
     """
     statuses = PUBLIC_STATUSES if public else None
-    key = normalize_term(query) if query else ""
+    key = normalize_key(query) if query else ""
     if key:
         terms = concept_term_repository.search_terms(db, key, limit * 10)
         best: dict[int, tuple[int, ConceptTerm]] = {}
@@ -294,7 +290,7 @@ def list_for_admin(
     db: Session, query: str, review_filter: str, page: int, size: int
 ) -> AdminConceptListResponse:
     ids = concept_term_repository.admin_concept_ids(
-        db, normalize_term(query) if query else "", review_filter
+        db, normalize_key(query) if query else "", review_filter
     )
     total = len(ids)
     page_ids = ids[(page - 1) * size : page * size]
@@ -337,11 +333,11 @@ def edit_term(
     """A teacher edit; the word counts as reviewed afterwards."""
     concept = db.get(Concept, term.concept_id)
     assert concept is not None
-    if new_text is not None and normalize_term(new_text) != term.normalized:
+    if new_text is not None and normalize_key(new_text) != term.normalized:
         if has_term(concept, term.language, new_text):
             raise DuplicateTermError(new_text)
         term.term = new_text
-        term.normalized = normalize_term(new_text)
+        term.normalized = normalize_key(new_text)
     term.source = TermSource.TEACHER
     db.flush()
     if preferred:

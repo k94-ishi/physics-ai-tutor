@@ -3,7 +3,11 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
-from physics_ai_tutor.api.dependencies import get_current_user_optional, require_admin
+from physics_ai_tutor.api.dependencies import (
+    get_current_user_optional,
+    is_admin,
+    require_admin,
+)
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.models import Concept
 from physics_ai_tutor.repositories import concept_term_repository
@@ -18,7 +22,7 @@ from physics_ai_tutor.schemas.concept import (
     ConceptTermUpdate,
 )
 from physics_ai_tutor.schemas.language import Language
-from physics_ai_tutor.schemas.token import JWTPayload, UserRole
+from physics_ai_tutor.schemas.token import JWTPayload
 from physics_ai_tutor.services import concept_sense_service
 from physics_ai_tutor.services.concept_sense_service import (
     DuplicateTermError,
@@ -41,9 +45,8 @@ def search_concepts(
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
     """Concept senses by any of their words, in either language ([55])."""
-    is_admin = current_user is not None and current_user.role == UserRole.ADMIN
     return concept_sense_service.search(
-        db, q, lang.value, public=not is_admin, limit=limit
+        db, q, lang.value, public=not is_admin(current_user), limit=limit
     )
 
 

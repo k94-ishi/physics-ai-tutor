@@ -1,8 +1,7 @@
-import unicodedata
-
 from sqlalchemy import func
 from sqlalchemy.orm import Session, aliased
 
+from physics_ai_tutor.core.text import normalize_key
 from physics_ai_tutor.models import Concept, ConceptTerm, QuestionConcept
 
 
@@ -40,7 +39,7 @@ def create(
                 ConceptTerm(
                     language=language,
                     term=word,
-                    normalized=normalize(word),
+                    normalized=normalize_key(word),
                     is_preferred=True,
                     source="EXTRACTED",
                 )
@@ -50,11 +49,6 @@ def create(
     db.flush()
 
     return concept
-
-
-def normalize(term: str) -> str:
-    """NFKC, collapsed whitespace, case-folded: the term matching key."""
-    return " ".join(unicodedata.normalize("NFKC", term).split()).casefold()
 
 
 def list_all(db: Session) -> list[Concept]:

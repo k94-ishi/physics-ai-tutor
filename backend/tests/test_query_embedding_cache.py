@@ -3,6 +3,7 @@
 import pytest
 
 from physics_ai_tutor.core.config import settings
+from physics_ai_tutor.core.text import normalize_text
 from physics_ai_tutor.models import QueryEmbedding
 from physics_ai_tutor.services import embedding_service
 
@@ -21,14 +22,10 @@ def _counted_embeddings(monkeypatch):
     return calls
 
 
-def test_normalize_query_collapses_trivial_differences():
-    assert embedding_service.normalize_query(
-        "  斜方投射　の  運動 "
-    ) == embedding_service.normalize_query("斜方投射 の 運動")
+def test_normalize_text_collapses_trivial_differences():
+    assert normalize_text("  斜方投射　の  運動 ") == normalize_text("斜方投射 の 運動")
     # NFKC: fullwidth alphanumerics fold to ASCII.
-    assert embedding_service.normalize_query("ｖ−ｔグラフ") == (
-        embedding_service.normalize_query("v−tグラフ")
-    )
+    assert normalize_text("ｖ−ｔグラフ") == (normalize_text("v−tグラフ"))
 
 
 def test_second_search_for_the_same_text_embeds_nothing(

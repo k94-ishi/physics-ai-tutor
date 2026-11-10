@@ -1,5 +1,5 @@
 ---
-title: "[61] Tag domain: one package for tags, legacy name columns removed ([55] stage 5)"
+title: "[61] Concept domain: one package for concepts, legacy name columns removed ([55] stage 5)"
 labels: [refactor, backend, migration]
 milestone: M1 Student value
 priority: P2
@@ -16,7 +16,7 @@ read model, then finish [55] by dropping the mirrors.
 
 ## Scope
 
-- `services/tags/`: `extraction.py` (prompt call, parsing, levels),
+- `services/concepts/`: `extraction.py` (prompt call, parsing, levels),
   `matching.py` (sense resolution), `terms.py` (add/edit/merge/split),
   `search.py`, `translation.py`. The import cycle between the two
   current modules disappears.
@@ -24,9 +24,9 @@ read model, then finish [55] by dropping the mirrors.
   drops `concepts.name_ja` / `name_en` (downgrade rebuilds them from
   preferred terms).
 - Seed format unchanged (`"<ja> | <en>"` pairs stay the exchange format).
-- Naming: keep `concept` in code and tables (decided 2026-11-10); only
-  module names under `services/tags/` say "tag" if the owner prefers -
-  decide at the start of this issue.
+- Naming (owner, 2026-11-10): the codebase says **concept** everywhere -
+  packages, modules, functions, tables, API. "Tag" is only the word on
+  screen (translations).
 
 ## Acceptance criteria
 

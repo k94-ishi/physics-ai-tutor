@@ -60,3 +60,9 @@ no API calls.
 
 - [ ] Frontend: `npm run lint`, `tsc --noEmit`, `npm test`, `npm run build` pass
 - [ ] Login/header links present in both languages
+
+## Log
+
+### 2026-11-10 - wording
+
+The UI now calls concepts **タグ / tag** ([41]); explain tag chips and the "which meaning?" chooser ([55]) on the page.

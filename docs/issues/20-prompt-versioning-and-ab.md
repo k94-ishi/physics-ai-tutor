@@ -52,3 +52,9 @@ version; that is acceptable and visible in the row.
 
 - [ ] Backend checks pass
 - [ ] `docs/development.md` updated
+
+## Log
+
+### 2026-11-10 - design note is stale
+
+Prompt texts moved to `core/prompt_library.yaml` (records with family, name, language, version). Redesign the rollout split on that library when this is picked up ([57] review).

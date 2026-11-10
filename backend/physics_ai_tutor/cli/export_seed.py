@@ -15,15 +15,12 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from physics_ai_tutor.core.text import concept_line
 from physics_ai_tutor.database.database import SessionLocal
 from physics_ai_tutor.models import Concept, Question, QuestionConcept
 from physics_ai_tutor.schemas.language import TextProvenance
 
 SEED_FILE = Path(__file__).resolve().parents[1] / "database" / "seed.json"
-
-
-def _tag(concept: Concept) -> str:
-    return " | ".join(part or "" for part in (concept.name_ja, concept.name_en))
 
 
 def _entry(question: Question, tags: list[str]) -> dict:
@@ -62,7 +59,9 @@ def build_entries(db: Session, order: list[str]) -> tuple[list[dict], list[str]]
     tags: dict[int, list[str]] = {}
     notes: set[str] = set()
     for question_id, concept in links:
-        tags.setdefault(question_id, []).append(_tag(concept))
+        tags.setdefault(question_id, []).append(
+            concept_line(concept.name_ja, concept.name_en)
+        )
         if len(concept.terms) > len([t for t in concept.terms if t.is_preferred]):
             notes.add(f"concept {concept.id} has aliases (not exported)")
         if concept.gloss_ja or concept.gloss_en:

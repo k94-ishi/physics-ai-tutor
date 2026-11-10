@@ -84,7 +84,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 61 | open | 61-refactor-tag-domain.md | Concept domain: one package, legacy name columns removed ([55] stage 5) | — (file-era issue) |
 | 62 | closed | 62-refactor-language-resolution.md | One language-resolution step for responses | — (file-era issue) |
 | 63 | closed | 63-refactor-frontend-components.md | Frontend: shared hooks and cards; split the admin queue page | — (file-era issue) |
-| 64 | open | 64-refactor-frontend-api-i18n.md | Frontend: split api.ts and translations.ts by feature | — (file-era issue) |
+| 64 | closed | 64-refactor-frontend-api-i18n.md | Frontend: split api.ts and translations.ts by feature | — (file-era issue) |
 | 65 | open | 65-english-one-sentence-comments.md | Comments in English, one short sentence (AGENTS.md coding style) | — (file-era issue) |
 | 66 | closed | 66-test-suite-speed.md | Test suite speed: backend 4.5 min -> under 2 min | — (file-era issue) |
 

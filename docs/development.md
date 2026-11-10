@@ -234,6 +234,7 @@ Test files sit next to the code in `__tests__/` folders and end in
 
 | Location | Covers |
 | --- | --- |
+| `src/lib/api/__tests__/importBoundary.test.ts` | Nothing outside `lib/api` imports a feature file directly |
 | `src/lib/__tests__/api.test.ts` | Request building (query params, JSON bodies, multipart), cookie inclusion, `ApiError` on non-2xx, 204 handling |
 | `src/lib/__tests__/markdown.test.ts` | LaTeX delimiter normalisation for DeepSeek output |
 | `src/lib/__tests__/concurrency.test.ts` | Concurrency limiter used by bulk admin actions |
@@ -317,6 +318,15 @@ incompatible vectors.
   requests stale. Use it instead of a hand-written request counter.
 - `QuestionCard` (`components/ui`): question, answer preview and tags,
   opening the preview; `tone="emerald"` for "Read these first".
+- The API client is `lib/api/` ([64]): `client.ts` (base URLs,
+  `apiFetch`, `ApiError`) and one file per feature (`questions`, `concepts`,
+  `auth`, `users`, `admin`, `ai`). Always import from `@/lib/api`: tests
+  mock that module, and `lib/api/__tests__/importBoundary.test.ts` fails on
+  a direct feature import.
+- Translations are `lib/i18n/translations/` ([64]): one file per feature
+  (`common`, `student`, `account`, `admin`, `adminStats`, `levels`,
+  `conceptsAdmin`), each with `ja` and an `en` typed against it; add a key
+  to the file of its feature. Import from `@/lib/i18n/translations`.
 - The admin queue (`app/admin/questions/`) is a page plus two hooks:
   `useAdminQueueList` (URL filters, loading, searches, paging) and
   `useAdminQueueActions` (selection, review, bulk, extraction, AI review,

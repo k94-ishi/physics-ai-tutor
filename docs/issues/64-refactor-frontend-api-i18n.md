@@ -29,3 +29,24 @@ priority: P3
 ## Dependencies
 
 - Best after [63] (fewer moving imports)
+
+## Log
+
+### 2026-11-11 - done
+
+- `lib/api.ts` (586 lines, 43 functions + `ApiError`) -> `lib/api/`:
+  `client.ts` (URLs, `apiFetch`, `ApiError`, `jsonInit`), `questions.ts`
+  (16), `concepts.ts` (9), `users.ts` (6), `admin.ts` (6), `auth.ts` (5),
+  `ai.ts` (1), and `index.ts` re-exporting them. The 26 import sites and the
+  15 `vi.mock("@/lib/api")` tests are unchanged: no API function calls
+  another, so mocking the index still covers every call.
+- `translations.ts` (1,196 lines, 499 keys) -> `lib/i18n/translations/`:
+  common 60, student 44, account 53, admin 163, adminStats 68, levels 75,
+  conceptsAdmin 36, grouped by key prefix (some prefixes were scattered
+  over the old file). Each file types `en` against its own `ja`, so a
+  missing English key fails `tsc` in that file.
+- Proof of no change: the same 44 exports and every function body found
+  verbatim; a temporary test showed the merged table equals the old one
+  value for value in both languages (then removed).
+- Guard: `importBoundary.test.ts` (verified by planting a direct import).
+- Checks: lint, tsc, vitest 174, build.

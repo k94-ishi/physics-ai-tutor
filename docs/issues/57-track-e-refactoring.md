@@ -47,7 +47,7 @@ its own issue, applied as files are touched.
 5. [61] concept domain: one `services/concepts/` package; legacy name columns removed ([55] stage 5) - skipped for now (owner, 2026-11-11)
 6. ~~[62] language resolution + `QuestionFilters`~~ done 2026-11-11
 7. ~~[63] frontend: shared hooks, QuestionCard, admin queue split~~ done 2026-11-11
-8. [64] frontend: split `api.ts` and `translations.ts` by feature - **next up**
+8. ~~[64] split `api.ts` and `translations.ts` by feature~~ done 2026-11-11
 - Alongside 3-8: [65] English one-sentence comments (166 Japanese comment
   lines, 70 multi-line docstrings); the CI check lands first.
 

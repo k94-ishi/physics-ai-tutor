@@ -292,6 +292,13 @@ answers never need editing for it (issue [36]). Keep it in the plugin
 list, and cover any new renderer with
 `src/components/ui/__tests__/MarkdownContent.test.tsx`.
 
+### Host builds and the dev container
+
+The compose frontend mounts `./frontend`, including `.next`. Running
+`npm run build` on the host while that container runs overwrites its
+Turbopack cache and the dev server exits ("Failed to open database").
+Restart it with `docker compose -p <project> up -d frontend`.
+
 ### What is not covered
 
 - No end-to-end browser tests. Pages, routing and the Mermaid / KaTeX

@@ -17,7 +17,7 @@ Ordered queue; details live in each issue.
 6. ~~[42] more related + preview modal + two-axis grid~~ done 2026-11-04
 7. ~~[43] sticky ask bar~~ closed 2026-11-10
 8. ~~[53] language mixing~~ closed 2026-11-10
-9. ~~[42] related list, preview, loading~~ closed 2026-11-10 -> [56] home-page preview (**next up**)
+9. ~~[42] related list, preview, loading~~ closed 2026-11-10 -> [56] home-page preview (implemented 2026-11-10, owner to try)
 10. [55] tags as senses - implemented; open points in its log
 11. ~~[41] tag chips and admin tag filter~~ closed 2026-11-10
 12. [21] `ef104ba` /help page

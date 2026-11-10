@@ -8,8 +8,13 @@ import ConceptChips from "@/components/ui/ConceptChips";
 import { buttonClassName } from "@/components/ui/Button";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 
+/** What the preview needs: similarity results carry no tags ([56]). */
+export type PreviewQuestion = Pick<Question, "id" | "question" | "answer"> & {
+    concepts?: string[];
+};
+
 type QuestionPreviewModalProps = {
-    question: Question | null;
+    question: PreviewQuestion | null;
     onClose: () => void;
 };
 
@@ -72,7 +77,7 @@ export default function QuestionPreviewModal({
 
                 <MarkdownContent content={question.answer} variant="full" />
 
-                <ConceptChips concepts={question.concepts} />
+                <ConceptChips concepts={question.concepts ?? []} />
 
                 <div className="flex flex-wrap gap-2">
                     <Link

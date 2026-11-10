@@ -172,3 +172,23 @@ describe("?similar= in the URL", () => {
         expect(mocked.searchQuestions).toHaveBeenCalledTimes(1);
     });
 });
+
+describe("preview of a similarity result ([56])", () => {
+    it("opens the preview instead of leaving the page", async () => {
+        const user = userEvent.setup();
+        navigation.params = new URLSearchParams("similar=斜方投射の運動について");
+        renderSearch();
+
+        await user.click(await screen.findByText("斜方投射とは？"));
+
+        const dialog = screen.getByRole("dialog");
+        expect(dialog).toHaveTextContent("斜めに投げ出した物体の運動です。");
+        expect(
+            screen.getByRole("link", { name: "この質問のページを開く" })
+        ).toHaveAttribute("href", "/questions/7");
+        expect(navigation.push).not.toHaveBeenCalled();
+
+        await user.keyboard("{Escape}");
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+});

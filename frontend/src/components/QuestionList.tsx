@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { Suspense, useCallback, useEffect, useState, useRef } from "react";
 import { fetchQuestions } from "@/lib/api";
 import { Question } from "@/types/question";
@@ -11,6 +10,9 @@ import Pagination from "@/components/ui/Pagination";
 import MarkdownContent from "@/components/ui/MarkdownContent";
 import ReferencedQuestions from "@/components/ui/ReferencedQuestions";
 import QuestionSearchAndAsk from "@/components/QuestionSearchAndAsk";
+import QuestionPreviewModal, {
+    PreviewQuestion,
+} from "@/components/ui/QuestionPreviewModal";
 import ConceptChips from "@/components/ui/ConceptChips";
 import MeaningChooser from "@/components/ui/MeaningChooser";
 import { ConceptSearchItem } from "@/types/concept";
@@ -69,6 +71,7 @@ function QuestionListInner() {
     const [listLoading, setListLoading] = useState(true);
     const [listError, setListError] = useState(false);
     const listRequestId = useRef(0);
+    const [preview, setPreview] = useState<PreviewQuestion | null>(null);
 
     const loadList = useCallback(
         async (
@@ -260,7 +263,12 @@ function QuestionListInner() {
                                 key={question.id}
                                 className="flex flex-col gap-2 transition-colors hover:border-blue-300 hover:bg-blue-50/50"
                             >
-                                <Link href={`/questions/${question.id}`}>
+                                {/* Opens the preview; tags below stay separate links ([56]). */}
+                                <button
+                                    type="button"
+                                    onClick={() => setPreview(question)}
+                                    className="flex w-full cursor-pointer flex-col gap-1 text-left"
+                                >
                                     <span className="font-medium text-gray-900">
                                         {question.question}
                                     </span>
@@ -269,9 +277,9 @@ function QuestionListInner() {
                                         content={question.answer}
                                         variant="preview"
                                     />
-                                </Link>
+                                </button>
 
-                                {/* Chips are links too, so they sit beside the card link. */}
+                                {/* Tags are links, so they sit beside the preview button. */}
                                 <ConceptChips
                                     concepts={question.concepts}
                                     visible={CARD_TAGS_VISIBLE}
@@ -315,6 +323,11 @@ function QuestionListInner() {
                     {t("common.keywordSearch")}
                 </button>
             </div>
+
+            <QuestionPreviewModal
+                question={preview}
+                onClose={() => setPreview(null)}
+            />
 
             {mode === "similarity" ? (
                 <QuestionSearchAndAsk>{browseList}</QuestionSearchAndAsk>

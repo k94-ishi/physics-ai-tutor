@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
     FormEvent,
@@ -18,6 +17,9 @@ import Button from "@/components/ui/Button";
 import LoadingState from "@/components/ui/LoadingState";
 import StatusMessage from "@/components/ui/StatusMessage";
 import MarkdownContent from "@/components/ui/MarkdownContent";
+import QuestionPreviewModal, {
+    PreviewQuestion,
+} from "@/components/ui/QuestionPreviewModal";
 import { showToast } from "@/components/ui/Toast";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { useQueryState } from "@/lib/hooks/useQueryState";
@@ -106,6 +108,8 @@ export default function QuestionSearchAndAsk({
     const [ragAnswer, setRagAnswer] = useState<AskAiResponse | null>(null);
     const [ragLoading, setRagLoading] = useState(false);
     const ragRequestId = useRef(0);
+    // Similarity results open in the preview instead of leaving the page ([56]).
+    const [preview, setPreview] = useState<PreviewQuestion | null>(null);
     const contentLanguage = language as ContentLanguage;
 
     const runSearch = useCallback(async (
@@ -277,6 +281,11 @@ export default function QuestionSearchAndAsk({
 
     return (
         <div className="flex flex-col gap-4">
+            <QuestionPreviewModal
+                question={preview}
+                onClose={() => setPreview(null)}
+            />
+
             <form onSubmit={handleSubmit} className="flex flex-col gap-1">
                 <div className="flex gap-2">
                     <input
@@ -351,15 +360,20 @@ export default function QuestionSearchAndAsk({
                                 const isTopResult = index === 0;
 
                                 return (
-                                    <Link key={result.id} href={`/questions/${result.id}`}>
-                                        <Card
-                                            className={`transition-colors hover:border-blue-300 hover:bg-blue-50/50 ${topResultRingClassName(isTopResult, percent)}`}
-                                            style={{
-                                                backgroundColor: topResultBackgroundColor(
-                                                    isTopResult,
-                                                    percent
-                                                ),
-                                            }}
+                                    <Card
+                                        key={result.id}
+                                        className={`transition-colors hover:border-blue-300 hover:bg-blue-50/50 ${topResultRingClassName(isTopResult, percent)}`}
+                                        style={{
+                                            backgroundColor: topResultBackgroundColor(
+                                                isTopResult,
+                                                percent
+                                            ),
+                                        }}
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={() => setPreview(result)}
+                                            className="flex w-full cursor-pointer flex-col text-left"
                                         >
                                             {isTopResult && percent >= HIGH_SIMILARITY_THRESHOLD && (
                                                 <p className="mb-1 text-xs font-medium text-green-700">
@@ -383,8 +397,8 @@ export default function QuestionSearchAndAsk({
                                                 content={result.answer}
                                                 variant="preview"
                                             />
-                                        </Card>
-                                    </Link>
+                                        </button>
+                                    </Card>
                                 );
                             })}
                         </div>

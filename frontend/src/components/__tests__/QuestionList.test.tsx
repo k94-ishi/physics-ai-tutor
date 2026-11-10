@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Question } from "@/types/question";
 
@@ -101,5 +102,29 @@ describe("QuestionList cards", () => {
         expect(
             screen.queryByPlaceholderText(/日本語か英語で入力/)
         ).not.toBeInTheDocument();
+    });
+
+    it("opens the preview from a card and keeps the tags as links ([56])", async () => {
+        const user = userEvent.setup();
+        mocked.fetchQuestions.mockResolvedValue({
+            items: [card(["ベクトル"])],
+            total: 1,
+            page: 1,
+            size: 30,
+        });
+
+        renderList();
+
+        await user.click(await screen.findByText("速度ってなに？"));
+
+        expect(screen.getByRole("dialog")).toHaveTextContent("向きを含む速さ。");
+        expect(
+            screen.getByRole("link", { name: "この質問のページを開く" })
+        ).toHaveAttribute("href", "/questions/1");
+        // The card's own tag link is unchanged.
+        expect(screen.getAllByRole("link", { name: "ベクトル" })[0]).toHaveAttribute(
+            "href",
+            "/?concept=%E3%83%99%E3%82%AF%E3%83%88%E3%83%AB"
+        );
     });
 });

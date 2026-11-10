@@ -33,3 +33,19 @@ when [42] closed with everything else done.
 ## Definition of done
 
 - [ ] Frontend checks pass; vitest for both entry points
+
+## Log
+
+### 2026-11-10 - implemented
+
+- Home-page cards: the question/answer area is a button that opens
+  `QuestionPreviewModal`; tag links sit beside it (never nested).
+- Similarity results (`QuestionSearchAndAsk`, home page and the sticky ask
+  bar alike) open the same modal. The modal now takes a `PreviewQuestion`
+  (`id`, `question`, `answer`, optional `concepts`), so a result needs no
+  extra request. The exact-match redirect and the RAG answer card are
+  unchanged.
+- Vitest: a card opens the preview and its tag link still works; a
+  similarity result opens the preview with the full-page link and closes
+  on Escape. Lint, tsc, vitest 166, build: pass.
+- Left open for the owner to try in the browser.

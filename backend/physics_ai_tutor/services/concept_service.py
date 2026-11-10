@@ -155,8 +155,19 @@ def _sense_pair_text(concept: Concept) -> str:
     return concept_pair_text(concept.name_ja, concept.name_en)
 
 
+SenseIndex = dict[tuple[str, str], list[Concept]]
+
+
+def _sides(name: ConceptName) -> list[tuple[str, str]]:
+    return [(lang, word) for lang, word in (("ja", name.ja), ("en", name.en)) if word]
+
+
+def _word_keys(name: ConceptName) -> set[tuple[str, str]]:
+    return {(lang, normalize_key(word)) for lang, word in _sides(name)}
+
+
 def _resolve_sense(
-    db: Session, name: ConceptName
+    index: SenseIndex, name: ConceptName
 ) -> tuple[Concept | None, list[float] | None]:
     """The existing sense this pair means, or None (+ its embedding if computed).
 
@@ -164,12 +175,10 @@ def _resolve_sense(
     word is a synonym or a homonym (速度 = velocity / speed, 位相 = phase /
     topology): decided by embedding similarity of the two pairs ([55]).
     """
-    sides = [(lang, word) for lang, word in (("ja", name.ja), ("en", name.en)) if word]
+    sides = _sides(name)
     candidates: dict[int, Concept] = {}
-    for lang, word in sides:
-        for concept in concept_term_repository.senses_with_term(
-            db, lang, normalize_key(word)
-        ):
+    for key in _word_keys(name):
+        for concept in index.get(key, []):
             candidates[concept.id] = concept
     if not candidates:
         return None, None
@@ -203,53 +212,68 @@ def _resolve_sense(
     return None, mine
 
 
+def _new_sense(
+    name: ConceptName, embedding: list[float] | None, db: Session
+) -> Concept:
+    """Create a sense with its words in one insert (no follow-up UPDATE)."""
+    if embedding is None:
+        embedding = embedding_service.create_embeddings(
+            [concept_pair_text(name.ja, name.en)]
+        )[0]
+    return concept_repository.create(
+        db,
+        embedding=embedding,
+        extraction_model=settings.deepseek_chat_model,
+        embedding_model=settings.embedding_model,
+        extraction_prompt_version=CONCEPT_EXTRACTION_PROMPT_VERSION,
+        name_ja=name.ja,
+        name_en=name.en,
+    )
+
+
 def attach_concepts_to_question(
     db: Session,
     question_id: int,
     concept_names: list[str],
     language: str = "ja",
 ) -> list[Concept]:
-    concepts = []
-    seen: set[tuple[str | None, str | None]] = set()
-    linked: set[int] = set()
+    """Resolve each `<ja> | <en>` line to a sense and link it to the question.
 
+    All words of the question are looked up at once and the links are
+    written together, so the cost per question is a handful of queries
+    rather than several per concept ([66]).
+    """
+    names: list[ConceptName] = []
+    seen: set[tuple[str | None, str | None]] = set()
     for raw in concept_names:
         name = parse_concept_line(raw, language)
-        if name is None or (name.ja, name.en) in seen:
-            continue
-        seen.add((name.ja, name.en))
+        if name is not None and (name.ja, name.en) not in seen:
+            seen.add((name.ja, name.en))
+            names.append(name)
 
-        concept, embedding = _resolve_sense(db, name)
-
+    index = concept_term_repository.senses_by_words(
+        db, set().union(*(_word_keys(name) for name in names)) if names else set()
+    )
+    concepts: list[Concept] = []
+    for name in names:
+        concept, embedding = _resolve_sense(index, name)
         if concept is None:
-            if embedding is None:
-                embedding = embedding_service.create_embeddings(
-                    [concept_pair_text(name.ja, name.en)]
-                )[0]
-            concept = concept_repository.create(
-                db,
-                embedding=embedding,
-                extraction_model=settings.deepseek_chat_model,
-                embedding_model=settings.embedding_model,
-                extraction_prompt_version=CONCEPT_EXTRACTION_PROMPT_VERSION,
-            )
-
-        # New words of a known sense become aliases; the first word per
-        # language becomes its preferred label.
-        for lang, word in (("ja", name.ja), ("en", name.en)):
-            if word:
+            concept = _new_sense(name, embedding, db)
+            # Later pairs of this question may share a word with it.
+            for key in _word_keys(name):
+                index.setdefault(key, []).append(concept)
+        else:
+            # New words of a known sense become aliases.
+            for lang, word in _sides(name):
                 concept_sense_service.add_term(
                     db, concept, lang, word, concept_sense_service.TermSource.EXTRACTED
                 )
+        if concept not in concepts:
+            concepts.append(concept)
 
-        if concept.id in linked:
-            continue
-        linked.add(concept.id)
-        question_concept_repository.link(
-            db, question_id=question_id, concept_id=concept.id
-        )
-        concepts.append(concept)
-
+    question_concept_repository.link_many(
+        db, question_id, [concept.id for concept in concepts]
+    )
     return concepts
 
 

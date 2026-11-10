@@ -719,8 +719,8 @@ already exists". Use Alembic for every real database.
 
 `backend/tests/conftest.py` builds the test schema with the real migrations.
 Once per session it drops and recreates the `public` schema of the test
-database and runs `alembic upgrade head`; between tests it truncates all
-tables. Two dedicated tests in `tests/test_migrations.py` fail the suite if
+database and runs `alembic upgrade head`; before each test it deletes all
+rows and restarts the id sequences (`reset_database()`). Two dedicated tests in `tests/test_migrations.py` fail the suite if
 the migration chain has more than one head or if the SQLAlchemy models
 drift from what the migrations produce, so a forgotten migration is caught
 locally, not only in CI.

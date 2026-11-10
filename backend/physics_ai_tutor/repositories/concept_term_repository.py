@@ -1,4 +1,4 @@
-from sqlalchemy import func
+from sqlalchemy import func, tuple_
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.models import Concept, ConceptTerm, Question, QuestionConcept
@@ -164,3 +164,25 @@ def linked_questions(db: Session, concept_id: int, language: str) -> list[Questi
     for question in questions:
         question.resolve(language)
     return questions
+
+
+WordKey = tuple[str, str]
+
+
+def senses_by_words(db: Session, keys: set[WordKey]) -> dict[WordKey, list[Concept]]:
+    """For each (language, normalized) word, the senses that have it.
+
+    Two queries for any number of words, instead of one lookup per word.
+    """
+    if not keys:
+        return {}
+    rows = (
+        db.query(ConceptTerm.language, ConceptTerm.normalized, ConceptTerm.concept_id)
+        .filter(tuple_(ConceptTerm.language, ConceptTerm.normalized).in_(list(keys)))
+        .all()
+    )
+    concepts = {c.id: c for c in get_many(db, list({cid for _, _, cid in rows}))}
+    index: dict[WordKey, list[Concept]] = {}
+    for language, normalized, concept_id in rows:
+        index.setdefault((language, normalized), []).append(concepts[concept_id])
+    return index

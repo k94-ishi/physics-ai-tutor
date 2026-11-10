@@ -120,3 +120,11 @@ def context_question(db: Session, concept_id: int, language: str) -> str | None:
         .first()
     )
     return row[0] if row else None
+
+
+def link_many(db: Session, question_id: int, concept_ids: list[int]) -> None:
+    """Link a question to several concepts with one existence check."""
+    existing = set(get_concept_ids_for_question(db, question_id))
+    new = [cid for cid in dict.fromkeys(concept_ids) if cid not in existing]
+    db.add_all(QuestionConcept(question_id=question_id, concept_id=cid) for cid in new)
+    db.flush()

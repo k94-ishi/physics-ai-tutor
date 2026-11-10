@@ -5,12 +5,15 @@ from pathlib import Path
 import pytest
 from alembic.config import Config
 from fastapi.testclient import TestClient
+from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
 from sqlalchemy import create_engine, make_url, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from alembic import command
 from physics_ai_tutor.api.v1 import admin as admin_router
 from physics_ai_tutor.api.v1 import ai as ai_router
+from physics_ai_tutor.core import security
 from physics_ai_tutor.database.base import Base
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.main import app
@@ -115,23 +118,70 @@ def _migrate_test_database():
     lock_connection.close()
 
 
-def _truncate_all_tables() -> None:
-    table_names = ", ".join(table.name for table in Base.metadata.sorted_tables)
+# The real hasher, captured before the session fixture swaps it for tests.
+PRODUCTION_PASSWORD_HASH = security.password_hash
 
+_reset_sql: str | None = None
+
+
+def _build_reset_sql() -> str:
+    """DELETE every table child-first, then restart every id sequence.
+
+    Same end state as TRUNCATE ... RESTART IDENTITY (tests rely on ids
+    starting at 1), but ~2 ms instead of ~40 ms: TRUNCATE pays a fixed
+    file-level cost per table, while these tables hold a few rows ([66]).
+    """
+    tables = [table.name for table in reversed(Base.metadata.sorted_tables)]
+    with engine.connect() as connection:
+        sequences = [
+            name
+            for table in tables
+            for (name,) in connection.execute(
+                text(
+                    "SELECT pg_get_serial_sequence(:table, a.attname) "
+                    "FROM pg_attribute a WHERE a.attrelid = CAST(:table AS regclass) "
+                    "AND a.attnum > 0 AND NOT a.attisdropped"
+                ),
+                {"table": table},
+            )
+            if name is not None
+        ]
+    statements = [f"DELETE FROM {table}" for table in tables]
+    statements += [f"ALTER SEQUENCE {name} RESTART WITH 1" for name in sequences]
+    return "; ".join(statements)
+
+
+def reset_database() -> None:
+    """Empty every application table; cheap enough to run before each test."""
+    global _reset_sql
+    if _reset_sql is None:
+        _reset_sql = _build_reset_sql()
     with engine.begin() as connection:
-        connection.execute(
-            text(f"TRUNCATE TABLE {table_names} RESTART IDENTITY CASCADE")
-        )
+        connection.execute(text(_reset_sql))
 
 
 @pytest.fixture
 def db():
-    _truncate_all_tables()
+    # Reset before, not after: the next test resets anyway, so a teardown
+    # reset only doubled the cost ([66]).
+    reset_database()
 
     with Session(engine) as session:
         yield session
 
-    _truncate_all_tables()
+
+@pytest.fixture(scope="session", autouse=True)
+def _cheap_password_hashing():
+    """Argon2 at minimal cost in tests: ~50 ms per hash becomes ~0 ([66]).
+
+    Production keeps `PasswordHash.recommended()`; test_security.py pins it.
+    """
+    original = security.password_hash
+    security.password_hash = PasswordHash(
+        (Argon2Hasher(time_cost=1, memory_cost=8, parallelism=1),)
+    )
+    yield
+    security.password_hash = original
 
 
 @pytest.fixture(autouse=True)

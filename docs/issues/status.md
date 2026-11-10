@@ -86,7 +86,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 63 | open | 63-refactor-frontend-components.md | Frontend: shared hooks and cards; split the admin queue page | — (file-era issue) |
 | 64 | open | 64-refactor-frontend-api-i18n.md | Frontend: split api.ts and translations.ts by feature | — (file-era issue) |
 | 65 | open | 65-english-one-sentence-comments.md | Comments in English, one short sentence (AGENTS.md coding style) | — (file-era issue) |
-| 66 | open | 66-test-suite-speed.md | Test suite speed: backend 4.5 min -> under 2 min | — (file-era issue) |
+| 66 | closed | 66-test-suite-speed.md | Test suite speed: backend 4.5 min -> under 2 min | — (file-era issue) |
 
 ## Notes on the archive column
 

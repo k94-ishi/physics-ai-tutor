@@ -156,9 +156,20 @@ How the database is handled:
   (`physics_ai_tutor_test_<hash>` derived from the path), so several
   worktrees can share one `postgres-test` container. Set `TEST_DATABASE_URL`
   to override.
-- The schema is built once per session with `alembic upgrade head` and
-  tables are truncated between tests, so model/migration drift fails the
-  suite (`tests/test_migrations.py`).
+- The schema is built once per session with `alembic upgrade head`, so
+  model/migration drift fails the suite (`tests/test_migrations.py`).
+- Every test that uses `db` starts from empty tables: `reset_database()`
+  deletes all rows and restarts the id sequences (ids start at 1, as
+  `TRUNCATE ... RESTART IDENTITY` did, at ~2 ms instead of ~40 ms). It
+  runs before each test only; the next test resets anyway.
+- Passwords are hashed with Argon2 at minimal cost during tests (~0 ms
+  instead of ~50 ms per hash); `tests/test_security.py` pins the
+  production parameters, so the shortcut cannot leak into the app.
+- Expensive read-only setup is shared with a module-scoped fixture, as
+  `tests/test_seed.py` does for the full seed. Use it only when every test
+  in the module just reads; anything that writes needs the per-test `db`.
+- The whole backend suite takes about 40 s (2026-11-11, 522 tests; it was
+  ~6 min before [66]). CI prints the 10 slowest tests.
 - A PostgreSQL advisory lock is held for the session; a second concurrent
   run on the same database aborts immediately instead of corrupting it.
 
@@ -176,6 +187,7 @@ Layout of `backend/tests/`:
 | `test_migrations.py` | Single Alembic head, models match migrations |
 | `test_cli.py` | `create_user` and `translate_missing` CLIs, seed file checks |
 | `test_seed.py` | One offline seed per module (OpenAI and DeepSeek forbidden), then read-only checks and export round trips |
+| `test_security.py` | Production password hashing parameters (the test hasher is cheaper) |
 | `test_language_strict.py` | Students never get the other language on related/prerequisites/concepts; hidden rows are translated once in the background ([53]) |
 | `test_language.py` | Bilingual rows: eager translation, provenance, `lang` resolution, English ask flow, cache tiers, review in either language, translate endpoint, import shapes |
 | `test_concept_senses.py` | Concept senses ([55]): homonyms and synonyms at extraction, cross-language search and filter, admin editor (alias, label, merge, split), split CLI |

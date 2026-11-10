@@ -13,7 +13,7 @@ from physics_ai_tutor.services import (
     embedding_service,
     translation_service,
 )
-from tests.conftest import _truncate_all_tables, engine
+from tests.conftest import engine, reset_database
 from tests.test_cli import _seed_file_entries
 
 
@@ -24,7 +24,7 @@ def _forbidden(*args, **kwargs):
 @pytest.fixture(scope="module")
 def seeded():
     """Seed once for the module; every test below only reads."""
-    _truncate_all_tables()
+    reset_database()
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(
             seed_module,
@@ -39,7 +39,7 @@ def seeded():
         seed_module.seed()
     with Session(engine) as session:
         yield session
-    _truncate_all_tables()
+    reset_database()
 
 
 def _by_text(session: Session) -> dict[str | None, Question]:

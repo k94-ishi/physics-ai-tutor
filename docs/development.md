@@ -181,7 +181,7 @@ Layout of `backend/tests/`:
 | `test_questions.py`, `test_users.py`, `test_auth.py`, `test_ai.py`, `test_health.py` | HTTP API, one file per router: status codes, auth rules, validation |
 | `test_rate_limit.py` | Postgres-backed rate limiter: window counting, pruning, check/record split |
 | `test_review_workflow.py` | End-to-end review flow: AI answer saved as unreviewed, hidden from students, approved / edited / rejected by an admin, history recorded |
-| `test_*_service.py` | Service layer: RAG context, embeddings, concepts, recommendations, question lifecycle |
+| `test_*_service.py` | Service layer: RAG context, embeddings, concepts, recommendations, question lifecycle (`test_question_service.py` covers the five `question_*_service` modules) |
 | `test_*_repository.py` | Repository queries against a real PostgreSQL + pgvector |
 | `test_models.py` | Column defaults, cascades |
 | `test_migrations.py` | Single Alembic head, models match migrations |
@@ -268,6 +268,14 @@ enforced by `tests/test_architecture.py`:
   For best-effort work, put the `with` inside your own `try/except`. It is
   the only code that calls `commit()` or `rollback()`.
 - **Repositories** query and flush; they never commit.
+- **Question use cases** live in five modules (since [60]):
+  `question_read_service` (list, detail, exact match, ask cache),
+  `question_write_service` (create, import, update, delete, AI answers,
+  concept extraction), `question_review_service` (approve / edit-approve /
+  reject, history), `question_translation_service` (machine translation and
+  per-language embeddings) and `question_presentation_service` (response
+  shaping). Routers: `api/v1/questions.py` (public reads) and
+  `api/v1/admin_questions.py` (admin writes), same `/questions` prefix.
 - **Background tasks** open their session with `background_session()`
   (`database/session.py`); tests point that one helper at the test
   database. CLIs keep their own `SessionLocal`.

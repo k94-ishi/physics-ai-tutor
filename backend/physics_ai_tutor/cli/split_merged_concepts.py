@@ -29,7 +29,7 @@ from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.text import normalize_key
 from physics_ai_tutor.database.database import SessionLocal
 from physics_ai_tutor.models import Concept, Question, QuestionConcept
-from physics_ai_tutor.services import question_service
+from physics_ai_tutor.services import question_write_service
 
 
 @dataclass
@@ -115,7 +115,7 @@ def main(dry_run: bool = False, limit: int = 50, force: bool = False) -> int:
             )
             return EXIT_OUTSIDE_WINDOW
 
-        results = question_service.reextract_concepts_for_questions(
+        results = question_write_service.reextract_concepts_for_questions(
             db, question_ids[:limit]
         )
         failed = sum(1 for result in results if not result.success)

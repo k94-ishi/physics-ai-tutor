@@ -33,3 +33,9 @@ call chains. Replace that with one explicit step.
 ## Dependencies
 
 - Blocked by: [60] (smaller modules to change)
+
+## Log
+
+### 2026-11-11 - scope addition from [60]
+
+Also introduce a typed question filter object (keyword, status, concept, ids, language...) shared by the list router, `question_read_service.fetch_questions` and the repository, replacing the 16 parameters passed twice.

@@ -29,7 +29,7 @@ from physics_ai_tutor.schemas.question import (
 from physics_ai_tutor.services import (
     concept_service,
     embedding_service,
-    question_service,
+    question_write_service,
 )
 
 
@@ -70,7 +70,7 @@ def load_seed_entries(seed_file: Path) -> list[QuestionCreate]:
 def apply_seed_extras(db, question: Question, extras: SeedExtras) -> None:
     """Attach stored tags, then let stored values win over computed ones."""
     if extras.tags is None:
-        question_service.extract_concepts_best_effort(db, question)
+        question_write_service.extract_concepts_best_effort(db, question)
     else:
         concept_service.attach_concepts_to_question(
             db, question.id, extras.tags, language=question.original_language
@@ -97,7 +97,7 @@ def seed():
     db = SessionLocal()
 
     try:
-        questions = question_service.import_questions_from_jsonl(
+        questions = question_write_service.import_questions_from_jsonl(
             db,
             [question for question, _ in rows],
             status=QuestionStatus.APPROVED,

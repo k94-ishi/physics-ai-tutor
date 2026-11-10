@@ -4,7 +4,9 @@ import sys
 from physics_ai_tutor.database.database import SessionLocal
 from physics_ai_tutor.repositories import question_repository
 from physics_ai_tutor.schemas.language import Language
-from physics_ai_tutor.services.question_service import translate_missing_languages
+from physics_ai_tutor.services.question_translation_service import (
+    translate_missing_languages,
+)
 
 
 def parse_args() -> argparse.Namespace:

@@ -43,8 +43,8 @@ its own issue, applied as files are touched.
 1. ~~[58] quick wins~~ done 2026-11-10
 2. ~~[66] test suite speed~~ done 2026-11-11 (5:56 -> 0:38)
 3. ~~[59] backend layering~~ done 2026-11-11 (guarded by tests/test_architecture.py)
-4. [60] split `question_service` and `api/v1/questions.py` by use case - **next up**
-5. [61] concept domain: one `services/concepts/` package; legacy name columns removed ([55] stage 5)
+4. ~~[60] split the question module~~ done 2026-11-11
+5. [61] concept domain: one `services/concepts/` package; legacy name columns removed ([55] stage 5) - **next up** (code part; the column drop waits for [54])
 6. [62] language resolution as one response step instead of flags
 7. [63] frontend: shared hooks and card components; split the admin queue page
 8. [64] frontend: split `api.ts` and `translations.ts` by feature

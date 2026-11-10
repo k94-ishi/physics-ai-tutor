@@ -97,7 +97,7 @@ class Question(Base):
         nullable=False,
     )
 
-    # Transient, populated by question_service before response
+    # Transient, populated by question_presentation_service before response
     # serialization; not mapped/persisted columns.
     concepts: list[str]
     retrieved_questions: list[dict[str, int | str]]

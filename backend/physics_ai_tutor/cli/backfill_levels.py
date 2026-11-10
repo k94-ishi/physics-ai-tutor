@@ -21,7 +21,7 @@ from physics_ai_tutor.cli.review_pending import (
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.database.database import SessionLocal
 from physics_ai_tutor.models import Question
-from physics_ai_tutor.services import question_service
+from physics_ai_tutor.services import question_write_service
 
 
 def parse_args() -> argparse.Namespace:
@@ -80,7 +80,7 @@ def main(limit: int = 50, force: bool = False) -> int:
             print("Every APPROVED question already has levels")
             return EXIT_OK
 
-        results = question_service.reextract_concepts_for_questions(db, ids)
+        results = question_write_service.reextract_concepts_for_questions(db, ids)
         succeeded = sum(1 for result in results if result.success)
         failed = len(results) - succeeded
         remaining = len(unrated_question_ids(db, limit=1))

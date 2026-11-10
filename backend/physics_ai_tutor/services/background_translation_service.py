@@ -13,7 +13,7 @@ from physics_ai_tutor.database.session import background_session
 from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.schemas.question import QuestionStatus
-from physics_ai_tutor.services import concept_service, question_service
+from physics_ai_tutor.services import concept_service, question_translation_service
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,9 @@ def translate_missing(question_ids: list[int]) -> None:
                         question is not None
                         and question.status == QuestionStatus.APPROVED
                     ):
-                        question_service.translate_missing_languages(db, question_id)
+                        question_translation_service.translate_missing_languages(
+                            db, question_id
+                        )
             except Exception:
                 logger.warning(
                     "Background translation failed: question_id=%d",

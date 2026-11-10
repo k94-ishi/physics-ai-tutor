@@ -20,7 +20,7 @@ from physics_ai_tutor.schemas.question import (
     QuestionResponse,
     QuestionStatus,
 )
-from physics_ai_tutor.services.question_service import (
+from physics_ai_tutor.services.question_presentation_service import (
     prepare_for_response,
     split_by_language,
 )
@@ -82,21 +82,12 @@ def _rank(question: Question) -> tuple[int, int]:
     return ((question.physics_level or 0) + (question.math_level or 0), question.id)
 
 
-def get_prerequisites(
-    db: Session,
-    question_id: int,
-    limit: int = 5,
-    language: Language | str = Language.JA,
-    only_with_language: bool = False,
-    missing_language_ids: list[int] | None = None,
-) -> PrerequisitesResponse | None:
-    lang = Language(language)
+Link = tuple[Concept, Question]
 
-    current = db.get(Question, question_id)
-    if current is None:
-        return None
 
-    links = (
+def _definer_candidates(db: Session, question_id: int) -> list[Link]:
+    """Every APPROVED QA sharing a concept with this one, per shared concept."""
+    rows = (
         db.query(Concept, Question)
         .join(QuestionConcept, QuestionConcept.concept_id == Concept.id)
         .join(Question, Question.id == QuestionConcept.question_id)
@@ -111,61 +102,97 @@ def get_prerequisites(
         )
         .all()
     )
+    return [(concept, question) for concept, question in rows]
 
-    if only_with_language:
-        # A definer the student cannot read is no definer yet; report it.
-        readable, missing = split_by_language(
-            list({candidate.id: candidate for _, candidate in links}.values()), lang
-        )
-        readable_ids = {question.id for question in readable}
-        links = [link for link in links if link[1].id in readable_ids]
-        if missing_language_ids is not None:
-            missing_language_ids.extend(missing)
 
-    best_by_concept: dict[int, tuple[Concept, Question]] = {}
-    concepts_seen: dict[int, Concept] = {}
+def _readable_only(links: list[Link], lang: Language) -> tuple[list[Link], list[int]]:
+    """Drop definers lacking `lang`; a definer the student cannot read is none yet."""
+    readable, missing = split_by_language(
+        list({candidate.id: candidate for _, candidate in links}.values()), lang
+    )
+    readable_ids = {question.id for question in readable}
+    return [link for link in links if link[1].id in readable_ids], missing
+
+
+def _best_definers(links: list[Link], current: Question) -> dict[int, Link]:
+    """Per concept, the least advanced QA that defines it (ties: older row)."""
+    best_by_concept: dict[int, Link] = {}
     for concept, candidate in links:
-        concepts_seen[concept.id] = concept
         if not _defines(candidate, concept):
             continue
         if not _not_more_advanced(candidate, current):
             continue
         best = best_by_concept.get(concept.id)
-        # Prefer the least advanced definer; ties go to the older row.
         if best is None or _rank(candidate) < _rank(best[1]):
             best_by_concept[concept.id] = (concept, candidate)
+    return best_by_concept
 
-    # Concepts of the current QA that ended up with no usable definer.
+
+def _gaps(
+    db: Session,
+    question_id: int,
+    covered: dict[int, Link],
+    lang: Language,
+    strict: bool,
+) -> list[str]:
+    """Names of this QA's concepts that ended up with no usable definer."""
     current_concepts = (
         db.query(Concept)
         .join(QuestionConcept, QuestionConcept.concept_id == Concept.id)
         .filter(QuestionConcept.question_id == question_id)
         .all()
     )
-    gap_concepts = [c for c in current_concepts if c.id not in best_by_concept]
-    gaps = [
+    return [
         name
-        for concept in gap_concepts
-        if (
+        for concept in current_concepts
+        if concept.id not in covered
+        and (
             name := concept.name_in(lang.value)
-            if only_with_language
+            if strict
             else concept.display_name(lang.value)
         )
         is not None
     ]
 
-    # One card per QA even when it defines several concepts; hardest
-    # prerequisite first - that is the one the stuck reader meets next.
+
+def _hardest_first(
+    best_by_concept: dict[int, Link], current: Question, limit: int
+) -> list[Question]:
+    """One card per QA; the hardest on the stuck axis is the next step down."""
     axis = _stuck_axis(current)
     unique: dict[int, Question] = {}
     for _, candidate in best_by_concept.values():
         unique[candidate.id] = candidate
-    ordered = sorted(
+    return sorted(
         unique.values(),
         key=lambda q: (getattr(q, axis) or 0, -q.id),
         reverse=True,
     )[:limit]
 
+
+def get_prerequisites(
+    db: Session,
+    question_id: int,
+    limit: int = 5,
+    language: Language | str = Language.JA,
+    only_with_language: bool = False,
+    missing_language_ids: list[int] | None = None,
+) -> PrerequisitesResponse | None:
+    """Defining QAs for this QA's concepts, plus the concepts with none ([38])."""
+    lang = Language(language)
+    current = db.get(Question, question_id)
+    if current is None:
+        return None
+
+    links = _definer_candidates(db, question_id)
+    if only_with_language:
+        links, missing = _readable_only(links, lang)
+        if missing_language_ids is not None:
+            missing_language_ids.extend(missing)
+
+    best_by_concept = _best_definers(links, current)
+    gaps = _gaps(db, question_id, best_by_concept, lang, only_with_language)
+    ordered = _hardest_first(best_by_concept, current, limit)
     prepare_for_response(db, ordered, lang, strict_language=only_with_language)
 
     logger.info(
@@ -174,7 +201,6 @@ def get_prerequisites(
         len(ordered),
         len(gaps),
     )
-
     return PrerequisitesResponse(
         items=[QuestionResponse.model_validate(question) for question in ordered],
         gaps=gaps,

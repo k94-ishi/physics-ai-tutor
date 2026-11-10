@@ -5,7 +5,7 @@ from physics_ai_tutor.repositories import (
     question_repository,
 )
 from physics_ai_tutor.schemas.question_review import QuestionReviewAction
-from physics_ai_tutor.services import question_service, recommendation_service
+from physics_ai_tutor.services import question_review_service, recommendation_service
 from physics_ai_tutor.services.user_service import create_user
 
 
@@ -48,7 +48,7 @@ def test_get_related_questions_excludes_rejected(db):
     other = _create_question_with_embedding(db, "他の質問", "他の回答", vector)
 
     admin = create_user(db, "rec-reviewer@example.com", "reviewerpass123", role="admin")
-    question_service.review_question(
+    question_review_service.review_question(
         db,
         other.id,
         action=QuestionReviewAction.REJECT,

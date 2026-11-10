@@ -24,7 +24,9 @@ from physics_ai_tutor.services import (
     ai_review_service,
     ask_history_service,
     deepseek_service,
-    question_service,
+    question_read_service,
+    question_translation_service,
+    question_write_service,
     rag_service,
 )
 
@@ -42,7 +44,9 @@ def _from_cache(
     db: Session, request: AskAiRequest, user_id: int | None
 ) -> AskAiResponse | None:
     """Cache tier 0: reuse an identical, non-rejected question's answer."""
-    cached = question_service.find_cached_answer(db, request.question, request.language)
+    cached = question_read_service.find_cached_answer(
+        db, request.question, request.language
+    )
     if cached is None:
         return None
     if user_id is not None:
@@ -143,7 +147,7 @@ def _save_answer(
     mode: str,
 ) -> int | None:
     """Store the answer as UNREVIEWED and record the ask; None if not saved."""
-    saved = question_service.save_ai_question(
+    saved = question_write_service.save_ai_question(
         db,
         request.question,
         result.content,
@@ -175,7 +179,7 @@ def post_generation_tasks(question_id: int) -> None:
     """
     with background_session() as db:
         try:
-            question_service.translate_missing_languages(db, question_id)
+            question_translation_service.translate_missing_languages(db, question_id)
         except Exception:
             logger.warning(
                 "Background translation failed: question_id=%d",

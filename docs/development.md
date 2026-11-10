@@ -188,6 +188,7 @@ Layout of `backend/tests/`:
 | `test_cli.py` | `create_user` and `translate_missing` CLIs, seed file checks |
 | `test_seed.py` | One offline seed per module (OpenAI and DeepSeek forbidden), then read-only checks and export round trips |
 | `test_security.py` | Production password hashing parameters (the test hasher is cheaper) |
+| `test_architecture.py` | Layering rules: routers call services only; only `transaction()` commits or rolls back |
 | `test_language_strict.py` | Students never get the other language on related/prerequisites/concepts; hidden rows are translated once in the background ([53]) |
 | `test_language.py` | Bilingual rows: eager translation, provenance, `lang` resolution, English ask flow, cache tiers, review in either language, translate endpoint, import shapes |
 | `test_concept_senses.py` | Concept senses ([55]): homonyms and synonyms at extraction, cross-language search and filter, admin editor (alias, label, merge, split), split CLI |
@@ -251,6 +252,25 @@ Conventions:
 - Prefer testing hooks and pure helpers directly; keep component tests for
   behaviour a user can observe. `async` Server Components are out of scope
   for Vitest; use a browser check against the local stack for those.
+
+### Backend layers and transactions
+
+AGENTS.md asks for router -> service -> repository. Since [59] this is
+enforced by `tests/test_architecture.py`:
+
+- **Routers** (`api/`) parse input, authorise, call one service and map
+  domain errors to HTTP. They never import `repositories`, open a session,
+  or call `db.query/get/add/commit/...`.
+- **Services** own the use case and its transaction. Wrap the writes of a
+  use case in `with transaction(db, "operation"):`
+  (`database/transaction.py`): it commits on success, and on any error
+  rolls back, logs `Rolling back transaction: operation=...` and re-raises.
+  For best-effort work, put the `with` inside your own `try/except`. It is
+  the only code that calls `commit()` or `rollback()`.
+- **Repositories** query and flush; they never commit.
+- **Background tasks** open their session with `background_session()`
+  (`database/session.py`); tests point that one helper at the test
+  database. CLIs keep their own `SessionLocal`.
 
 ### URL parameters on the student list
 

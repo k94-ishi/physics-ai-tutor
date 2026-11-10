@@ -20,7 +20,6 @@ from physics_ai_tutor.api.dependencies import (
     require_admin,
 )
 from physics_ai_tutor.database.dependency import get_db
-from physics_ai_tutor.repositories import concept_repository
 from physics_ai_tutor.schemas.bulk import (
     BulkDeleteRequest,
     BulkDeleteResponse,
@@ -57,6 +56,7 @@ from physics_ai_tutor.schemas.question_review import (
 from physics_ai_tutor.schemas.token import JWTPayload
 from physics_ai_tutor.services import (
     background_translation_service,
+    concept_sense_service,
     prerequisite_service,
     question_service,
     recommendation_service,
@@ -126,7 +126,9 @@ def _queue_concept_names(
     language: Language,
 ) -> None:
     # Concept names hidden for lacking the language get translated once.
-    missing = concept_repository.ids_missing_name(db, question_ids, language.value)
+    missing = concept_sense_service.concept_ids_missing_name(
+        db, question_ids, language.value
+    )
     claimed = background_translation_service.claim_concepts(missing)
     if claimed:
         background_tasks.add_task(

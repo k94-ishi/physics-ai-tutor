@@ -13,8 +13,9 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core.text import normalize_key
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models import Concept, ConceptTerm, QuestionConcept
-from physics_ai_tutor.repositories import concept_term_repository
+from physics_ai_tutor.repositories import concept_repository, concept_term_repository
 from physics_ai_tutor.schemas.concept import (
     AdminConceptListResponse,
     AdminConceptResponse,
@@ -344,3 +345,102 @@ def edit_term(
         set_preferred(db, term)
     sync_mirror(concept)
     db.flush()
+
+
+# --- editor use cases: one transaction each, called by the router ([59]) -------
+
+
+class ConceptNotFoundError(Exception):
+    """No concept with this id."""
+
+
+class TermNotFoundError(Exception):
+    """No concept term with this id."""
+
+
+def _concept(db: Session, concept_id: int) -> Concept:
+    concept = db.get(Concept, concept_id)
+    if concept is None:
+        raise ConceptNotFoundError(concept_id)
+    return concept
+
+
+def _term(db: Session, term_id: int) -> ConceptTerm:
+    term = concept_term_repository.get_term(db, term_id)
+    if term is None:
+        raise TermNotFoundError(term_id)
+    return term
+
+
+def update_gloss(db: Session, concept_id: int, changes: dict[str, str | None]) -> None:
+    """Set the given gloss fields; an empty string clears one."""
+    with transaction(db, "update_concept_gloss"):
+        concept = _concept(db, concept_id)
+        for field, value in changes.items():
+            setattr(concept, field, value or None)
+
+
+def add_teacher_term(
+    db: Session, concept_id: int, language: str, term: str, is_preferred: bool
+) -> None:
+    """A word typed by a teacher; DuplicateTermError if the sense has it."""
+    with transaction(db, "add_concept_term"):
+        concept = _concept(db, concept_id)
+        added = add_term(
+            db,
+            concept,
+            language,
+            term,
+            TermSource.TEACHER,
+            preferred=is_preferred or None,
+        )
+        if added is None:
+            raise DuplicateTermError(term)
+
+
+def edit_term_by_id(
+    db: Session, term_id: int, new_text: str | None, preferred: bool | None
+) -> int:
+    """Edit a word or make it the label; returns its concept id."""
+    with transaction(db, "edit_concept_term"):
+        term = _term(db, term_id)
+        edit_term(db, term, new_text, preferred)
+        return term.concept_id
+
+
+def delete_term_by_id(db: Session, term_id: int) -> None:
+    with transaction(db, "delete_concept_term"):
+        delete_term(db, _term(db, term_id))
+
+
+def merge_by_id(db: Session, source_id: int, into_id: int) -> None:
+    with transaction(db, "merge_concepts"):
+        merge(db, _concept(db, source_id), _concept(db, into_id))
+
+
+def split_by_id(
+    db: Session,
+    concept_id: int,
+    question_ids: list[int],
+    terms: list[NewTerm],
+    gloss_ja: str | None = None,
+    gloss_en: str | None = None,
+) -> int:
+    """Move questions to a new sense; returns the new concept id."""
+    with transaction(db, "split_concept"):
+        new = split(
+            db,
+            _concept(db, concept_id),
+            question_ids,
+            terms,
+            gloss_ja=gloss_ja,
+            gloss_en=gloss_en,
+        )
+        return new.id
+
+
+def concept_ids_missing_name(
+    db: Session, question_ids: list[int], language: str
+) -> list[int]:
+    """Concepts of these questions without a word in `language` ([53])."""
+    return concept_repository.ids_missing_name(db, question_ids, language)

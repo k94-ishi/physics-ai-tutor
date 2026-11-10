@@ -3,6 +3,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core.security import hash_password, verify_password
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models.user import User
 from physics_ai_tutor.repositories import user_repository
 
@@ -24,9 +25,8 @@ def create_user(
         role=role,
     )
 
-    user_repository.create_user(db, user)
-
-    db.commit()
+    with transaction(db, "create_user"):
+        user_repository.create_user(db, user)
     db.refresh(user)
 
     logger.info("User created: user_id=%s role=%s", user.id, user.role)
@@ -40,6 +40,10 @@ def get_user(
 ) -> User | None:
 
     return user_repository.get_user_by_id(db, user_id)
+
+
+def email_registered(db: Session, email: str) -> bool:
+    return user_repository.get_user_by_email(db, email) is not None
 
 
 def list_users(
@@ -56,15 +60,10 @@ def delete_user(
 
     user_id = user.id
 
-    try:
+    with transaction(db, "delete_user"):
         user_repository.delete_user(db, user)
-        db.commit()
 
-        logger.info("User deleted: user_id=%s", user_id)
-    except Exception:
-        logger.warning("Rolling back transaction: operation=delete_user")
-        db.rollback()
-        raise
+    logger.info("User deleted: user_id=%s", user_id)
 
 
 def change_password(
@@ -87,14 +86,8 @@ def change_password(
         )
         return False
 
-    try:
+    with transaction(db, "change_password"):
         user.hashed_password = hash_password(new_password)
-        db.commit()
 
-        logger.info("Password changed: user_id=%s", user.id)
-    except Exception:
-        logger.warning("Rolling back transaction: operation=change_password")
-        db.rollback()
-        raise
-
+    logger.info("Password changed: user_id=%s", user.id)
     return True

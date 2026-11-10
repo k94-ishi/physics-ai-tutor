@@ -15,6 +15,7 @@ from physics_ai_tutor.core.exceptions import (
     GoogleAccountConflictError,
     GoogleAuthError,
 )
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models.user import User
 from physics_ai_tutor.repositories import user_repository
 
@@ -154,15 +155,10 @@ def login_or_register(db: Session, identity: GoogleIdentity) -> User:
         role="user",
     )
 
-    try:
+    with transaction(db, "google_register"):
         user_repository.create_user(db, user)
-        db.commit()
-        db.refresh(user)
-    except Exception:
-        logger.warning("Rolling back transaction: operation=google_register")
-        db.rollback()
-        raise
 
+    db.refresh(user)
     logger.info("Google account created: user_id=%s", user.id)
 
     return user

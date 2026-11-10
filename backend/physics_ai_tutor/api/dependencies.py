@@ -13,9 +13,8 @@ from physics_ai_tutor.core.exceptions import RateLimitExceeded
 from physics_ai_tutor.core.jwt import create_access_token, decode_access_token
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.models.user import User
-from physics_ai_tutor.repositories import user_repository
 from physics_ai_tutor.schemas.token import JWTPayload, UserRole
-from physics_ai_tutor.services import rate_limit_service
+from physics_ai_tutor.services import rate_limit_service, user_service
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +77,7 @@ def get_current_user(
     refresh_threshold_seconds = settings.jwt_refresh_threshold_minutes * 60
 
     if remaining_seconds <= refresh_threshold_seconds:
-        user = user_repository.get_user_by_id(db, int(payload.sub))
+        user = user_service.get_user(db, int(payload.sub))
 
         if user is None:
             logger.warning(
@@ -132,7 +131,7 @@ def get_current_db_user(
     payload: JWTPayload = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> User:
-    user = user_repository.get_user_by_id(db, int(payload.sub))
+    user = user_service.get_user(db, int(payload.sub))
 
     if user is None:
         raise HTTPException(

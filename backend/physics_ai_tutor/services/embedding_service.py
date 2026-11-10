@@ -2,12 +2,14 @@ import hashlib
 import logging
 
 from openai import OpenAIError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.exceptions import EmbeddingGenerationError
 from physics_ai_tutor.core.openai import client
 from physics_ai_tutor.core.text import normalize_text
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.repositories import query_embedding_repository
 from physics_ai_tutor.repositories.embedding_repository import (
     search_similar_embeddings,
@@ -82,15 +84,24 @@ def embed_query(db: Session, text: str) -> list[float]:
     cached = query_embedding_repository.get(db, text_hash, model)
     if cached is not None:
         try:
-            query_embedding_repository.touch(db, cached)
+            with transaction(db, "touch_query_embedding"):
+                query_embedding_repository.touch(db, cached)
         except Exception:
             # Hit bookkeeping must never break a search.
             logger.warning("query embedding touch failed", exc_info=True)
-            db.rollback()
         return list(cached.embedding)
 
     embedding = create_embeddings([normalized])[0]
-    row = query_embedding_repository.create(db, text_hash, normalized, model, embedding)
+    try:
+        with transaction(db, "cache_query_embedding"):
+            row = query_embedding_repository.create(
+                db, text_hash, normalized, model, embedding
+            )
+    except IntegrityError:
+        # Two identical searches raced; the other one won and that is fine.
+        existing = query_embedding_repository.get(db, text_hash, model)
+        assert existing is not None
+        return list(existing.embedding)
 
     return list(row.embedding)
 

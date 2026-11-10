@@ -4,6 +4,7 @@ import random
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core.exceptions import RateLimitExceeded
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.repositories import rate_limit_repository
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,7 @@ def record(
     The commit must not wait for the rest of the request: a later failure
     (e.g. a DeepSeek error) should not hand the quota back.
     """
-    try:
+    with transaction(db, "record_rate_limit_hit"):
         rate_limit_repository.record_hit(db, action, bucket_key)
 
         if random.random() < CLEANUP_PROBABILITY:
@@ -54,8 +55,3 @@ def record(
             )
             if deleted:
                 logger.info("Pruned expired rate-limit hits: count=%d", deleted)
-
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise

@@ -2,6 +2,7 @@ import logging
 
 from sqlalchemy.orm import Session
 
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.repositories import question_ask_repository
 from physics_ai_tutor.schemas.ask_history import MyQuestionEntry, MyQuestionsResponse
 from physics_ai_tutor.schemas.language import Language
@@ -19,12 +20,10 @@ def record_ask(
 ) -> None:
     """Best-effort: a failed history row must not fail the answer."""
     try:
-        question_ask_repository.create(
-            db, question_id, user_id, Language(language).value, cache_hit=cache_hit
-        )
-        db.commit()
-
-        logger.info("Ask recorded: question_id=%d user_id=%d", question_id, user_id)
+        with transaction(db, "record_ask"):
+            question_ask_repository.create(
+                db, question_id, user_id, Language(language).value, cache_hit=cache_hit
+            )
     except Exception:
         logger.warning(
             "Recording ask failed: question_id=%d user_id=%d",
@@ -32,7 +31,9 @@ def record_ask(
             user_id,
             exc_info=True,
         )
-        db.rollback()
+        return
+
+    logger.info("Ask recorded: question_id=%d user_id=%d", question_id, user_id)
 
 
 def fetch_my_questions(

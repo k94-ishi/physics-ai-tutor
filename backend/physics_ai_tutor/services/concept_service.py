@@ -9,6 +9,7 @@ from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.exceptions import ConceptExtractionError, TranslationError
 from physics_ai_tutor.core.prompt_library import load_library
 from physics_ai_tutor.core.text import concept_pair_text, normalize_key
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models import Concept
 from physics_ai_tutor.repositories import (
     concept_repository,
@@ -308,12 +309,12 @@ def translate_missing_name(db: Session, concept_id: int) -> bool:
         logger.warning("Concept name translation failed: concept_id=%d", concept_id)
         return False
 
-    added = concept_sense_service.add_term(
-        db,
-        concept,
-        target.value,
-        translated,
-        concept_sense_service.TermSource.MACHINE,
-    )
-    db.commit()
+    with transaction(db, "translate_concept_name"):
+        added = concept_sense_service.add_term(
+            db,
+            concept,
+            target.value,
+            translated,
+            concept_sense_service.TermSource.MACHINE,
+        )
     return added is not None

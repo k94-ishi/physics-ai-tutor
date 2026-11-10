@@ -42,8 +42,8 @@ its own issue, applied as files are touched.
 
 1. ~~[58] quick wins~~ done 2026-11-10
 2. ~~[66] test suite speed~~ done 2026-11-11 (5:56 -> 0:38)
-3. [59] backend layering: routers call services only; one place commits - **next up**
-4. [60] split `question_service` and `api/v1/questions.py` by use case
+3. ~~[59] backend layering~~ done 2026-11-11 (guarded by tests/test_architecture.py)
+4. [60] split `question_service` and `api/v1/questions.py` by use case - **next up**
 5. [61] concept domain: one `services/concepts/` package; legacy name columns removed ([55] stage 5)
 6. [62] language resolution as one response step instead of flags
 7. [63] frontend: shared hooks and card components; split the admin queue page
@@ -52,6 +52,9 @@ its own issue, applied as files are touched.
   lines, 70 multi-line docstrings); the CI check lands first.
 
 Naming (owner, 2026-11-10): "concept" in all code; "tag" only on screen.
+
+Deferred because they change the API surface (not allowed inside a refactor):
+`GET /api/v1/health` has the operationId `helath_check` (typo).
 
 Other open issues reviewed on 2026-11-10:
 

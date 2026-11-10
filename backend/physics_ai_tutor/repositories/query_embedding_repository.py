@@ -1,5 +1,4 @@
 from sqlalchemy import func
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.models import QueryEmbedding
@@ -17,10 +16,10 @@ def get(db: Session, text_hash: str, model: str) -> QueryEmbedding | None:
 
 
 def touch(db: Session, row: QueryEmbedding) -> None:
-    """Record a cache hit; best effort, never blocks the search."""
+    """Record a cache hit on the row (the caller commits)."""
     row.hit_count += 1
     row.last_used_at = func.now()
-    db.commit()
+    db.flush()
 
 
 def create(
@@ -30,7 +29,7 @@ def create(
     model: str,
     embedding: list[float],
 ) -> QueryEmbedding:
-    """Insert, or return the row a concurrent request inserted first."""
+    """Insert a cached query embedding (the caller commits)."""
     row = QueryEmbedding(
         text_hash=text_hash,
         normalized_text=normalized_text,
@@ -38,14 +37,5 @@ def create(
         embedding=embedding,
     )
     db.add(row)
-
-    try:
-        db.commit()
-    except IntegrityError:
-        # Two identical searches raced; the other one won and that is fine.
-        db.rollback()
-        existing = get(db, text_hash, model)
-        assert existing is not None
-        return existing
-
+    db.flush()
     return row

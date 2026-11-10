@@ -9,7 +9,8 @@ flight is skipped, and a translated row never reaches the queue again.
 import logging
 import threading
 
-from physics_ai_tutor.database.database import SessionLocal
+from physics_ai_tutor.database.session import background_session
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.schemas.question import QuestionStatus
 from physics_ai_tutor.services import concept_service, question_service
@@ -36,25 +37,25 @@ def _release(question_id: int) -> None:
 
 def translate_missing(question_ids: list[int]) -> None:
     """Background task body; opens its own session and never raises."""
-    db = SessionLocal()
-    try:
+    with background_session() as db:
         for question_id in question_ids:
             try:
-                question = db.get(Question, question_id)
-                # Re-check: the row may have been unapproved since the request.
-                if question is not None and question.status == QuestionStatus.APPROVED:
-                    question_service.translate_missing_languages(db, question_id)
+                with transaction(db, "background_translate"):
+                    question = db.get(Question, question_id)
+                    # Re-check: the row may have been unapproved since the request.
+                    if (
+                        question is not None
+                        and question.status == QuestionStatus.APPROVED
+                    ):
+                        question_service.translate_missing_languages(db, question_id)
             except Exception:
                 logger.warning(
                     "Background translation failed: question_id=%d",
                     question_id,
                     exc_info=True,
                 )
-                db.rollback()
             finally:
                 _release(question_id)
-    finally:
-        db.close()
 
 
 def claim_concepts(concept_ids: list[int]) -> list[int]:
@@ -69,20 +70,17 @@ def claim_concepts(concept_ids: list[int]) -> list[int]:
 
 def translate_concept_names(concept_ids: list[int]) -> None:
     """Background task body for missing concept names; never raises."""
-    db = SessionLocal()
-    try:
+    with background_session() as db:
         for concept_id in concept_ids:
             try:
-                concept_service.translate_missing_name(db, concept_id)
+                with transaction(db, "background_translate_concept"):
+                    concept_service.translate_missing_name(db, concept_id)
             except Exception:
                 logger.warning(
                     "Concept name translation failed: concept_id=%d",
                     concept_id,
                     exc_info=True,
                 )
-                db.rollback()
             finally:
                 with _lock:
                     _concepts_in_flight.discard(concept_id)
-    finally:
-        db.close()

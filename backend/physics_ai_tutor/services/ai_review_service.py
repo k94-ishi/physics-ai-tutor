@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.prompt_library import load_library
+from physics_ai_tutor.database.session import background_session
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models import AiReview, AiReviewRun, Question
 from physics_ai_tutor.repositories import (
     ai_review_repository,
@@ -252,24 +254,25 @@ def review_question_with_outcome(
     language = Language(question.original_language)
 
     try:
-        text = question.text(language) or question.original_text()
-        concepts = question_concept_repository.get_concepts_for_questions(
-            db, [question.id], language=language.value
-        ).get(question.id, [])
-        graded = grade_answer(
-            text[0],
-            text[1],
-            language,
-            concepts=concepts,
-            context=_build_context(db, question, language),
-        )
+        # Reads plus the LLM call; a failed read must not poison the session.
+        with transaction(db, "ai_review_grade"):
+            text = question.text(language) or question.original_text()
+            concepts = question_concept_repository.get_concepts_for_questions(
+                db, [question.id], language=language.value
+            ).get(question.id, [])
+            graded = grade_answer(
+                text[0],
+                text[1],
+                language,
+                concepts=concepts,
+                context=_build_context(db, question, language),
+            )
     except Exception:
         logger.warning(
             "AI review failed before storing: question_id=%d",
             question.id,
             exc_info=True,
         )
-        db.rollback()
         return None, Outcome.FAILED
 
     review = AiReviewCreate(
@@ -288,13 +291,12 @@ def review_question_with_outcome(
     )
 
     try:
-        row = ai_review_repository.create(db, review)
-        db.commit()
+        with transaction(db, "store_ai_review"):
+            row = ai_review_repository.create(db, review)
     except Exception:
         logger.warning(
             "Storing AI review failed: question_id=%d", question.id, exc_info=True
         )
-        db.rollback()
         return None, Outcome.FAILED
 
     logger.info(
@@ -403,34 +405,34 @@ def start_run(
     The partial unique index on status='running' is the real guard; the
     pre-check only produces a friendlier error for the common case.
     """
-    _fail_timed_out_runs(db)
-
-    running = db.query(AiReviewRun).filter(AiReviewRun.status == "running").first()
-    if running is not None:
-        db.rollback()
-        raise RunInProgressError(str(running.id))
-
-    budget = remaining_daily_budget(db)
-    if budget <= 0:
-        db.rollback()
-        raise DailyCapExhaustedError(str(settings.ai_review_daily_cap))
-
-    ids = eligible_question_ids(db, scope, question_ids, limit)[:budget]
-
-    run = AiReviewRun(
-        trigger=trigger,
-        scope=scope,
-        started_by_user_id=started_by,
-        question_ids=ids,
-        requested_count=len(ids),
-        status="running",
-    )
-    db.add(run)
-
     try:
-        db.commit()
+        # One transaction: refusing to start also undoes the reaping above,
+        # exactly as before; a lost race surfaces as IntegrityError on commit.
+        with transaction(db, "start_ai_review_run"):
+            _fail_timed_out_runs(db)
+
+            running = (
+                db.query(AiReviewRun).filter(AiReviewRun.status == "running").first()
+            )
+            if running is not None:
+                raise RunInProgressError(str(running.id))
+
+            budget = remaining_daily_budget(db)
+            if budget <= 0:
+                raise DailyCapExhaustedError(str(settings.ai_review_daily_cap))
+
+            ids = eligible_question_ids(db, scope, question_ids, limit)[:budget]
+
+            run = AiReviewRun(
+                trigger=trigger,
+                scope=scope,
+                started_by_user_id=started_by,
+                question_ids=ids,
+                requested_count=len(ids),
+                status="running",
+            )
+            db.add(run)
     except IntegrityError as exc:
-        db.rollback()
         if _is_single_running_violation(exc):
             # Lost the race against a concurrent start.
             raise RunInProgressError("concurrent start") from exc
@@ -449,41 +451,42 @@ def execute_run(db: Session, run_id: int) -> AiReviewRun | None:
 
     try:
         for question_id in run.question_ids:
-            # Another start may have reaped this run as timed out and
-            # begun its own. Stop rather than review alongside it, which
-            # would break the overlap guard and spend an unbudgeted call.
-            db.refresh(run)
-            if run.status != "running":
-                logger.warning(
-                    "AI review run stopped: run_id=%d status=%s", run_id, run.status
-                )
-                return run
+            # One transaction per question, so progress polling sees it.
+            with transaction(db, "ai_review_progress"):
+                # Another start may have reaped this run as timed out and
+                # begun its own. Stop rather than review alongside it, which
+                # would break the overlap guard and spend an unbudgeted call.
+                db.refresh(run)
+                if run.status != "running":
+                    logger.warning(
+                        "AI review run stopped: run_id=%d status=%s",
+                        run_id,
+                        run.status,
+                    )
+                    return run
 
-            question = db.get(Question, question_id)
-            if question is None:
-                row, outcome = None, Outcome.SKIPPED
-            else:
-                row, outcome = review_question_with_outcome(db, question)
+                question = db.get(Question, question_id)
+                if question is None:
+                    row, outcome = None, Outcome.SKIPPED
+                else:
+                    row, outcome = review_question_with_outcome(db, question)
 
-            if outcome is Outcome.REVIEWED and row is not None:
-                run.reviewed_count += 1
-                run.prompt_tokens += row.prompt_tokens or 0
-                run.completion_tokens += row.completion_tokens or 0
-            elif outcome is Outcome.SKIPPED:
-                run.skipped_count += 1
-            else:
-                run.failed_count += 1
+                if outcome is Outcome.REVIEWED and row is not None:
+                    run.reviewed_count += 1
+                    run.prompt_tokens += row.prompt_tokens or 0
+                    run.completion_tokens += row.completion_tokens or 0
+                elif outcome is Outcome.SKIPPED:
+                    run.skipped_count += 1
+                else:
+                    run.failed_count += 1
 
-            # Commit after every question so progress polling sees it.
-            run.heartbeat_at = datetime.now(UTC)
-            db.commit()
+                run.heartbeat_at = datetime.now(UTC)
 
         if _finish(db, run, "done"):
             return run
         logger.warning("AI review run was taken over: run_id=%d", run_id)
     except Exception:
         logger.exception("AI review run failed: run_id=%d", run_id)
-        db.rollback()
         _finish(db, run, "failed", "unexpected error; see server logs")
 
     return run
@@ -493,15 +496,33 @@ def _finish(
     db: Session, run: AiReviewRun, status: str, error: str | None = None
 ) -> bool:
     """Close the run, but only while it is still ours. True when written."""
-    updated = (
-        db.query(AiReviewRun)
-        .filter(AiReviewRun.id == run.id, AiReviewRun.status == "running")
-        .update(
-            {"status": status, "error": error, "finished_at": func.now()},
-            synchronize_session=False,
+    with transaction(db, "finish_ai_review_run"):
+        updated = (
+            db.query(AiReviewRun)
+            .filter(AiReviewRun.id == run.id, AiReviewRun.status == "running")
+            .update(
+                {"status": status, "error": error, "finished_at": func.now()},
+                synchronize_session=False,
+            )
         )
-    )
-    db.commit()
     db.refresh(run)
 
     return bool(updated)
+
+
+def execute_run_in_background(run_id: int) -> None:
+    """Run the reviewer after the response is sent, on its own session."""
+    with background_session() as db:
+        try:
+            execute_run(db, run_id)
+        except Exception:
+            logger.exception("Background AI review run crashed: run_id=%d", run_id)
+
+
+def list_runs(db: Session, limit: int) -> list[AiReviewRun]:
+    """Recent runs, newest first."""
+    return db.query(AiReviewRun).order_by(AiReviewRun.id.desc()).limit(limit).all()
+
+
+def get_run(db: Session, run_id: int) -> AiReviewRun | None:
+    return db.get(AiReviewRun, run_id)

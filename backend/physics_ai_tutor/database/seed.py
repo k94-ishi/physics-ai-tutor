@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.database import seed_embeddings
 from physics_ai_tutor.database.database import SessionLocal
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.schemas.language import TextProvenance
 from physics_ai_tutor.schemas.question import (
@@ -103,9 +104,9 @@ def seed():
             source=QuestionSource.MANUAL,
             extract_concepts=False,
         )
-        for question, (_, extras) in zip(questions, rows, strict=True):
-            apply_seed_extras(db, question, extras)
-        db.commit()
+        with transaction(db, "seed_extras"):
+            for question, (_, extras) in zip(questions, rows, strict=True):
+                apply_seed_extras(db, question, extras)
     finally:
         db.close()
         embedding_service.clear_preloaded()

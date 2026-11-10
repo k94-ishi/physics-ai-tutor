@@ -36,7 +36,7 @@ tracks changes.
 
 | # | Track | Status | Next item |
 | --- | --- | --- | --- |
-| 1 | **E - refactoring** [57] | active | [59] backend layering, then [60]-[64], [65] alongside |
+| 1 | **E - refactoring** [57] | active | [60] split the question module, then [61]-[64], [65] alongside |
 | 2 | D - owner's queue [48] | waiting on the owner | [54] production rollout; [52] production sample after it |
 | 3 | A - student experience [45] | paused until E's backend steps land | [21] /help page |
 | 4 | B - review pipeline [46] | paused | [16] few-shot grounding; policies [18]/[19] after the agreement gate |

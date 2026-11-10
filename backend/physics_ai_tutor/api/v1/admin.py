@@ -5,9 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, R
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.api.dependencies import require_admin
-from physics_ai_tutor.database.database import SessionLocal
 from physics_ai_tutor.database.dependency import get_db
-from physics_ai_tutor.models import AiReviewRun
 from physics_ai_tutor.schemas.admin_stats import (
     AdminStatsResponse,
     ReviewAgreementResponse,
@@ -28,17 +26,6 @@ from physics_ai_tutor.services import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
-
-
-def execute_run_in_background(run_id: int) -> None:
-    """Run the reviewer after the response is sent, on its own session."""
-    db = SessionLocal()
-    try:
-        ai_review_service.execute_run(db, run_id)
-    except Exception:
-        logger.exception("Background AI review run crashed: run_id=%d", run_id)
-    finally:
-        db.close()
 
 
 @router.get(
@@ -138,7 +125,7 @@ def start_ai_review_run(
         run.scope,
         run.requested_count,
     )
-    background_tasks.add_task(execute_run_in_background, run.id)
+    background_tasks.add_task(ai_review_service.execute_run_in_background, run.id)
 
     return run
 
@@ -152,7 +139,7 @@ def list_ai_review_runs(
     limit: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    return db.query(AiReviewRun).order_by(AiReviewRun.id.desc()).limit(limit).all()
+    return ai_review_service.list_runs(db, limit)
 
 
 @router.get(
@@ -164,7 +151,7 @@ def get_ai_review_run(
     run_id: int,
     db: Session = Depends(get_db),
 ):
-    run = db.get(AiReviewRun, run_id)
+    run = ai_review_service.get_run(db, run_id)
 
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")

@@ -9,6 +9,7 @@ from physics_ai_tutor.core.exceptions import (
     EmbeddingGenerationError,
     TranslationError,
 )
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.repositories import (
     ai_review_repository,
@@ -246,8 +247,8 @@ def fetch_question(
 
     # Lazy fill for rows approved before translation existed.
     if translate_if_missing and not question.has(language):
-        _translate_into(db, question, Language(language))
-        db.commit()
+        with transaction(db, "lazy_translate"):
+            _translate_into(db, question, Language(language))
 
     prepare_for_response(db, [question], language, strict_language=translate_if_missing)
 
@@ -403,7 +404,7 @@ def create_question(
     texts = question.texts()
     _check_duplicates(db, texts)
 
-    try:
+    with transaction(db, "create_question"):
         db_question = question_repository.create_question(
             db,
             texts=texts,
@@ -421,15 +422,9 @@ def create_question(
         _translate_missing(db, db_question)
         prepare_for_response(db, [db_question], language)
 
-        db.commit()
+    logger.info("Question created: id=%d", db_question.id)
 
-        logger.info("Question created: id=%d", db_question.id)
-
-        return db_question
-    except Exception:
-        logger.warning("Rolling back transaction: operation=create_question")
-        db.rollback()
-        raise
+    return db_question
 
 
 def _find_duplicate_texts(db: Session, rows: list[QuestionCreate]) -> list[str]:
@@ -465,7 +460,7 @@ def import_questions_from_jsonl(
             + ", ".join(duplicates)
         )
 
-    try:
+    with transaction(db, "import_questions_from_jsonl"):
         db_questions = question_repository.create_questions(
             db,
             [(row.texts(), row.original_language()) for row in rows],
@@ -484,30 +479,15 @@ def import_questions_from_jsonl(
 
         prepare_for_response(db, db_questions, language)
 
-        db.commit()
-
-        logger.info("Questions imported: count=%d", len(db_questions))
-    except Exception:
-        logger.warning(
-            "Rolling back transaction: operation=import_questions_from_jsonl"
-        )
-        db.rollback()
-        raise
-
+    logger.info("Questions imported: count=%d", len(db_questions))
     return db_questions
 
 
 def delete_question(db: Session, question_id: int) -> bool:
-    try:
+    with transaction(db, "delete_question"):
         result = question_repository.delete(db, question_id)
-        db.commit()
 
-        logger.info("Question delete requested: id=%d found=%s", question_id, result)
-    except Exception:
-        logger.warning("Rolling back transaction: operation=delete_question")
-        db.rollback()
-        raise
-
+    logger.info("Question delete requested: id=%d found=%s", question_id, result)
     return result
 
 
@@ -517,7 +497,7 @@ def update_question(
     question_data: QuestionUpdate,
     language: Language | str = Language.JA,
 ):
-    try:
+    with transaction(db, "update_question"):
         question = question_repository.get_question(db, question_id)
 
         if question is None:
@@ -545,15 +525,9 @@ def update_question(
 
         prepare_for_response(db, [question], language)
 
-        db.commit()
+    logger.info("Question updated: id=%d", question_id)
 
-        logger.info("Question updated: id=%d", question_id)
-
-        return question
-    except Exception:
-        logger.warning("Rolling back transaction: operation=update_question")
-        db.rollback()
-        raise
+    return question
 
 
 def review_question(
@@ -568,7 +542,7 @@ def review_question(
     language: Language | str | None = None,
     response_language: Language | str = Language.JA,
 ) -> Question | None:
-    try:
+    with transaction(db, "review_question"):
         current = question_repository.get_question(db, question_id)
 
         if current is None:
@@ -624,21 +598,15 @@ def review_question(
         attach_generation_meta([current])
         attach_ai_reviews(db, [current])
 
-        db.commit()
+    logger.info(
+        "Question reviewed: id=%d action=%s reviewer_id=%d language=%s",
+        question_id,
+        action,
+        reviewer_id,
+        lang,
+    )
 
-        logger.info(
-            "Question reviewed: id=%d action=%s reviewer_id=%d language=%s",
-            question_id,
-            action,
-            reviewer_id,
-            lang,
-        )
-
-        return current
-    except Exception:
-        logger.warning("Rolling back transaction: operation=review_question")
-        db.rollback()
-        raise
+    return current
 
 
 def fetch_question_reviews(db: Session, question_id: int):
@@ -661,36 +629,34 @@ def reextract_concepts_for_questions(
             continue
 
         try:
-            question_concept_repository.delete_by_question_id(db, question_id)
-            names = concept_service.extract_concept_names(
-                *question.original_text(), language=question.original_language
-            )
-            concepts = concept_service.attach_concepts_to_question(
-                db, question_id, names, language=question.original_language
-            )
-            concept_service.apply_levels_to_question(question, names)
-            db.commit()
-
-            results.append(
-                ConceptExtractionResult(
-                    question_id=question_id,
-                    success=True,
-                    concepts=[
-                        c.display_name(question.original_language) for c in concepts
-                    ],
+            with transaction(db, "reextract_concepts"):
+                question_concept_repository.delete_by_question_id(db, question_id)
+                names = concept_service.extract_concept_names(
+                    *question.original_text(), language=question.original_language
                 )
-            )
-            logger.info("Concepts re-extracted: question_id=%d", question_id)
+                concepts = concept_service.attach_concepts_to_question(
+                    db, question_id, names, language=question.original_language
+                )
+                concept_service.apply_levels_to_question(question, names)
         except Exception:
             logger.warning(
                 "Concept re-extraction failed: question_id=%d",
                 question_id,
                 exc_info=True,
             )
-            db.rollback()
             results.append(
                 ConceptExtractionResult(question_id=question_id, success=False)
             )
+            continue
+
+        results.append(
+            ConceptExtractionResult(
+                question_id=question_id,
+                success=True,
+                concepts=[c.display_name(question.original_language) for c in concepts],
+            )
+        )
+        logger.info("Concepts re-extracted: question_id=%d", question_id)
 
     return results
 
@@ -706,14 +672,8 @@ def translate_missing_languages(db: Session, question_id: int) -> list[Language]
     if question is None:
         return []
 
-    try:
+    with transaction(db, "translate_missing"):
         filled = _translate_missing(db, question)
-        db.commit()
-    except Exception:
-        logger.warning("Rolling back transaction: operation=translate_missing")
-        db.rollback()
-        raise
-
     return filled
 
 
@@ -781,38 +741,36 @@ def save_ai_question(
     lang = Language(language)
 
     try:
-        if question_repository.get_by_exact_text(db, question, language=lang):
-            logger.info("AI answer not saved: duplicate question text")
-            return None
+        with transaction(db, "save_ai_question"):
+            if question_repository.get_by_exact_text(db, question, language=lang):
+                logger.info("AI answer not saved: duplicate question text")
+                return None
 
-        db_question = question_repository.create_question(
-            db,
-            texts={lang: (question, answer)},
-            original_language=lang,
-            status=QuestionStatus.UNREVIEWED,
-            source=source,
-            retrieved_question_ids=retrieved_question_ids,
-        )
+            db_question = question_repository.create_question(
+                db,
+                texts={lang: (question, answer)},
+                original_language=lang,
+                status=QuestionStatus.UNREVIEWED,
+                source=source,
+                retrieved_question_ids=retrieved_question_ids,
+            )
 
-        if generation is not None:
-            db_question.generation_model = generation.model
-            db_question.prompt_version = generation.prompt_version
-            db_question.generation_mode = generation.mode
-            db_question.prompt_tokens = generation.prompt_tokens
-            db_question.completion_tokens = generation.completion_tokens
-            db.flush()
+            if generation is not None:
+                db_question.generation_model = generation.model
+                db_question.prompt_version = generation.prompt_version
+                db_question.generation_mode = generation.mode
+                db_question.prompt_tokens = generation.prompt_tokens
+                db_question.completion_tokens = generation.completion_tokens
+                db.flush()
 
-        _embed_language(db, db_question, lang)
-
-        db.commit()
-
-        logger.info("AI answer saved as question: id=%d", db_question.id)
-
-        return db_question
+            _embed_language(db, db_question, lang)
     except Exception:
+        # The student already has the answer; saving it is best effort.
         logger.warning(
             "Failed to save AI answer as question; continuing without saving",
             exc_info=True,
         )
-        db.rollback()
         return None
+
+    logger.info("AI answer saved as question: id=%d", db_question.id)
+    return db_question

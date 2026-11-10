@@ -1,4 +1,6 @@
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
@@ -9,8 +11,6 @@ from physics_ai_tutor.api.dependencies import (
     require_admin,
 )
 from physics_ai_tutor.database.dependency import get_db
-from physics_ai_tutor.models import Concept
-from physics_ai_tutor.repositories import concept_term_repository
 from physics_ai_tutor.schemas.concept import (
     AdminConceptListResponse,
     AdminConceptResponse,
@@ -25,9 +25,10 @@ from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.token import JWTPayload
 from physics_ai_tutor.services import concept_sense_service
 from physics_ai_tutor.services.concept_sense_service import (
+    ConceptNotFoundError,
     DuplicateTermError,
     NewTerm,
-    TermSource,
+    TermNotFoundError,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,11 +54,19 @@ def search_concepts(
 # --- admin editor -------------------------------------------------------------
 
 
-def _concept_or_404(db: Session, concept_id: int) -> Concept:
-    concept = db.get(Concept, concept_id)
-    if concept is None:
-        raise HTTPException(status_code=404, detail="Concept not found")
-    return concept
+@contextmanager
+def _http_errors() -> Iterator[None]:
+    """Map the editor's domain errors to HTTP responses."""
+    try:
+        yield
+    except ConceptNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Concept not found") from exc
+    except TermNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Term not found") from exc
+    except DuplicateTermError as exc:
+        raise HTTPException(
+            status_code=409, detail="The concept already has this word"
+        ) from exc
 
 
 def _detail(db: Session, concept_id: int, lang: Language) -> AdminConceptResponse:
@@ -97,10 +106,10 @@ def update_gloss(
     db: Session = Depends(get_db),
     _: JWTPayload = Depends(require_admin),
 ):
-    concept = _concept_or_404(db, concept_id)
-    for field in data.model_fields_set:
-        setattr(concept, field, getattr(data, field) or None)
-    db.commit()
+    with _http_errors():
+        concept_sense_service.update_gloss(
+            db, concept_id, {f: getattr(data, f) for f in data.model_fields_set}
+        )
     return _detail(db, concept_id, lang)
 
 
@@ -114,18 +123,10 @@ def add_term(
     db: Session = Depends(get_db),
     _: JWTPayload = Depends(require_admin),
 ):
-    concept = _concept_or_404(db, concept_id)
-    added = concept_sense_service.add_term(
-        db,
-        concept,
-        data.language,
-        data.term,
-        TermSource.TEACHER,
-        preferred=data.is_preferred or None,
-    )
-    if added is None:
-        raise HTTPException(status_code=409, detail="The concept already has this word")
-    db.commit()
+    with _http_errors():
+        concept_sense_service.add_teacher_term(
+            db, concept_id, data.language, data.term, data.is_preferred
+        )
     return _detail(db, concept_id, lang)
 
 
@@ -137,18 +138,11 @@ def update_term(
     db: Session = Depends(get_db),
     _: JWTPayload = Depends(require_admin),
 ):
-    term = concept_term_repository.get_term(db, term_id)
-    if term is None:
-        raise HTTPException(status_code=404, detail="Term not found")
-    try:
-        concept_sense_service.edit_term(db, term, data.term, data.is_preferred)
-    except DuplicateTermError as exc:
-        db.rollback()
-        raise HTTPException(
-            status_code=409, detail="The concept already has this word"
-        ) from exc
-    db.commit()
-    return _detail(db, term.concept_id, lang)
+    with _http_errors():
+        concept_id = concept_sense_service.edit_term_by_id(
+            db, term_id, data.term, data.is_preferred
+        )
+    return _detail(db, concept_id, lang)
 
 
 @admin_router.delete("/terms/{term_id}", status_code=204)
@@ -157,11 +151,8 @@ def delete_term(
     db: Session = Depends(get_db),
     _: JWTPayload = Depends(require_admin),
 ):
-    term = concept_term_repository.get_term(db, term_id)
-    if term is None:
-        raise HTTPException(status_code=404, detail="Term not found")
-    concept_sense_service.delete_term(db, term)
-    db.commit()
+    with _http_errors():
+        concept_sense_service.delete_term_by_id(db, term_id)
     return Response(status_code=204)
 
 
@@ -177,10 +168,8 @@ def merge_concepts(
         raise HTTPException(
             status_code=422, detail="Cannot merge a concept into itself"
         )
-    source = _concept_or_404(db, concept_id)
-    target = _concept_or_404(db, data.into_id)
-    concept_sense_service.merge(db, source, target)
-    db.commit()
+    with _http_errors():
+        concept_sense_service.merge_by_id(db, concept_id, data.into_id)
     return _detail(db, data.into_id, lang)
 
 
@@ -194,14 +183,13 @@ def split_concept(
     db: Session = Depends(get_db),
     _: JWTPayload = Depends(require_admin),
 ):
-    concept = _concept_or_404(db, concept_id)
-    new = concept_sense_service.split(
-        db,
-        concept,
-        data.question_ids,
-        [NewTerm(language=t.language, term=t.term) for t in data.terms],
-        gloss_ja=data.gloss_ja,
-        gloss_en=data.gloss_en,
-    )
-    db.commit()
-    return _detail(db, new.id, lang)
+    with _http_errors():
+        new_id = concept_sense_service.split_by_id(
+            db,
+            concept_id,
+            data.question_ids,
+            [NewTerm(language=t.language, term=t.term) for t in data.terms],
+            gloss_ja=data.gloss_ja,
+            gloss_en=data.gloss_en,
+        )
+    return _detail(db, new_id, lang)

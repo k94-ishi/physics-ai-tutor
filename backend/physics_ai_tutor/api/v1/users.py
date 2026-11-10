@@ -10,7 +10,6 @@ from physics_ai_tutor.api.dependencies import (
 )
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.models.user import User
-from physics_ai_tutor.repositories import user_repository
 from physics_ai_tutor.schemas.ask_history import MyQuestionsResponse
 from physics_ai_tutor.schemas.auth import CurrentUser
 from physics_ai_tutor.schemas.language import Language
@@ -120,7 +119,7 @@ def create_user(
     db=Depends(get_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
-    if user_repository.get_user_by_email(db, data.email) is not None:
+    if user_service.email_registered(db, data.email):
         raise HTTPException(
             status_code=409,
             detail="Email already registered",

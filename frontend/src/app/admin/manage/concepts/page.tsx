@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchAdminConcepts } from "@/lib/api";
 import Card from "@/components/ui/Card";
 import LoadingState from "@/components/ui/LoadingState";
@@ -9,6 +9,7 @@ import StatusMessage from "@/components/ui/StatusMessage";
 import ConceptEditor from "@/components/admin/ConceptEditor";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { AdminConcept, ConceptReviewFilter } from "@/types/concept";
+import { useLatestRequest } from "@/lib/hooks/useLatestRequest";
 
 const SEARCH_DEBOUNCE_MS = 300;
 const FILTERS: ConceptReviewFilter[] = ["all", "review", "shared"];
@@ -37,25 +38,25 @@ export default function AdminConceptsPage() {
     const [loading, setLoading] = useState(true);
     const [failed, setFailed] = useState(false);
     const [openId, setOpenId] = useState<number | null>(null);
-    const requestId = useRef(0);
+    const requestId = useLatestRequest();
 
     const load = useCallback(async () => {
-        const current = ++requestId.current;
+        const isCurrent = requestId.begin();
         setLoading(true);
         setFailed(false);
         try {
             const data = await fetchAdminConcepts({ q: query.trim(), filter, page, size });
-            if (current !== requestId.current) return;
+            if (!isCurrent()) return;
             setItems(data.items);
             setTotal(data.total);
         } catch (error) {
-            if (current !== requestId.current) return;
+            if (!isCurrent()) return;
             console.error(error);
             setFailed(true);
         } finally {
-            if (current === requestId.current) setLoading(false);
+            if (isCurrent()) setLoading(false);
         }
-    }, [query, filter, page, size]);
+    }, [query, filter, page, size, requestId]);
 
     useEffect(() => {
         const timer = setTimeout(load, SEARCH_DEBOUNCE_MS);

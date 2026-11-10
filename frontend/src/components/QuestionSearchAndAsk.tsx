@@ -23,6 +23,7 @@ import QuestionPreviewModal, {
 import { showToast } from "@/components/ui/Toast";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { useQueryState } from "@/lib/hooks/useQueryState";
+import { useLatestRequest } from "@/lib/hooks/useLatestRequest";
 
 const SIMILARITY_LIMIT = 10;
 const QUESTION_MIN_LENGTH = 5;
@@ -103,11 +104,11 @@ export default function QuestionSearchAndAsk({
     const [results, setResults] = useState<SimilarQuestion[]>([]);
     const [searchLoading, setSearchLoading] = useState(false);
     const [searchError, setSearchError] = useState(false);
-    const searchRequestId = useRef(0);
+    const searchRequestId = useLatestRequest();
 
     const [ragAnswer, setRagAnswer] = useState<AskAiResponse | null>(null);
     const [ragLoading, setRagLoading] = useState(false);
-    const ragRequestId = useRef(0);
+    const ragRequestId = useLatestRequest();
     // Similarity results open in the preview instead of leaving the page ([56]).
     const [preview, setPreview] = useState<PreviewQuestion | null>(null);
     const contentLanguage = language as ContentLanguage;
@@ -122,7 +123,7 @@ export default function QuestionSearchAndAsk({
             return;
         }
 
-        const requestId = ++searchRequestId.current;
+        const isCurrent = searchRequestId.begin();
         setSearchLoading(true);
         setSearchError(false);
 
@@ -141,7 +142,7 @@ export default function QuestionSearchAndAsk({
                 }
             }
 
-            if (requestId !== searchRequestId.current) {
+            if (!isCurrent()) {
                 return;
             }
 
@@ -153,7 +154,7 @@ export default function QuestionSearchAndAsk({
 
         setSearched(true);
         setRagAnswer(null);
-        ragRequestId.current += 1;
+        ragRequestId.cancel();
 
         try {
             const data = await searchQuestions({
@@ -162,24 +163,24 @@ export default function QuestionSearchAndAsk({
                 language: contentLanguage,
             });
 
-            if (requestId !== searchRequestId.current) {
+            if (!isCurrent()) {
                 return;
             }
 
             setResults(data);
         } catch (error) {
-            if (requestId !== searchRequestId.current) {
+            if (!isCurrent()) {
                 return;
             }
 
             console.error(error);
             setSearchError(true);
         } finally {
-            if (requestId === searchRequestId.current) {
+            if (isCurrent()) {
                 setSearchLoading(false);
             }
         }
-    }, [router, contentLanguage]);
+    }, [router, contentLanguage, ragRequestId, searchRequestId]);
 
     const runRag = useCallback(async (rawQuery: string, searchResults: SimilarQuestion[]) => {
         const trimmed = rawQuery.trim();
@@ -188,7 +189,7 @@ export default function QuestionSearchAndAsk({
             return;
         }
 
-        const requestId = ++ragRequestId.current;
+        const isCurrent = ragRequestId.begin();
         setRagLoading(true);
         setRagAnswer(null);
 
@@ -203,24 +204,24 @@ export default function QuestionSearchAndAsk({
                         : undefined,
             });
 
-            if (requestId !== ragRequestId.current) {
+            if (!isCurrent()) {
                 return;
             }
 
             setRagAnswer(result);
         } catch (error) {
-            if (requestId !== ragRequestId.current) {
+            if (!isCurrent()) {
                 return;
             }
 
             console.error(error);
             showToast(t("questionSearch.askFailed"), "error");
         } finally {
-            if (requestId === ragRequestId.current) {
+            if (isCurrent()) {
                 setRagLoading(false);
             }
         }
-    }, [t, contentLanguage]);
+    }, [t, contentLanguage, ragRequestId]);
 
     // URLの?similar=が真実: 直リンク・リロード・戻る/進むで検索を一度だけ
     // 復元する。実行済みキーは言語込み([50]): 言語を切り替えたら同じ検索文を

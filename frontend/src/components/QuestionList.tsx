@@ -1,29 +1,26 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState, useRef } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { fetchQuestions } from "@/lib/api";
 import { Question } from "@/types/question";
-import Card from "@/components/ui/Card";
+import QuestionCard from "@/components/ui/QuestionCard";
 import LoadingState from "@/components/ui/LoadingState";
 import StatusMessage from "@/components/ui/StatusMessage";
 import Pagination from "@/components/ui/Pagination";
-import MarkdownContent from "@/components/ui/MarkdownContent";
 import ReferencedQuestions from "@/components/ui/ReferencedQuestions";
 import QuestionSearchAndAsk from "@/components/QuestionSearchAndAsk";
 import QuestionPreviewModal, {
     PreviewQuestion,
 } from "@/components/ui/QuestionPreviewModal";
-import ConceptChips from "@/components/ui/ConceptChips";
 import MeaningChooser from "@/components/ui/MeaningChooser";
 import { ConceptSearchItem } from "@/types/concept";
 import { useQueryState } from "@/lib/hooks/useQueryState";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { useLatestRequest } from "@/lib/hooks/useLatestRequest";
 
 type Mode = "similarity" | "keyword";
 
 const KEYWORD_DEBOUNCE_MS = 300;
-// カードではタグを少なめに出し、残りは「ほかN件」で開く。
-const CARD_TAGS_VISIBLE = 5;
 
 const LIST_QUERY_DEFAULTS = {
     page: "1",
@@ -70,7 +67,7 @@ function QuestionListInner() {
     const [listTotal, setListTotal] = useState(0);
     const [listLoading, setListLoading] = useState(true);
     const [listError, setListError] = useState(false);
-    const listRequestId = useRef(0);
+    const listRequestId = useLatestRequest();
     const [preview, setPreview] = useState<PreviewQuestion | null>(null);
 
     const loadList = useCallback(
@@ -83,7 +80,7 @@ function QuestionListInner() {
             concept: string,
             conceptId: string
         ) => {
-            const requestId = ++listRequestId.current;
+            const isCurrent = listRequestId.begin();
             setListLoading(true);
             setListError(false);
 
@@ -101,26 +98,26 @@ function QuestionListInner() {
                     conceptId: conceptId ? Number(conceptId) : undefined,
                 });
 
-                if (requestId !== listRequestId.current) {
+                if (!isCurrent()) {
                     return;
                 }
 
                 setListItems(data.items);
                 setListTotal(data.total);
             } catch (error) {
-                if (requestId !== listRequestId.current) {
+                if (!isCurrent()) {
                     return;
                 }
 
                 console.error(error);
                 setListError(true);
             } finally {
-                if (requestId === listRequestId.current) {
+                if (isCurrent()) {
                     setListLoading(false);
                 }
             }
         },
-        [language]
+        [language, listRequestId]
     );
 
     // URLのkeywordが外部要因(戻る/進む等)で変わったら入力欄に反映する
@@ -168,6 +165,7 @@ function QuestionListInner() {
         searchAnswer,
         queryState.concept,
         queryState.conceptId,
+        listRequestId,
     ]);
 
     const handlePageChange = (nextPage: number) =>
@@ -259,36 +257,15 @@ function QuestionListInner() {
 
                     <div className="flex flex-col gap-3">
                         {listItems.map((question) => (
-                            <Card
+                            <QuestionCard
                                 key={question.id}
-                                className="flex flex-col gap-2 transition-colors hover:border-blue-300 hover:bg-blue-50/50"
+                                question={question}
+                                onOpen={() => setPreview(question)}
                             >
-                                {/* Opens the preview; tags below stay separate links ([56]). */}
-                                <button
-                                    type="button"
-                                    onClick={() => setPreview(question)}
-                                    className="flex w-full cursor-pointer flex-col gap-1 text-left"
-                                >
-                                    <span className="font-medium text-gray-900">
-                                        {question.question}
-                                    </span>
-
-                                    <MarkdownContent
-                                        content={question.answer}
-                                        variant="preview"
-                                    />
-                                </button>
-
-                                {/* Tags are links, so they sit beside the preview button. */}
-                                <ConceptChips
-                                    concepts={question.concepts}
-                                    visible={CARD_TAGS_VISIBLE}
-                                />
-
                                 <ReferencedQuestions
-                                    items={question.retrieved_questions}
+                                items={question.retrieved_questions}
                                 />
-                            </Card>
+                            </QuestionCard>
                         ))}
                     </div>
 

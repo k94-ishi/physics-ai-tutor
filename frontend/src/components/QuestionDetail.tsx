@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
     ApiError,
     fetchPrerequisites,
@@ -10,6 +10,7 @@ import {
 } from "@/lib/api";
 import { PrerequisitesResponse, Question } from "@/types/question";
 import Card from "@/components/ui/Card";
+import QuestionCard from "@/components/ui/QuestionCard";
 import LoadingState from "@/components/ui/LoadingState";
 import MarkdownContent from "@/components/ui/MarkdownContent";
 import ConceptChips from "@/components/ui/ConceptChips";
@@ -17,6 +18,7 @@ import QuestionPreviewModal from "@/components/ui/QuestionPreviewModal";
 import ReferencedQuestions from "@/components/ui/ReferencedQuestions";
 import StatusMessage from "@/components/ui/StatusMessage";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { useLatestRequest } from "@/lib/hooks/useLatestRequest";
 
 type QuestionDetailProps = {
     id: number;
@@ -28,7 +30,6 @@ const RELATED_FETCH_LIMIT = 20;
 const RELATED_VISIBLE = 10;
 // 前提の「穴」チップの初期表示数(ConceptChipsと同じ発想)。
 const GAPS_VISIBLE = 8;
-const CARD_TAGS_VISIBLE = 5;
 
 /**
  * Client-side question view: refetches in the active UI language, so
@@ -48,10 +49,10 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
     const [relatedLoading, setRelatedLoading] = useState(true);
     const [notFoundError, setNotFoundError] = useState(false);
     const [loadError, setLoadError] = useState(false);
-    const requestId = useRef(0);
+    const requestId = useLatestRequest();
 
     const load = useCallback(async () => {
-        const current = ++requestId.current;
+        const isCurrent = requestId.begin();
         setLoading(true);
         setLoadError(false);
         setNotFoundError(false);
@@ -64,12 +65,12 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
         try {
             const data = await fetchQuestion(id, language);
 
-            if (current !== requestId.current) {
+            if (!isCurrent()) {
                 return;
             }
             setQuestion(data);
         } catch (error) {
-            if (current !== requestId.current) {
+            if (!isCurrent()) {
                 return;
             }
             if (error instanceof ApiError && error.status === 404) {
@@ -92,7 +93,7 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
                 fetchPrerequisites(id, language),
                 fetchRelatedQuestions(id, RELATED_FETCH_LIMIT, language),
             ]);
-            if (current === requestId.current) {
+            if (isCurrent()) {
                 setPrerequisites(
                     prerequisiteData.status === "fulfilled"
                         ? prerequisiteData.value
@@ -103,11 +104,11 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
                 );
             }
         } finally {
-            if (current === requestId.current) {
+            if (isCurrent()) {
                 setRelatedLoading(false);
             }
         }
-    }, [id, language]);
+    }, [id, language, requestId]);
 
     useEffect(() => {
         // 言語の解決前に取得すると、既定のjaで一度取ってから取り直す([53])。
@@ -198,30 +199,12 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
                         {relatedLoading && <LoadingState />}
 
                         {prerequisites?.items.map((item) => (
-                            <Card
+                            <QuestionCard
                                 key={item.id}
-                                className="flex flex-col gap-2 transition-colors hover:border-emerald-300 hover:bg-emerald-50/50"
-                            >
-                                <button
-                                    type="button"
-                                    onClick={() => setPreview(item)}
-                                    className="flex w-full cursor-pointer flex-col gap-1 text-left"
-                                >
-                                    <span className="font-medium text-gray-900">
-                                        {item.question}
-                                    </span>
-
-                                    <MarkdownContent
-                                        content={item.answer}
-                                        variant="preview"
-                                    />
-                                </button>
-
-                                <ConceptChips
-                                    concepts={item.concepts}
-                                    visible={CARD_TAGS_VISIBLE}
-                                />
-                            </Card>
+                                question={item}
+                                onOpen={() => setPreview(item)}
+                                tone="emerald"
+                            />
                         ))}
 
                         {prerequisites !== null && prerequisites.gaps.length > 0 && (
@@ -285,30 +268,11 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
 
                     <div className="flex flex-col gap-3">
                         {visibleRelated.map((item) => (
-                            <Card
+                            <QuestionCard
                                 key={item.id}
-                                className="flex flex-col gap-2 transition-colors hover:border-blue-300 hover:bg-blue-50/50"
-                            >
-                                <button
-                                    type="button"
-                                    onClick={() => setPreview(item)}
-                                    className="flex w-full cursor-pointer flex-col gap-1 text-left"
-                                >
-                                    <span className="font-medium text-gray-900">
-                                        {item.question}
-                                    </span>
-
-                                    <MarkdownContent
-                                        content={item.answer}
-                                        variant="preview"
-                                    />
-                                </button>
-
-                                <ConceptChips
-                                    concepts={item.concepts}
-                                    visible={CARD_TAGS_VISIBLE}
-                                />
-                            </Card>
+                                question={item}
+                                onOpen={() => setPreview(item)}
+                            />
                         ))}
                     </div>
 

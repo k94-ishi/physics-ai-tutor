@@ -241,6 +241,8 @@ Test files sit next to the code in `__tests__/` folders and end in
 | `src/lib/i18n/__tests__/` | Translation tables have identical keys and placeholders in `ja` and `en`; language switching, persistence, `<html lang>` |
 | `src/lib/auth/__tests__/AuthContext.test.tsx` | Session bootstrap, 401 treated as logged out, login / logout state |
 | `src/components/ui/__tests__/` | `Pagination`, `StatusMessage`, `ConfirmDialog`: rendering, accessibility roles, callbacks, keyboard handling |
+| `src/components/admin/__tests__/AdminQuestionCard.test.tsx` | Admin queue card: each action calls only its callback; selection toggling |
+| `src/lib/hooks/__tests__/useLatestRequest.test.tsx` | Only the newest request stays current; cancel; stable object |
 
 Conventions:
 
@@ -307,6 +309,18 @@ button never bounces forward. Query embeddings are cached server-side in
 `query_embeddings`, keyed by (normalised-text hash, embedding model); a
 model upgrade misses the cache by construction instead of mixing
 incompatible vectors.
+
+### Frontend building blocks ([63])
+
+- `useLatestRequest()` (`lib/hooks`): `const isCurrent = req.begin()` before
+  a fetch, `if (!isCurrent()) return` after it; `req.cancel()` makes older
+  requests stale. Use it instead of a hand-written request counter.
+- `QuestionCard` (`components/ui`): question, answer preview and tags,
+  opening the preview; `tone="emerald"` for "Read these first".
+- The admin queue (`app/admin/questions/`) is a page plus two hooks:
+  `useAdminQueueList` (URL filters, loading, searches, paging) and
+  `useAdminQueueActions` (selection, review, bulk, extraction, AI review,
+  delete), and two components, `AdminQueueFilters` and `AdminQuestionCard`.
 
 ### Naming: "tag" on screen, "concept" in code
 

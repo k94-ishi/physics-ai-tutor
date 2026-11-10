@@ -76,7 +76,15 @@ including all discussion comments; browse it with `git bug bug` /
 | 53 | closed | 53-content-language-mixing.md | Bug: Japanese text appears in English mode on the question page | — (file-era issue) |
 | 54 | open | 54-production-rollout-concepts-and-levels.md | Production rollout: English concept names and difficulty levels (owner) | — (file-era issue) |
 | 55 | open | 55-concepts-as-senses-with-terms.md | Concepts as language-neutral senses with many terms per language | — (file-era issue) |
-| 56 | open | 56-home-page-preview-modal.md | Open the preview modal from the home page (cards and similarity results) | — (file-era issue) |
+| 56 | closed | 56-home-page-preview-modal.md | Open the preview modal from the home page (cards and similarity results) | — (file-era issue) |
+| 57 | open | 57-track-e-refactoring.md | Track E: refactoring after the November feature burst | — (file-era issue) |
+| 58 | open | 58-refactor-quick-wins.md | Refactor quick wins: docs drift, shared helpers, faster seed tests | — (file-era issue) |
+| 59 | open | 59-refactor-backend-layering.md | Backend layering: routers call services only; transactions in one place | — (file-era issue) |
+| 60 | open | 60-refactor-split-question-module.md | Split question_service and api/v1/questions.py by use case | — (file-era issue) |
+| 61 | open | 61-refactor-tag-domain.md | Tag domain: one package, legacy name columns removed ([55] stage 5) | — (file-era issue) |
+| 62 | open | 62-refactor-language-resolution.md | One language-resolution step for responses | — (file-era issue) |
+| 63 | open | 63-refactor-frontend-components.md | Frontend: shared hooks and cards; split the admin queue page | — (file-era issue) |
+| 64 | open | 64-refactor-frontend-api-i18n.md | Frontend: split api.ts and translations.ts by feature | — (file-era issue) |
 
 ## Notes on the archive column
 

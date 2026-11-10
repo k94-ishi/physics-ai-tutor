@@ -49,3 +49,7 @@ when [42] closed with everything else done.
   similarity result opens the preview with the full-page link and closes
   on Escape. Lint, tsc, vitest 166, build: pass.
 - Left open for the owner to try in the browser.
+
+### 2026-11-10 - closed
+
+Owner checked it in the browser.

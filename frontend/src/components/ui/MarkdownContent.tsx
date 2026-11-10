@@ -62,15 +62,7 @@ function OrderedList({ children }: { children?: ReactNode }) {
     return <ol className="mb-2 list-decimal pl-5 last:mb-0">{children}</ol>;
 }
 
-/**
- * 質問・回答テキストをMarkdown(表・数式・Mermaid図解)として描画する共通コンポーネント。
- * variant="preview"は一覧カードでの短い抜粋表示用で、Mermaid図は重い描画を避けて
- * プレースホルダーに置き換える。
- *
- * remarkCjkFriendlyは`**「重心の位置」**と`のような強調を正しく閉じるために必要。
- * CommonMarkは全角約物を約物として扱うため、`」`と`と`に挟まれた`**`は開始記号
- * としか解釈できず、閉じられない`**`がそのまま本文に出てしまう(issue [36])。
- */
+/** Renders Markdown, math and Mermaid; remark-cjk-friendly closes `**` next to CJK punctuation ([36]). */
 export default function MarkdownContent({
     content,
     variant = "full",

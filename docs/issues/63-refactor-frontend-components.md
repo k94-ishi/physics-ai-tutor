@@ -70,3 +70,7 @@ markup in 2. AGENTS.md asks for reusable components.
 Not done (optional in the scope): `admin/questions/[id]/edit/page.tsx`
 (570) and `admin/manage/levels/page.tsx` (581) are still over 400 lines;
 moving student components into `components/questions/`.
+
+### 2026-11-11 - correction found in [65]
+
+The hook split left 3 comment groups in `useAdminQueueActions.ts` away from their code (the code itself was correct). Fixed in [65]; see its log.

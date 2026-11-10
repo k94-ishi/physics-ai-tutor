@@ -52,3 +52,31 @@ owner decisions) - valuable, but in the wrong place by the rule.
 Do it file by file alongside [59]-[64] when a file is touched anyway,
 and sweep the rest in one PR at the end; the check lands first with the
 current offenders allow-listed, shrinking to zero.
+
+## Log
+
+### 2026-11-11 - part 1 done: no Japanese comments
+
+- 81 Japanese comment blocks (frontend 80 lines of files, backend tests 1)
+  replaced by one short English sentence each, keeping the issue number
+  so the full reasoning stays findable in the issue.
+- 11 comments still contain Japanese characters on purpose: English
+  sentences quoting Japanese as data (`位相 = phase`, `概念A`, `」 and と`).
+- Guards in both CI jobs: `backend/tests/test_comment_style.py` and
+  `frontend/src/lib/__tests__/commentStyle.test.ts` fail when Japanese is a
+  fifth or more of a comment (quoted text ignored; translation tables are
+  data). Each was verified by planting a Japanese comment.
+- Found and fixed while doing it: the [63] hook split had left 3 comment
+  groups (8 lines) in `useAdminQueueActions.ts` away from the code they
+  describe (`fromUrl`, `queryState`, the similarity input and two URL
+  effects, which moved to `useAdminQueueList.ts`). They now sit above
+  their own code. Cause: the split script treated a comment line as a
+  statement of its own.
+- Checks: pytest 531, ruff, mypy, lint, tsc, vitest 176, build.
+
+### Part 2 - waiting for the owner
+
+The one-sentence rule is not met by 213 English items: 97 comments and
+116 docstrings of more than one line (50 of them cite an issue). Many
+record *why* (owner decisions, race conditions, CommonMark rules). Options
+are in the 2026-11-11 report; the check does not enforce this part yet.

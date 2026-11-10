@@ -27,7 +27,7 @@ export default function AdminStatsPage() {
     const [days, setDays] = useState(14);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
-    // ラン完了時に合意率セクションを作り直して最新の数字を出す。
+    // Rebuild the agreement section when a run finishes, to show fresh numbers.
     const [agreementKey, setAgreementKey] = useState(0);
 
     const load = useCallback(async () => {

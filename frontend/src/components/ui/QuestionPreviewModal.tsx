@@ -18,11 +18,7 @@ type QuestionPreviewModalProps = {
     onClose: () => void;
 };
 
-/**
- * 関連QAを開いても今読んでいるページを失わないためのプレビュー([42])。
- * 前提にあたる質問をのぞいてから戻る、という動きがこのアプリの肝なので、
- * 一覧は全文を持っている関連QAをそのまま表示し、追加の取得はしない。
- */
+/** Preview a related QA without leaving the page; it uses the data already loaded ([42]). */
 export default function QuestionPreviewModal({
     question,
     onClose,
@@ -40,7 +36,7 @@ export default function QuestionPreviewModal({
             }
         };
 
-        // 背面のページがスクロールしないよう固定する。
+        // Freeze the page behind the dialog.
         const previousOverflow = document.body.style.overflow;
         document.body.style.overflow = "hidden";
         window.addEventListener("keydown", handleKeyDown);
@@ -65,7 +61,7 @@ export default function QuestionPreviewModal({
         >
             <div
                 className="flex max-h-full w-full max-w-2xl flex-col gap-4 overflow-y-auto rounded-lg bg-white p-6 shadow-lg"
-                // 中身のクリックで閉じないようにする。
+                // Clicks inside the dialog do not close it.
                 onClick={(e) => e.stopPropagation()}
             >
                 <h2

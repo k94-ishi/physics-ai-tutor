@@ -188,6 +188,7 @@ Layout of `backend/tests/`:
 | `test_cli.py` | `create_user` and `translate_missing` CLIs, seed file checks |
 | `test_seed.py` | One offline seed per module (OpenAI and DeepSeek forbidden), then read-only checks and export round trips |
 | `test_security.py` | Production password hashing parameters (the test hasher is cheaper) |
+| `test_comment_style.py` | Comments are English (Japanese only as quoted data) ([65]) |
 | `test_architecture.py` | Layering rules: routers call services only; only `transaction()` commits or rolls back |
 | `test_language_strict.py` | Students never get the other language on related/prerequisites/concepts; hidden rows are translated once in the background ([53]) |
 | `test_language.py` | Bilingual rows: eager translation, provenance, `lang` resolution, English ask flow, cache tiers, review in either language, translate endpoint, import shapes |
@@ -234,6 +235,7 @@ Test files sit next to the code in `__tests__/` folders and end in
 
 | Location | Covers |
 | --- | --- |
+| `src/lib/__tests__/commentStyle.test.ts` | Comments are English (Japanese only as quoted data) ([65]) |
 | `src/lib/api/__tests__/importBoundary.test.ts` | Nothing outside `lib/api` imports a feature file directly |
 | `src/lib/__tests__/api.test.ts` | Request building (query params, JSON bodies, multipart), cookie inclusion, `ApiError` on non-2xx, 204 handling |
 | `src/lib/__tests__/markdown.test.ts` | LaTeX delimiter normalisation for DeepSeek output |

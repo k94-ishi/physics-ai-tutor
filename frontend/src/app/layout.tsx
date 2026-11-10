@@ -34,8 +34,7 @@ export const metadata: Metadata = {
   },
 };
 
-// 下部固定の質問バー([43])がソフトキーボードに隠れないよう、
-// キーボード表示時はコンテンツ側をリサイズさせる。
+// Resize the content for the soft keyboard so the sticky ask bar stays visible ([43]).
 export const viewport: Viewport = {
   interactiveWidget: "resizes-content",
 };

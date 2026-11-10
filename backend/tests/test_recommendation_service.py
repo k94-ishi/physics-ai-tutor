@@ -150,9 +150,7 @@ def test_get_related_questions_includes_candidate_via_rag_reference_concepts(db)
     rag_question.retrieved_question_ids = [reference.id]
     db.flush()
 
-    # candidateはRAG質問自身とは概念もembeddingも近くないが、参照質問(reference)
-    # とだけ概念を共有している -> retrieved_question_ids経由の拡張がなければ
-    # 見つからないはずの候補
+    # Shares concepts only with the referenced QA: found via retrieved_question_ids.
     candidate = _create_question_with_embedding(
         db, "参照質問と概念を共有する質問", "回答", dissimilar_vector
     )

@@ -14,6 +14,7 @@ import { parseIdSearch } from "@/lib/questionIds";
 import { ConceptFilter, QueueMode } from "@/components/admin/AdminQueueFilters";
 import { useLatestRequest } from "@/lib/hooks/useLatestRequest";
 
+// Accept URL values only from the allowed list, so `?sort=garbage` uses the default ([35]).
 function fromUrl<T extends string>(
     value: string,
     allowed: readonly T[],
@@ -49,7 +50,7 @@ const ADMIN_QUERY_DEFAULTS = {
     ids: "",
     status: "",
     conceptFilter: "",
-    // タグで絞り込む([41])。サーバー側で絞るので件数とページ送りが正しい。
+    // Filter by tag on the server, so totals and paging stay correct ([41]).
     concept: "",
     sort: "",
     aiVerdict: "",
@@ -59,6 +60,7 @@ const ADMIN_QUERY_DEFAULTS = {
 export function useAdminQueueList() {
     const [mode, setMode] = useState<QueueMode>("keyword");
 
+    // List state (page, filters, keyword) lives in the URL.
     const [queryState, setQueryState] = useQueryState(ADMIN_QUERY_DEFAULTS);
     const page = Number(queryState.page);
     const size = Number(queryState.size);
@@ -76,6 +78,7 @@ export function useAdminQueueList() {
     const [listError, setListError] = useState(false);
     const listRequestId = useLatestRequest();
 
+    // Similarity search runs on submit only.
     const [similarityInput, setSimilarityInput] = useState("");
     const [similaritySearched, setSimilaritySearched] = useState(false);
     const [similarityResults, setSimilarityResults] = useState<
@@ -135,6 +138,7 @@ export function useAdminQueueList() {
         [listRequestId],
     );
 
+    // Show URL keyword/ids changes (back/forward, `?ids=` links) in the input as `#54,848`.
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setKeywordInput(
@@ -142,6 +146,7 @@ export function useAdminQueueList() {
         );
     }, [queryState.keyword, queryState.ids]);
 
+    // Debounce typing into the URL; `#54` or `54,848` becomes an id search ([31]).
     useEffect(() => {
         const timer = setTimeout(() => {
             const trimmed = keywordInput.trim();

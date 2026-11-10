@@ -14,9 +14,7 @@ export type Language = "ja" | "en";
 
 const STORAGE_KEY = "language";
 
-// URLの?lang=を読む([50])。useSearchParamsを使わないのは、ルート直下の
-// プロバイダで使うと全ページがSuspense/動的化を要求されるため。言語解決は
-// 元々クライアントのマウント時処理なので、URLも同じ場所で読む。
+// Read `?lang=` here, not with useSearchParams, which would make every page dynamic ([50]).
 function readUrlLanguage(): Language | null {
     try {
         const value = new URLSearchParams(window.location.search).get("lang");
@@ -28,8 +26,7 @@ function readUrlLanguage(): Language | null {
 
 type LanguageContextValue = {
     language: Language;
-    /** URL/localStorageの解決が済んだか。言語に依存する副作用(検索の復元
-     * など)はこれを待たないと、既定のjaで一度走ってから走り直してしまう。 */
+    /** Whether the language is resolved; wait for it, or effects run once in ja first. */
     resolved: boolean;
     setLanguage: (language: Language) => void;
     t: (key: TranslationKey, params?: Record<string, string | number>) => string;
@@ -55,10 +52,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     const [language, setLanguageState] = useState<Language>("ja");
     const [resolved, setResolved] = useState(false);
 
-    // 言語の優先順位([50]): URLの?lang= > localStorage > 既定のja。
-    // URL指定はそのリンクを見ている間だけの一時的なもので、保存済みの
-    // 好みは上書きしない(明示的な切替だけが保存される)。
-    // クライアントでのみ行う(SSR中はwindow不可)。
+    // Priority `?lang=` > localStorage > ja; a link's language is never stored ([50]).
     useEffect(() => {
         const fromUrl = readUrlLanguage();
         if (fromUrl !== null) {
@@ -74,17 +68,17 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
                 setLanguageState(stored);
             }
         } catch {
-            // localStorageが使えない環境(プライベートブラウジング等)は無視する
+            // localStorage may be unavailable (private browsing).
         }
     }, []);
 
-    // fromUrlの早期returnがあるため、resolvedは別のeffectで必ず立てる。
+    // Set `resolved` in its own effect, because the URL branch returns early.
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setResolved(true);
     }, []);
 
-    // 戻る/進むで?lang=付きのURLに戻ったら、そのリンクの言語に合わせ直す。
+    // Back/forward to a `?lang=` URL re-applies that link's language.
     useEffect(() => {
         const handlePopState = () => {
             const fromUrl = readUrlLanguage();
@@ -106,12 +100,10 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
         try {
             localStorage.setItem(STORAGE_KEY, next);
         } catch {
-            // 保存できなくても表示切替自体は継続する
+            // Switching still works when saving fails.
         }
 
-        // ?lang=付きのリンクを見ている間に切り替えたら、URLも追従させる
-        // (共有・リロードしても今見ている言語のまま)。パラメータがない
-        // 普段のURLには足さない。Next 14+が公式に認めるshallow更新。
+        // While a `?lang=` link is open, a switch updates the URL too; plain URLs stay plain.
         try {
             const url = new URL(window.location.href);
             if (url.searchParams.get("lang") !== null) {
@@ -119,7 +111,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
                 window.history.replaceState(window.history.state, "", url);
             }
         } catch {
-            // URLを触れない環境でも表示切替自体は継続する
+            // Switching still works when the URL cannot be changed.
         }
     }, []);
 

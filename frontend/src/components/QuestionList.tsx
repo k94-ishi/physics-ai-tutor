@@ -26,12 +26,11 @@ const LIST_QUERY_DEFAULTS = {
     page: "1",
     size: "30",
     keyword: "",
-    // 概念チップ([41])からの絞り込み。空文字なら絞り込みなし。
+    // Tag chip filter ([41]); empty means no filter.
     concept: "",
-    // 意味(概念ID)で絞り込むとき([55])。conceptは見出し用の表示名。
+    // Exact tag sense filter ([55]); `concept` holds the label for the banner.
     conceptId: "",
-    // ベクトル検索([49])。値はQuestionSearchAndAskが管理し、ここでは
-    // 初期タブの選択にだけ使う。
+    // Vector search ([49]); QuestionSearchAndAsk owns it, it only picks the first tab here.
     similar: "",
 };
 
@@ -49,10 +48,9 @@ const inputClassName =
 function QuestionListInner() {
     const { language, resolved, t } = useLanguage();
 
-    // 一覧(pagination + keyword filter、page/size/keywordはURLで管理)
+    // List state (page, size, keyword) lives in the URL.
     const [queryState, setQueryState] = useQueryState(LIST_QUERY_DEFAULTS);
-    // 共有リンクが正しいタブで開くよう、初期タブはURLから決める:
-    // ?similar=はベクトル検索、?keyword=だけならキーワード検索。
+    // Open the tab the URL implies, so a shared link lands in the right place.
     const [mode, setMode] = useState<Mode>(() =>
         queryState.keyword !== "" && queryState.similar === ""
             ? "keyword"
@@ -120,13 +118,13 @@ function QuestionListInner() {
         [language, listRequestId]
     );
 
-    // URLのkeywordが外部要因(戻る/進む等)で変わったら入力欄に反映する
+    // Reflect URL keyword changes (back/forward) in the input.
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setKeywordInput(queryState.keyword);
     }, [queryState.keyword]);
 
-    // キーワード入力をデバウンスしてURLへ反映する(1ページ目に戻す)
+    // Debounce keyword typing into the URL and go back to page 1.
     useEffect(() => {
         const timer = setTimeout(() => {
             const trimmed = keywordInput.trim();
@@ -139,9 +137,9 @@ function QuestionListInner() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [keywordInput]);
 
-    // ページ・サイズ・キーワード・検索対象フィールドが確定するたびに一覧を取得する(初回ロードも含む)
+    // Fetch the list whenever its inputs settle, including the first load.
     useEffect(() => {
-        // 言語の解決前に取得すると、jaで一度取ってから取り直す([53])。
+        // Wait for the language, or the list loads once in ja and again ([53]).
         if (!resolved) {
             return;
         }
@@ -173,7 +171,7 @@ function QuestionListInner() {
     const handleSizeChange = (nextSize: number) =>
         setQueryState({ size: String(nextSize), page: "1" });
 
-    // 検索対象(質問/回答)は最低1つはオンのまま維持する(両方オフだと絞り込みが崩れるため)。
+    // Keep at least one of question/answer searched, or the filter breaks.
     const toggleSearchQuestion = () => {
         setSearchQuestion((prev) => (prev && !searchAnswer ? prev : !prev));
     };
@@ -181,8 +179,7 @@ function QuestionListInner() {
         setSearchAnswer((prev) => (prev && !searchQuestion ? prev : !prev));
     };
 
-    // 「AIに聞く-検索/生成」タブでまだ検索していない間のフォールバックにも、
-    // 「キーワード検索」タブの主表示にも、同じ質問一覧を使う(重複させない)。
+    // Both tabs share this list: the AI tab before a search, the keyword tab always.
     const conceptBanner = queryState.concept ? (
         <div className="flex flex-wrap items-center gap-3 rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-800">
             <span>

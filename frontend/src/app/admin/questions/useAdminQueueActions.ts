@@ -25,8 +25,6 @@ import { AdminQueueList } from "@/app/admin/questions/useAdminQueueList";
 export type BulkAction =
     "delete" | "approve" | "reject" | "extract" | "translate" | "aiReview";
 
-// URL由来の値は何でもあり得るので、候補と突き合わせてから型に入れる。
-// 候補外(?sort=garbage等)は既定値扱いにし、APIへ渡して422にしない。
 type ReviewAction = "APPROVE" | "REJECT";
 
 /** What a teacher does to rows: select, review, bulk, extract, AI review, delete ([63]). */
@@ -57,41 +55,35 @@ export function useAdminQueueActions({
     | "visibleItems"
 >) {
     const { t } = useLanguage();
-    // 一覧(pagination + keyword filter + status filter、URLで管理)
-    // AI関連度検索(送信時のみ実行)
-    // 選択・一括操作(キーワード検索モードのみ)
+    // Selection and bulk actions apply in keyword mode only.
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [bulkAction, setBulkAction] = useState<BulkAction | null>(null);
     const [rejectTarget, setRejectTarget] = useState<Question | null>(null);
     const [bulkProcessing, setBulkProcessing] = useState(false);
 
-    // Concept抽出は選択質問ごとに非同期(並列)で進めるため、状態はフロント側でのみ管理する
+    // Concept extraction runs per question in parallel, so its progress is tracked here only.
     const [extractionStatus, setExtractionStatus] = useState<
         Map<number, ExtractionStatus>
     >(new Map());
     const processingIdsRef = useRef<Set<number>>(new Set());
 
-    // AIレビューはランとして実行し、対象カードに処理中バッジを出す([28])
+    // AI review runs as a run, with a busy badge on each targeted card ([28]).
     const [aiReviewingIds, setAiReviewingIds] = useState<Set<number>>(
         new Set(),
     );
     const aiReviewBatchRef = useRef<number[]>([]);
 
-    // 単体操作(削除のみ確認ダイアログを経由し、承認・却下は即実行)
+    // Only delete asks for confirmation; approve and reject run at once.
     const [deleteTarget, setDeleteTarget] = useState<Question | null>(null);
     const [deleting, setDeleting] = useState(false);
 
-    // 承認/却下は非同期化し、ダイアログは即座に閉じてカードごとにバッジで進捗を表示する
+    // Approve and reject run in the background and show progress as a badge on each card.
     const [reviewStatus, setReviewStatus] = useState<
         Map<number, ReviewActionState>
     >(new Map());
     const reviewingIdsRef = useRef<Set<number>>(new Set());
 
-    // URLのkeyword/idsが外部要因(戻る/進む、?ids=の直リンク等)で変わったら
-    // 入力欄に反映する。id検索は "#54,848" の形に戻すとそのまま再解析できる。
-    // キーワード入力をデバウンスしてURLへ反映する(1ページ目に戻す)。
-    // "#54" や "54,848" はキーワードではなくid検索としてidsへ送る。
-    // 検索条件・ページが変わったら選択状態をリセットする
+    // Clear the selection whenever the list's filters or page change.
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelectedIds(new Set());
@@ -268,9 +260,7 @@ export function useAdminQueueActions({
         }
     };
 
-    // Concept抽出は質問ごとに個別のAPI呼び出しを並列実行し、ダイアログはすぐ閉じて
-    // 各カードのバッジ(処理中/完了/失敗)で進捗を表示する。全件完了を待たずに
-    // 画面を操作できるようにするための非同期化(フロント側での状態管理)。
+    // Extract concepts per question in parallel and show progress on each card, so the page stays usable.
     const startConceptExtraction = (ids: number[]) => {
         const targetIds = ids.filter((id) => !processingIdsRef.current.has(id));
 
@@ -321,8 +311,7 @@ export function useAdminQueueActions({
         });
     };
 
-    // ランの完了時にまとめてトーストを出し、対象カードの判定バッジだけを
-    // 取り直す(ページ全体は再読み込みしない)。
+    // When a run finishes, toast once and refresh only the affected cards' verdicts.
     const aiRun = useAiReviewRun(async (finished) => {
         const ids = aiReviewBatchRef.current;
         aiReviewBatchRef.current = [];
@@ -343,7 +332,7 @@ export function useAdminQueueActions({
             );
         }
 
-        // idsフィルタは一度に100件まで([31])なので分割して取り直す。
+        // The ids filter takes at most 100 ids ([31]), so refetch in chunks.
         for (let index = 0; index < ids.length; index += 100) {
             const chunk = ids.slice(index, index + 100);
             try {

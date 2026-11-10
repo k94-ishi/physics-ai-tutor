@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 
-/** 1画面を概念で埋めないための初期表示数。残りは「もっと見る」で開く。 */
+/** Tags shown before "more", so one answer does not fill the screen. */
 export const VISIBLE_CONCEPTS = 8;
 
 type ConceptChipsProps = {
@@ -13,14 +13,7 @@ type ConceptChipsProps = {
     visible?: number;
 };
 
-/**
- * 回答のタグをチップとして見せ、同じタグの質問一覧へ送る([41])。
- * 見出しは付けない: タグはこのアプリでの呼び名で、チップだけで伝わる。
- * 概念はこのアプリが作る唯一の地図で、発展的な回答から前提へ降りる手がかり
- * になるため、管理画面だけでなく生徒にも見せる。
- *
- * 並べ替えは今は短い順。概念の中心性が使えるようになったらそれに置き換える。
- */
+/** Tags as chips linking to their question lists, shortest first ([41]). */
 export default function ConceptChips({
     concepts,
     visible = VISIBLE_CONCEPTS,

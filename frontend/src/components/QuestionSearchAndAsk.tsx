@@ -83,14 +83,8 @@ type QuestionSearchAndAskProps = {
     children?: ReactNode;
 };
 
-/**
- * 質問を関連度検索し、結果を表示したうえで「目的の質問はありませんか？」
- * からRAGモードのAI回答生成へ進める共有フロー。トップページ(検索前は
- * children で質問一覧をフォールバック表示)と質問詳細ページ(children なし)
- * の両方から使われる。
- */
-// ベクトル検索をURLで共有・復元するためのキー([49])。"q"はキーワード検索や
-// AI質問と紛らわしいため"similar"(オーナー決定、2026-11-02)。
+/** Similarity search with a path on to a RAG answer, shared by the home and question pages. */
+// URL key for a shared vector search ([49]); `similar`, not `q` (owner, 2026-11-02).
 const SEARCH_QUERY_DEFAULTS = { similar: "" };
 
 export default function QuestionSearchAndAsk({
@@ -127,9 +121,7 @@ export default function QuestionSearchAndAsk({
         setSearchLoading(true);
         setSearchError(false);
 
-        // 完全一致するQAが既にあれば、検索結果を経由せずその個別ページへ直接遷移する。
-        // ただしURL(?similar=)からの復元時は遷移しない: 戻るボタンで戻った直後に
-        // また飛ばされる往復を防ぎ、共有リンクは常に検索結果を見せる。
+        // Go straight to an exact match, except when restoring from the URL, so back never bounces forward.
         if (!options?.skipExactRedirect) {
             let exactMatchId: number | null = null;
             try {
@@ -223,22 +215,18 @@ export default function QuestionSearchAndAsk({
         }
     }, [t, contentLanguage, ragRequestId]);
 
-    // URLの?similar=が真実: 直リンク・リロード・戻る/進むで検索を一度だけ
-    // 復元する。実行済みキーは言語込み([50]): 言語を切り替えたら同じ検索文を
-    // 新しい言語の埋め込みに対して実行し直す(オーナー決定 2026-11-02)。
+    // Restore `?similar=` once per URL and language, re-running on a language switch ([50]).
     const lastExecutedRef = useRef<string | null>(null);
 
     useEffect(() => {
-        // 言語解決前に走ると、既定のjaで検索してから保存言語で検索し直す
-        // 二重実行になる([50]で顕在化)。解決を待ってから一度だけ復元する。
+        // Wait for the language, or the search runs in ja and then again ([50]).
         if (!languageResolved) {
             return;
         }
 
         const target = queryState.similar.trim();
         if (target === "") {
-            // URLが実際に空になってから解除する(再レンダリング中の古い
-            // パラメータで同じ検索を二重実行しないため)。
+            // Reset only once the URL is really empty, so a stale render cannot search twice.
             lastExecutedRef.current = null;
             return;
         }
@@ -256,9 +244,7 @@ export default function QuestionSearchAndAsk({
     function handleQueryChange(value: string) {
         setQuery(value);
 
-        // 入力を空にしたらURLの?similar=も消す。API呼び出しのないURL整理
-        // なので、キーストローク時でも書いてよい唯一のケース。refは触らない:
-        // URLが空になった時点でeffect側が解除する。
+        // Clearing the box clears `?similar=`; the only URL write allowed on a keystroke.
         if (value.trim() === "" && queryState.similar !== "") {
             setQueryState({ similar: "" });
         }

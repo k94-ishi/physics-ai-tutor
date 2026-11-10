@@ -3,16 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo } from "react";
 
-/**
- * URLのクエリパラメータを唯一の真実の情報源として扱うstateフック。
- * ページ遷移して戻ってきたときに一覧の状態(ページ番号・キーワード等)が
- * 復元されるよう、useStateの代わりにURLへ読み書きする。
- *
- * `defaults`はキー集合とデフォルト値を決めるだけでなく、値が
- * デフォルトと一致する場合はクエリパラメータから省略するためにも使う
- * (URLを簡潔に保つ)。呼び出し側は再レンダリングのたびに新しい
- * オブジェクトを渡さないよう、モジュールレベルの定数として定義すること。
- */
+/** List state kept in the URL; pass `defaults` as a module constant, values equal to them are omitted. */
 export function useQueryState<T extends Record<string, string>>(
     defaults: T
 ) {

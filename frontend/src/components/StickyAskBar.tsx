@@ -2,21 +2,14 @@
 
 import { ReactNode, useEffect, useRef, useState } from "react";
 
-/** 他の固定要素(トースト)が重ならないよう、実測した高さを共有する。 */
+/** Shares the bar's measured height so toasts can sit above it. */
 export const ASK_BAR_HEIGHT_VAR = "--ask-bar-height";
 
 type StickyAskBarProps = {
     children: ReactNode;
 };
 
-/**
- * 画面下に貼り付く質問バー([43])。長い回答を読んでいる途中でも、
- * 戻らずにその場で検索・質問できるようにする。
- *
- * 高さは内容(検索結果やAI回答)で変わるので固定値を置かず、ResizeObserverで
- * 実測して (a) 本文を隠さないためのスペーサーと (b) トーストのオフセット用
- * CSS変数に反映する。背が高くなりすぎないよう上限を付けて内部スクロールにする。
- */
+/** Ask bar fixed to the bottom of the question page; it measures itself and reserves its height ([43]). */
 export default function StickyAskBar({ children }: StickyAskBarProps) {
     const barRef = useRef<HTMLDivElement>(null);
     const [height, setHeight] = useState(0);
@@ -37,7 +30,7 @@ export default function StickyAskBar({ children }: StickyAskBarProps) {
 
         apply(node.getBoundingClientRect().height);
 
-        // jsdomにResizeObserverがない環境でも初期測定だけで動くようにする。
+        // Without ResizeObserver (jsdom) the first measurement still works.
         if (typeof ResizeObserver === "undefined") {
             return () => {
                 document.documentElement.style.removeProperty(ASK_BAR_HEIGHT_VAR);
@@ -57,7 +50,7 @@ export default function StickyAskBar({ children }: StickyAskBarProps) {
 
     return (
         <>
-            {/* 本文の最後がバーの裏に隠れないよう、同じ高さだけ場所を空ける。 */}
+            {/* Reserve the bar's height so the end of the answer is never hidden. */}
             <div aria-hidden="true" style={{ height }} />
 
             <div
@@ -68,9 +61,9 @@ export default function StickyAskBar({ children }: StickyAskBarProps) {
                 <div
                     className="mx-auto w-full max-w-4xl overflow-y-auto px-3 py-3"
                     style={{
-                        // 画面を覆い尽くさない範囲で結果も見せる。
+                        // Cap the height so results show without covering the screen.
                         maxHeight: "70svh",
-                        // iOSのホームインジケータ等を避ける。
+                        // Keep clear of the iOS home indicator.
                         paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))",
                     }}
                 >

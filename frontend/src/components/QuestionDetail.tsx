@@ -25,10 +25,10 @@ type QuestionDetailProps = {
     matched?: string;
 };
 
-// 1回の取得でAPIの上限まで取り、表示だけ段階的に増やす(追加の通信なし)。
+// Fetch up to the API limit once and reveal more without another request.
 const RELATED_FETCH_LIMIT = 20;
 const RELATED_VISIBLE = 10;
-// 前提の「穴」チップの初期表示数(ConceptChipsと同じ発想)。
+// How many gap chips show at first, as in ConceptChips.
 const GAPS_VISIBLE = 8;
 
 /**
@@ -45,7 +45,7 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
     const [relatedExpanded, setRelatedExpanded] = useState(false);
     const [preview, setPreview] = useState<Question | null>(null);
     const [loading, setLoading] = useState(true);
-    // 本文は先に出し、前提・関連は見出しとスピナーで待たせる([42])。
+    // Show the question first; the related blocks wait with headings and spinners ([42]).
     const [relatedLoading, setRelatedLoading] = useState(true);
     const [notFoundError, setNotFoundError] = useState(false);
     const [loadError, setLoadError] = useState(false);
@@ -57,7 +57,7 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
         setLoadError(false);
         setNotFoundError(false);
         setRelatedLoading(true);
-        // 言語が変わったら前の言語の結果を残さない([53])。
+        // Never keep the previous language's results after a switch ([53]).
         setRelated([]);
         setPrerequisites(null);
         setPreview(null);
@@ -88,7 +88,7 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
         setLoading(false);
 
         try {
-            // 前提ブロックと関連リストは独立に失敗してよい(片方は出す)。
+            // The prerequisite and related blocks may fail independently.
             const [prerequisiteData, relatedData] = await Promise.allSettled([
                 fetchPrerequisites(id, language),
                 fetchRelatedQuestions(id, RELATED_FETCH_LIMIT, language),
@@ -111,7 +111,7 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
     }, [id, language, requestId]);
 
     useEffect(() => {
-        // 言語の解決前に取得すると、既定のjaで一度取ってから取り直す([53])。
+        // Wait for the language, or the page fetches once in ja and again ([53]).
         if (!resolved) {
             return;
         }

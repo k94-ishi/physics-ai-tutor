@@ -82,9 +82,10 @@ wait for the slowest endpoint from "whole answer" to "first words".
    translations, bounded concurrency inside AI review runs~~ done
    2026-11-12 (3.0x at K=3, 6.0x at K=6, exactly linear; a 200-question
    nightly run goes from over an hour to about twenty minutes)
-7. [75] Worker-safe background claims: de-duplication moves into the
-   database, then run more than one worker. Correctness first, because
-   scaling out otherwise doubles the LLM bill.
+7. ~~[75] Worker-safe background claims: de-duplication moves into the
+   database, then run more than one worker~~ done 2026-11-12 (a
+   `background_claims` table; eight racing processes yield one winner;
+   two workers is the ceiling until [73] halves the pools per worker)
 8. [73] Convert everything that remains (questions, admin, auth, users,
    concepts); the app keeps no sync engine (CLIs and Alembic keep theirs).
 9. [74] Latency quick wins independent of async: pgvector HNSW index,

@@ -13,7 +13,12 @@ import pytest
 from sqlalchemy import select
 
 from physics_ai_tutor.core.config import settings
-from physics_ai_tutor.models import AiReview, AiReviewRun, Question
+from physics_ai_tutor.models import (
+    AiReview,
+    AiReviewRun,
+    BackgroundClaim,
+    Question,
+)
 from physics_ai_tutor.schemas.language import TextProvenance
 from physics_ai_tutor.schemas.question import QuestionSource, QuestionStatus
 from physics_ai_tutor.services import (
@@ -88,17 +93,12 @@ async def test_translations_overlap_up_to_the_limit(async_db, monkeypatch):
     await async_db.commit()
     ids = list((await async_db.scalars(select(Question.id))).all())
 
-    claimed = background_translation_service.claim(ids)
-    assert claimed == ids
-
-    await background_translation_service.translate_missing(claimed)
+    await background_translation_service.translate_missing(ids)
 
     assert tracker.total == 9
     assert tracker.peak == 3
-    # Every claim released, so a later view can retry a failed row.
-    assert background_translation_service.claim(ids) == ids
-    for question_id in ids:
-        background_translation_service.release(question_id)
+    # Every claim released, so a later view can retry a failed row ([75]).
+    assert (await async_db.scalars(select(BackgroundClaim.id))).all() == []
 
 
 async def test_the_translation_limit_is_one_when_configured_so(async_db, monkeypatch):
@@ -116,13 +116,9 @@ async def test_the_translation_limit_is_one_when_configured_so(async_db, monkeyp
     await async_db.commit()
     ids = list((await async_db.scalars(select(Question.id))).all())
 
-    await background_translation_service.translate_missing(
-        background_translation_service.claim(ids)
-    )
+    await background_translation_service.translate_missing(ids)
 
     assert tracker.peak == 1
-    for question_id in ids:
-        background_translation_service.release(question_id)
 
 
 async def test_one_row_is_translated_once_even_when_queued_twice(async_db, monkeypatch):
@@ -139,14 +135,8 @@ async def test_one_row_is_translated_once_even_when_queued_twice(async_db, monke
     await async_db.commit()
     question_id = (await async_db.scalars(select(Question.id))).first()
 
-    first = background_translation_service.claim([question_id])
-    # A second view of the same page, while the first is still in flight.
-    second = background_translation_service.claim([question_id])
-
-    assert first == [question_id]
-    assert second == []
-
-    await background_translation_service.translate_missing(first)
+    # The same row queued twice by one response, as a repeated view does.
+    await background_translation_service.translate_missing([question_id, question_id])
 
     assert calls == ["翻訳待ちの質問1"]
 

@@ -102,21 +102,24 @@ def _queue_translations(
     needs: TranslationNeeds,
     language: Language,
 ) -> None:
-    """Translate what a strict response left out, once, after the response."""
-    claimed = background_translation_service.claim(needs.question_ids)
-    if claimed:
+    """Translate what a strict response left out, once, after the response.
+
+    Queued unconditionally: the task claims each row in the database and
+    drops the ones another worker already holds ([75]). Deciding here
+    would only be right for this process.
+    """
+    if needs.question_ids:
         background_tasks.add_task(
-            background_translation_service.translate_missing, claimed
+            background_translation_service.translate_missing, needs.question_ids
         )
     if not needs.concept_question_ids:
         return
     missing = concept_sense_service.concept_ids_missing_name(
         db, needs.concept_question_ids, language.value
     )
-    claimed_concepts = background_translation_service.claim_concepts(missing)
-    if claimed_concepts:
+    if missing:
         background_tasks.add_task(
-            background_translation_service.translate_concept_names, claimed_concepts
+            background_translation_service.translate_concept_names, missing
         )
 
 

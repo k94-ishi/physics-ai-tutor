@@ -392,6 +392,31 @@ record calls, so the table stays small without a scheduled job.
 
 ---
 
+### `background_claims`
+
+One row per piece of background work a worker is doing right now ([75]).
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | `integer` | no | serial | Primary key |
+| `kind` | `varchar(50)` | no | | `translate_question` or `translate_concept_name`. |
+| `key` | `integer` | no | | The row the work is about: a question id or a concept id. |
+| `claimed_at` | `timestamp` | no | `now()` | Compared against the database clock; a claim older than `BACKGROUND_CLAIM_TIMEOUT_MINUTES` may be taken over. |
+
+The unique `(kind, key)` is the guard. A claim is a single
+`INSERT ... ON CONFLICT DO UPDATE ... WHERE claimed_at < cutoff`
+returning the id: exactly one worker can win, and a claim whose worker
+died is taken over once it expires rather than parking the row forever.
+
+Rows are transient — taken before the work, deleted in a `finally`. The
+table is therefore near-empty in normal operation, and anything left in
+it for longer than the timeout means a worker died mid-task. There is no
+foreign key to `questions` or `concepts` on purpose: a claim is
+operational state about work, and deleting the content row should not
+have to care whether a claim happens to exist.
+
+---
+
 ## Indexes and Constraints
 
 | Name | Table | Definition |
@@ -415,6 +440,9 @@ record calls, so the table stays small without a scheduled job.
 | `ix_question_asks_user_created` | `question_asks` | btree (`user_id`, `created_at`) |
 | `users_google_provider` | `users` | CHECK provider/google_sub pairing |
 | `rate_limit_hits_pkey` | `rate_limit_hits` | PK (`id`) |
+| `background_claims_pkey` | `background_claims` | PK (`id`) |
+| `uq_background_claims_work` | `background_claims` | UNIQUE (`kind`, `key`) — one worker per piece of work ([75]) |
+| `ix_background_claims_claimed_at` | `background_claims` | btree (`claimed_at`) — sweeping expired claims |
 | `ix_rate_limit_hits_window` | `rate_limit_hits` | btree (`action`, `bucket_key`, `created_at`) |
 
 Foreign keys:
@@ -496,7 +524,8 @@ Revisions in order from the first to the current head:
 | `b7c8d9e0f1a2` | 2026-11-01 | Add two-axis difficulty to `questions`: `question_physics_level`, `question_math_level`, `answer_physics_level`, `answer_math_level` |
 | `c9d0e1f2a3b4` | 2026-11-02 | Create `query_embeddings`: cached embeddings for the `?similar=` URL search |
 | `d1e2f3a4b5c6` | 2026-11-04 | One difficulty rating per QA pair: rename `answer_physics_level`/`answer_math_level` to `physics_level`/`math_level`, drop the separate `question_*_level` columns |
-| `e2f3a4b5c6d7` | 2026-11-10 | Concept senses ([55]): create `concept_terms` (copied from `name_ja`/`name_en` as preferred words), add `concepts.gloss_ja`/`gloss_en`, drop the uniqueness of the concept names. Downgrade fails if two senses share a preferred name; merge them first (**head**) |
+| `e2f3a4b5c6d7` | 2026-11-10 | Concept senses ([55]): create `concept_terms` (copied from `name_ja`/`name_en` as preferred words), add `concepts.gloss_ja`/`gloss_en`, drop the uniqueness of the concept names. Downgrade fails if two senses share a preferred name; merge them first |
+| `f3a4b5c6d7e8` | 2026-11-12 | Create `background_claims` ([75]): workers claim background work in the database so two of them cannot translate the same row. Downgrade drops the table; in-flight work simply redoes itself (**head**) |
 
 The chain is linear with a single head. Verify with:
 

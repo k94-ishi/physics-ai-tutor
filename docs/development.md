@@ -194,6 +194,7 @@ Layout of `backend/tests/`:
 | `test_async_hot_path.py` | A pending generation does not hold the server; concurrent generations overlap ([70]) |
 | `test_llm_connection_discipline.py` | No transaction is open at the moment any LLM seam is called ([82]) |
 | `test_background_concurrency.py` | Background items overlap up to the limit; takeover stops a run; one call per row ([72]) |
+| `test_background_claims.py` | Database claims: one winner among concurrent claimers, expiry, release on success and failure ([75]) |
 | `test_ask_stream.py` | Streamed answers: SSE events, the off-topic sentinel never leaking, nothing saved on an abandoned stream ([71]) |
 | `test_timing.py` | Stage timing logs and the request-path label ([68]) |
 | `test_language_strict.py` | Students never get the other language on related/prerequisites/concepts; hidden rows are translated once in the background ([53]) |
@@ -314,6 +315,14 @@ enforced by `tests/test_architecture.py`:
 - **Background tasks** open their session with `background_session()`
   (`database/session.py`); tests point that one helper at the test
   database. CLIs keep their own `SessionLocal`.
+- **Background work is claimed in the database** ([75]). A worker takes a
+  `background_claims` row before starting and deletes it in a `finally`;
+  the unique `(kind, key)` means exactly one worker can win, and an
+  expired claim is taken over so a crash cannot park a row. Claims are
+  taken inside the task, not by the caller, so the holder is whoever
+  actually does the work. No service keeps cross-request state in a
+  module-level set or dict — that is per-process and two workers would
+  silently disagree, which is how the same row got translated twice.
 - **Background work is asyncio, a few items at a time** ([72]). Every
   `add_task` target is a coroutine function — a sync one would run on
   the anyio thread pool and compete with request handling, which is what
@@ -552,6 +561,50 @@ caps near 12 threads and would otherwise silently become the limit.
 Baseline numbers and how they were taken are in
 [docs/issues/68-latency-baseline-and-stage-timing.md](issues/68-latency-baseline-and-stage-timing.md).
 
+## Running more than one worker ([75])
+
+uvicorn serves on one process by default. `WEB_CONCURRENCY=N` starts N,
+which is the cheapest way to raise throughput for the work that is
+CPU-bound rather than waiting — serialising a question list, rendering
+JSON, the Python side of a vector search.
+
+Measured locally on a 200-row database, 800 requests to
+`/questions?size=50` at concurrency 32:
+
+| Workers | p50 | p95 | Wall | Throughput | Database connections |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 99 ms | 166 ms | 2.7 s | ~296 req/s | 6 |
+| 2 | 72 ms | 122 ms | 1.9 s | ~421 req/s | 11 |
+| 4 | 51 ms | 101 ms | 1.5 s | ~533 req/s | 21 |
+
+Sub-linear, as expected: the database and the client become the shared
+limit. The gain is real but smaller than the worker count.
+
+**Two things must be true before raising it.**
+
+1. **Background de-duplication must be database-backed**, which is why
+   [75] came first. Each worker is a separate process with its own
+   memory, so a claim held in a Python set is invisible to the others
+   and the same row gets translated twice — two DeepSeek calls for one
+   row's worth of value.
+2. **The connection budget must fit.** Each worker builds its own pools,
+   and until [73] retires the sync engine there are two per worker:
+
+   ```
+   worst case per worker = (pool_size + max_overflow) x 2 engines = 30
+   ```
+
+   So 2 workers can demand 60 connections and 4 can demand 120, against
+   a Supabase instance that typically allows ~60 direct. The observed
+   figures above are far lower (about 5 per worker under that load),
+   but the pool will open more under a slower database. **Two workers is
+   the safe ceiling today**; after [73] halves the pools per worker, and
+   with the sizing [74] settles, four becomes reasonable.
+
+`--reload` and `--workers` are mutually exclusive, so the Compose
+development server stays single-worker. Set `WEB_CONCURRENCY` on Render
+(its start command lives in the dashboard, not in this repository).
+
 ## Environment Variables
 
 Copy the templates and fill in the values. Do this before `docker compose up`,
@@ -584,6 +637,8 @@ Backend (`backend/.env`):
 | `AI_REVIEW_MAX_TOKENS` | no | Output budget for reviewer calls (default `3000`); below ~2500 the JSON with a full suggested answer gets truncated |
 | `AI_REVIEW_CONCURRENCY` | no | Questions graded at the same time inside one run (default `3`, [72]); multiplies the DeepSeek request rate |
 | `TRANSLATION_CONCURRENCY` | no | Rows translated at the same time by the background task (default `3`, [72]) |
+| `BACKGROUND_CLAIM_TIMEOUT_MINUTES` | no | How long a background claim is honoured before another worker may take the work over (default `15`, [75]) |
+| `WEB_CONCURRENCY` | no | uvicorn worker processes (default `1`). Read by uvicorn itself; see "Running more than one worker" below before raising it |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | no | Enable Google Sign-In for students; all three must be set (see below) |
 | `FRONTEND_URL` | no | Where the Google callback redirects the browser (default `http://localhost:3000`) |
 

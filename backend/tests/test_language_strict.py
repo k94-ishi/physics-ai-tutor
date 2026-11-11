@@ -2,7 +2,7 @@
 
 import pytest
 
-from physics_ai_tutor.models import Question
+from physics_ai_tutor.models import BackgroundClaim, Question
 from physics_ai_tutor.services import (
     background_translation_service,
     translation_service,
@@ -102,27 +102,13 @@ async def test_background_translation_skips_rows_that_are_not_approved(db):
     db.add(unreviewed)
     db.commit()
 
-    claimed = background_translation_service.claim([unreviewed.id])
-    await background_translation_service.translate_missing(claimed)
+    await background_translation_service.translate_missing([unreviewed.id])
 
     db.expire_all()
     assert db.get(Question, unreviewed.id).question_en is None
     # The claim is released even when the row is skipped, or the row
-    # could never be picked up again after it is approved.
-    assert background_translation_service.claim([unreviewed.id]) == [unreviewed.id]
-    background_translation_service.release(unreviewed.id)
-
-
-def test_claim_deduplicates_rows_in_flight():
-    first = background_translation_service.claim([901, 902, 901])
-    second = background_translation_service.claim([902, 903])
-
-    assert first == [901, 902]
-    assert second == [903]
-
-    # Release so other tests start clean.
-    for question_id in (901, 902, 903):
-        background_translation_service.release(question_id)
+    # could never be picked up again once it is approved ([75]).
+    assert db.query(BackgroundClaim).count() == 0
 
 
 def test_concept_name_missing_in_lang_is_translated_once(

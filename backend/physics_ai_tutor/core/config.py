@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     ai_review_concurrency: int = 3
     # Rows translated at the same time by the background task ([72]).
     translation_concurrency: int = 3
+    # How long a background claim is honoured before another worker may
+    # take the work over ([75]). Long enough for a couple of LLM calls,
+    # short enough that a crashed worker does not park a row for an hour.
+    background_claim_timeout_minutes: int = 15
     # DeepSeek's discounted window, UTC "HH:MM" (JST 01:30-09:30); the
     # window wraps midnight. The review CLI refuses to start outside it
     # unless --force, so bulk runs land on the cheap tariff.

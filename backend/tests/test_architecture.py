@@ -372,3 +372,39 @@ def test_every_background_task_target_is_async():
             not_async.append(f"{module_name}.{function_name}")
 
     assert not_async == []
+
+
+def test_services_keep_no_mutable_module_state():
+    """Cross-request state belongs in the database, not a module ([75]).
+
+    A module-level set or dict is per-process, so with more than one
+    worker each gets its own copy and they silently disagree - which is
+    exactly how background translation could do the same row twice. Read
+    only lookup tables (uppercase names) are fine.
+    """
+    offenders: dict[str, list[str]] = {}
+    for path in _modules("services"):
+        tree = ast.parse(path.read_text())
+        for node in tree.body:
+            if not isinstance(node, ast.Assign | ast.AnnAssign):
+                continue
+            targets = [node.target] if isinstance(node, ast.AnnAssign) else node.targets
+            names = [t.id for t in targets if isinstance(t, ast.Name)]
+            # Constants are conventionally uppercase and treated as frozen.
+            mutable_names = [name for name in names if not name.isupper()]
+            if not mutable_names:
+                continue
+            value = node.value
+            is_container = isinstance(value, ast.Dict | ast.List | ast.Set) or (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Name)
+                and value.func.id in {"set", "dict", "list"}
+            )
+            if is_container:
+                offenders.setdefault(path.name, []).extend(mutable_names)
+
+    # `_preloaded` holds seed vectors for the offline seed: filled by the
+    # seed script and read in the same process, never shared across one.
+    # Names only, so moving a line does not fail the test.
+    allowed = {"embedding_service.py": ["_preloaded"]}
+    assert offenders == allowed

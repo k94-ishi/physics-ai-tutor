@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from physics_ai_tutor.core import prompts
+from physics_ai_tutor.core import prompts, timing
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.database.session import background_session
 from physics_ai_tutor.models import Question
@@ -44,9 +44,12 @@ def _from_cache(
     db: Session, request: AskAiRequest, user_id: int | None
 ) -> AskAiResponse | None:
     """Cache tier 0: reuse an identical, non-rejected question's answer."""
-    cached = question_read_service.find_cached_answer(
-        db, request.question, request.language
-    )
+    with timing.stage("ask_cache_lookup") as stage:
+        cached = question_read_service.find_cached_answer(
+            db, request.question, request.language
+        )
+        stage.note(hit=cached is not None)
+
     if cached is None:
         return None
     if user_id is not None:
@@ -147,21 +150,23 @@ def _save_answer(
     mode: str,
 ) -> int | None:
     """Store the answer as UNREVIEWED and record the ask; None if not saved."""
-    saved = question_write_service.save_ai_question(
-        db,
-        request.question,
-        result.content,
-        language=request.language,
-        source=source,
-        retrieved_question_ids=retrieved_ids,
-        generation=GenerationMeta(
-            model=result.model,
-            prompt_version=prompts.ANSWER_PROMPT_VERSION,
-            mode=mode,
-            prompt_tokens=result.prompt_tokens,
-            completion_tokens=result.completion_tokens,
-        ),
-    )
+    with timing.stage("save_answer"):
+        saved = question_write_service.save_ai_question(
+            db,
+            request.question,
+            result.content,
+            language=request.language,
+            source=source,
+            retrieved_question_ids=retrieved_ids,
+            generation=GenerationMeta(
+                model=result.model,
+                prompt_version=prompts.ANSWER_PROMPT_VERSION,
+                mode=mode,
+                prompt_tokens=result.prompt_tokens,
+                completion_tokens=result.completion_tokens,
+            ),
+        )
+
     if saved is None:
         return None
     if user_id is not None:
@@ -177,7 +182,8 @@ def post_generation_tasks(question_id: int) -> None:
     Each step is best effort and isolated; a failure in one must not stop
     the other, and neither can affect the already-sent answer.
     """
-    with background_session() as db:
+    # Stages here belong to no request; name them so the logs say so ([68]).
+    with timing.request_path("background:post_generation"), background_session() as db:
         try:
             question_translation_service.translate_missing_languages(db, question_id)
         except Exception:

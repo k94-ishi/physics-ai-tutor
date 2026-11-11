@@ -9,6 +9,7 @@ flight is skipped, and a translated row never reaches the queue again.
 import logging
 import threading
 
+from physics_ai_tutor.core import timing
 from physics_ai_tutor.database.session import background_session
 from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models.question import Question
@@ -37,7 +38,7 @@ def _release(question_id: int) -> None:
 
 def translate_missing(question_ids: list[int]) -> None:
     """Background task body; opens its own session and never raises."""
-    with background_session() as db:
+    with timing.request_path("background:translate"), background_session() as db:
         for question_id in question_ids:
             try:
                 with transaction(db, "background_translate"):
@@ -72,7 +73,10 @@ def claim_concepts(concept_ids: list[int]) -> list[int]:
 
 def translate_concept_names(concept_ids: list[int]) -> None:
     """Background task body for missing concept names; never raises."""
-    with background_session() as db:
+    with (
+        timing.request_path("background:translate_concept"),
+        background_session() as db,
+    ):
         for concept_id in concept_ids:
             try:
                 with transaction(db, "background_translate_concept"):

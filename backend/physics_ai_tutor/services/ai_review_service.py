@@ -7,6 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from physics_ai_tutor.core import timing
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.prompt_library import load_library
 from physics_ai_tutor.database.session import background_session
@@ -255,7 +256,10 @@ def review_question_with_outcome(
 
     try:
         # Reads plus the LLM call; a failed read must not poison the session.
-        with transaction(db, "ai_review_grade"):
+        with (
+            timing.stage("ai_review_item", question_id=question.id),
+            transaction(db, "ai_review_grade"),
+        ):
             text = question.text(language) or question.original_text()
             concepts = question_concept_repository.get_concepts_for_questions(
                 db, [question.id], language=language.value
@@ -512,9 +516,10 @@ def _finish(
 
 def execute_run_in_background(run_id: int) -> None:
     """Run the reviewer after the response is sent, on its own session."""
-    with background_session() as db:
+    with timing.request_path("background:ai_review_run"), background_session() as db:
         try:
-            execute_run(db, run_id)
+            with timing.stage("ai_review_run", run_id=run_id):
+                execute_run(db, run_id)
         except Exception:
             logger.exception("Background AI review run crashed: run_id=%d", run_id)
 

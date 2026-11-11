@@ -4,6 +4,7 @@ import logging
 
 from sqlalchemy.orm import Session
 
+from physics_ai_tutor.core import timing
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.exceptions import (
     EmbeddingGenerationError,
@@ -54,12 +55,16 @@ def translate_into(
         text = question.original_text()
 
     try:
-        translated_q, translated_a = translation_service.translate_qa(
-            text[0], text[1], source=src, target=target
-        )
+        with timing.stage("translate_qa", question_id=question.id, target=target.value):
+            translated_q, translated_a = translation_service.translate_qa(
+                text[0], text[1], source=src, target=target
+            )
         question.set_text(target, translated_q, translated_a, TextProvenance.MACHINE)
         db.flush()
-        embed_language(db, question, target)
+        with timing.stage(
+            "embed_language", question_id=question.id, target=target.value
+        ):
+            embed_language(db, question, target)
     except (TranslationError, EmbeddingGenerationError):
         logger.warning(
             "Translation skipped: question_id=%d target=%s",

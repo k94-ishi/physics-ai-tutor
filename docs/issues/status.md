@@ -88,7 +88,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 65 | open | 65-english-one-sentence-comments.md | Comments in English, one short sentence (AGENTS.md coding style) | — (file-era issue) |
 | 66 | closed | 66-test-suite-speed.md | Test suite speed: backend 4.5 min -> under 2 min | — (file-era issue) |
 | 67 | open | 67-track-f-async-and-latency.md | Track F: asynchronize the backend and cut latency | — (file-era issue) |
-| 68 | open | 68-latency-baseline-and-stage-timing.md | Latency baseline: stage timing logs and recorded numbers | — (file-era issue) |
+| 68 | closed | 68-latency-baseline-and-stage-timing.md | Latency baseline: stage timing logs and recorded numbers | — (file-era issue) |
 | 69 | open | 69-async-foundation.md | Async foundation: engine, session, transaction, and test plumbing | — (file-era issue) |
 | 70 | open | 70-async-hot-path-ask-and-search.md | Asynchronize the hot path: /ai/ask and similarity search, async LLM clients | — (file-era issue) |
 | 71 | open | 71-streaming-ask-answers.md | Stream /ai/ask answers (SSE) so students read while it generates | — (file-era issue) |

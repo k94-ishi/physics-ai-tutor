@@ -5,6 +5,7 @@ from openai import OpenAIError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from physics_ai_tutor.core import timing
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.exceptions import EmbeddingGenerationError
 from physics_ai_tutor.core.openai import client
@@ -53,10 +54,11 @@ def _request_embeddings(texts: list[str]) -> list[list[float]]:
     logger.debug("Generating embeddings: count=%d", len(texts))
 
     try:
-        response = client.embeddings.create(
-            model=settings.embedding_model,
-            input=texts,
-        )
+        with timing.stage("openai_embeddings", count=len(texts)):
+            response = client.embeddings.create(
+                model=settings.embedding_model,
+                input=texts,
+            )
     except OpenAIError as exc:
         logger.warning("OpenAI embedding generation failed: %s", type(exc).__name__)
         raise EmbeddingGenerationError(
@@ -81,17 +83,21 @@ def embed_query(db: Session, text: str) -> list[float]:
     text_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
     model = settings.embedding_model
 
-    cached = query_embedding_repository.get(db, text_hash, model)
-    if cached is not None:
-        try:
-            with transaction(db, "touch_query_embedding"):
-                query_embedding_repository.touch(db, cached)
-        except Exception:
-            # Hit bookkeeping must never break a search.
-            logger.warning("query embedding touch failed", exc_info=True)
-        return list(cached.embedding)
+    with timing.stage("embed_query") as stage:
+        cached = query_embedding_repository.get(db, text_hash, model)
+        if cached is not None:
+            stage.note(cache="hit")
+            try:
+                with transaction(db, "touch_query_embedding"):
+                    query_embedding_repository.touch(db, cached)
+            except Exception:
+                # Hit bookkeeping must never break a search.
+                logger.warning("query embedding touch failed", exc_info=True)
+            return list(cached.embedding)
 
-    embedding = create_embeddings([normalized])[0]
+        stage.note(cache="miss")
+        embedding = create_embeddings([normalized])[0]
+
     try:
         with transaction(db, "cache_query_embedding"):
             row = query_embedding_repository.create(
@@ -118,14 +124,16 @@ def search_similar_questions(
 
     # Same-language search only: every row is embedded in each language it
     # has text for, so cross-language scoring is not needed.
-    results = search_similar_embeddings(
-        db=db,
-        embedding=query_embedding,
-        embedding_type="question",
-        limit=limit,
-        exclude_statuses=exclude_statuses,
-        language=lang.value,
-    )
+    with timing.stage("vector_search", limit=limit) as stage:
+        results = search_similar_embeddings(
+            db=db,
+            embedding=query_embedding,
+            embedding_type="question",
+            limit=limit,
+            exclude_statuses=exclude_statuses,
+            language=lang.value,
+        )
+        stage.note(results=len(results))
 
     logger.info(
         "Similar question search completed: query_length=%d limit=%d results=%d",

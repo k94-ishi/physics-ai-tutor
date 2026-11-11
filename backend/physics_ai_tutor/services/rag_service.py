@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from physics_ai_tutor.core import prompts
+from physics_ai_tutor.core import prompts, timing
 from physics_ai_tutor.repositories import (
     question_concept_repository,
     question_repository,
@@ -137,10 +137,14 @@ def generate_rag_answer(
 ) -> tuple[deepseek_service.GenerationResult, list[int]]:
     lang = Language(language)
 
-    if retrieved_question_ids:
-        context = load_context_by_ids(db, retrieved_question_ids, lang)
-    else:
-        context = retrieve_context(db, question, lang)
+    with timing.stage("rag_context") as stage:
+        if retrieved_question_ids:
+            stage.note(source="client_ids")
+            context = load_context_by_ids(db, retrieved_question_ids, lang)
+        else:
+            stage.note(source="search")
+            context = retrieve_context(db, question, lang)
+        stage.note(count=len(context))
 
     user_prompt = build_context_prompt(question, context, lang)
 

@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from openai import OpenAIError
 
+from physics_ai_tutor.core import timing
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.deepseek import client
 from physics_ai_tutor.core.exceptions import DeepSeekGenerationError
@@ -36,15 +37,22 @@ def _request(
         extra["temperature"] = temperature
 
     try:
-        return client.chat.completions.create(
-            model=settings.deepseek_chat_model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            max_tokens=max_tokens or settings.deepseek_max_tokens,
-            **extra,
-        )
+        # The dominant stage of any uncached answer ([68]).
+        with timing.stage("deepseek_chat", prompt_length=len(user_prompt)) as stage:
+            response = client.chat.completions.create(
+                model=settings.deepseek_chat_model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                max_tokens=max_tokens or settings.deepseek_max_tokens,
+                **extra,
+            )
+            usage = getattr(response, "usage", None)
+            stage.note(
+                completion_tokens=getattr(usage, "completion_tokens", None),
+            )
+            return response
     except OpenAIError as exc:
         logger.warning("DeepSeek chat completion failed: %s", type(exc).__name__)
         raise DeepSeekGenerationError(

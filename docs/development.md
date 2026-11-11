@@ -190,6 +190,7 @@ Layout of `backend/tests/`:
 | `test_security.py` | Production password hashing parameters (the test hasher is cheaper) |
 | `test_comment_style.py` | Comments are English (Japanese only as quoted data) ([65]) |
 | `test_architecture.py` | Layering rules: routers call services only; only `transaction()` commits or rolls back |
+| `test_timing.py` | Stage timing logs and the request-path label ([68]) |
 | `test_language_strict.py` | Students never get the other language on related/prerequisites/concepts; hidden rows are translated once in the background ([53]) |
 | `test_language.py` | Bilingual rows: eager translation, provenance, `lang` resolution, English ask flow, cache tiers, review in either language, translate endpoint, import shapes |
 | `test_concept_senses.py` | Concept senses ([55]): homonyms and synonyms at extraction, cross-language search and filter, admin editor (alias, label, merge, split), split CLI |
@@ -412,6 +413,53 @@ Required repository secrets: `DATABASE_URL` (Supabase pooler) and
 stay `false` in production: teachers find fresh verdicts in the morning
 and generation never pays for an inline review call.
 
+## Reading latency logs ([68])
+
+Every request logs its total time
+(`Response: POST /api/v1/ai/ask 200 20913.08ms`), and the waiting parts
+inside it log their own:
+
+```
+Stage finished: name=ask_cache_lookup path=/api/v1/ai/ask duration_ms=6.33 hit=False
+Stage finished: name=embed_query     path=/api/v1/ai/ask duration_ms=336.78 cache=miss
+Stage finished: name=vector_search   path=/api/v1/ai/ask duration_ms=40.01 limit=5 results=5
+Stage finished: name=deepseek_chat   path=/api/v1/ai/ask duration_ms=20033.74 completion_tokens=200
+Stage finished: name=save_answer     path=/api/v1/ai/ask duration_ms=420.22
+```
+
+The top-level stages of one request add up to its total, so a slow
+request can be explained without guessing. Points to know:
+
+- Stages nest. `rag_context` contains `embed_query` (which contains
+  `openai_embeddings`) and `vector_search`; do not add a stage to its own
+  parent when summing.
+- `path=background:...` means work that ran *after* a response was sent
+  (translation, AI review). It is not charged to any request.
+- A failed call still logs its duration, because waiting for a timeout is
+  latency too.
+- Wrap a new slow step with `timing.stage("name")` from
+  `core/timing.py`, in a service (never a router). `stage.note(...)`
+  adds fields such as `cache=hit`.
+
+To measure rather than read, use the two dev scripts:
+
+```bash
+# Concurrency and percentiles against a LOCAL stack (refuses other hosts).
+python scripts/latency_probe.py --path /api/v1/health -n 40 -c 1
+python scripts/latency_probe.py --path /api/v1/ai/ask \
+  --body '{"question":"テスト {n}"}' -n 60 -c 60    # {n} keeps each request distinct
+
+# A stand-in for OpenAI/DeepSeek with a known delay, so generation time is
+# a constant instead of a variable. No API key, no quota.
+python scripts/fake_llm_server.py --port 9100 --chat-delay 20
+# then run the backend with OPENAI_BASE_URL and DEEPSEEK_BASE_URL set to it
+```
+
+The probe's own thread pool is sized to `-c`; asyncio's default executor
+caps near 12 threads and would otherwise silently become the limit.
+Baseline numbers and how they were taken are in
+[docs/issues/68-latency-baseline-and-stage-timing.md](issues/68-latency-baseline-and-stage-timing.md).
+
 ## Environment Variables
 
 Copy the templates and fill in the values. Do this before `docker compose up`,
@@ -632,5 +680,6 @@ npm run build
 - [docs/api.md](api.md): endpoint reference and access rules
 - [docs/security.md](security.md): security model and dependency policy
 - [AGENTS.md](../AGENTS.md): project rules for contributors and coding agents
-
-Issue tracking is kept outside this repository.
+- [docs/issues/](issues/): the issue tracker; `status.md` is the index and
+  the only place a status lives, each `NN-slug.md` carries the body. The
+  git-bug store is a read-only archive of everything before 2026-11-02.

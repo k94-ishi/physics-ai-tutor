@@ -8,13 +8,18 @@ from fastapi.testclient import TestClient
 from pwdlib import PasswordHash
 from pwdlib.hashers.argon2 import Argon2Hasher
 from sqlalchemy import create_engine, make_url, text
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import Session, sessionmaker
 
 from alembic import command
 from physics_ai_tutor.core import security
 from physics_ai_tutor.database import session as session_module
 from physics_ai_tutor.database.base import Base
-from physics_ai_tutor.database.dependency import get_db
+from physics_ai_tutor.database.dependency import get_async_db, get_db
 from physics_ai_tutor.main import app
 from physics_ai_tutor.services import (
     concept_service,
@@ -46,6 +51,8 @@ TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL") or _default_test_databas
 ALEMBIC_INI = Path(__file__).resolve().parents[1] / "alembic.ini"
 
 engine = create_engine(TEST_DATABASE_URL)
+# Same database, async driver: for the slices converted by Track F ([67]).
+async_engine = create_async_engine(TEST_DATABASE_URL)
 
 
 def _create_database_if_missing() -> None:
@@ -168,6 +175,21 @@ def db():
         yield session
 
 
+@pytest.fixture
+def anyio_backend():
+    """Async tests run on asyncio only; uvicorn gives us no other loop."""
+    return "asyncio"
+
+
+@pytest.fixture
+async def async_db():
+    """The `db` fixture for converted code: same reset, async session."""
+    reset_database()
+
+    async with AsyncSession(async_engine, expire_on_commit=False) as session:
+        yield session
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _cheap_password_hashing():
     """Argon2 at minimal cost in tests: ~50 ms per hash becomes ~0 ([66]).
@@ -215,6 +237,8 @@ def _background_translation_uses_test_db(monkeypatch):
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     # Every background task opens its session through one helper ([59]).
     monkeypatch.setattr(session_module, "SessionLocal", factory)
+    async_factory = async_sessionmaker(bind=async_engine, expire_on_commit=False)
+    monkeypatch.setattr(session_module, "AsyncSessionLocal", async_factory)
 
 
 # Rate-limit counters live in the rate_limit_hits table, which is
@@ -226,7 +250,15 @@ def client(db):
     def override_get_db():
         yield db
 
+    async def override_get_async_db():
+        # A converted route gets its own session, as in production: it
+        # cannot share the sync `db` object, and committed rows are what
+        # a real request would see anyway.
+        async with AsyncSession(async_engine, expire_on_commit=False) as session:
+            yield session
+
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_async_db] = override_get_async_db
 
     with TestClient(app) as test_client:
         yield test_client

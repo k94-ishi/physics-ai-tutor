@@ -189,7 +189,8 @@ Layout of `backend/tests/`:
 | `test_seed.py` | One offline seed per module (OpenAI and DeepSeek forbidden), then read-only checks and export round trips |
 | `test_security.py` | Production password hashing parameters (the test hasher is cheaper) |
 | `test_comment_style.py` | Comments are English (Japanese only as quoted data) ([65]) |
-| `test_architecture.py` | Layering rules: routers call services only; only `transaction()` commits or rolls back |
+| `test_architecture.py` | Layering rules: routers call services only; only the two `transaction()` helpers commit; sessions come from `database/`; async code never uses the sync helper ([69]) |
+| `test_async_foundation.py` | Async engine, session, `async_transaction` commit/rollback, pool sizing ([69]) |
 | `test_timing.py` | Stage timing logs and the request-path label ([68]) |
 | `test_language_strict.py` | Students never get the other language on related/prerequisites/concepts; hidden rows are translated once in the background ([53]) |
 | `test_language.py` | Bilingual rows: eager translation, provenance, `lang` resolution, English ask flow, cache tiers, review in either language, translate endpoint, import shapes |
@@ -292,6 +293,49 @@ enforced by `tests/test_architecture.py`:
 - **Background tasks** open their session with `background_session()`
   (`database/session.py`); tests point that one helper at the test
   database. CLIs keep their own `SessionLocal`.
+
+### Two stacks during the async migration ([69])
+
+Track F ([67]) converts the backend to async one vertical slice at a
+time, so a sync and an async stack coexist until [73] retires the sync
+one from the app. Both use the same psycopg driver and the same
+`DATABASE_URL`; only the calling style differs.
+
+| | Sync (not yet converted) | Async (converted) |
+| --- | --- | --- |
+| Request session | `Depends(get_db)` | `Depends(get_async_db)` |
+| Background session | `with background_session()` | `async with async_background_session()` |
+| Writes | `with transaction(db, "op")` | `async with async_transaction(db, "op")` |
+| Test fixture | `db` | `async_db` |
+| Engine | `engine` / `SessionLocal` | `async_engine` / `AsyncSessionLocal` |
+
+Rules, all enforced by `tests/test_architecture.py`:
+
+- **A slice is converted whole or not at all.** Router, services and
+  repositories of one call chain move together. Never call a sync
+  repository from an async service, and never bridge with
+  `run_in_executor` — convert the callee instead.
+- Only `database/` (and script entry points: `cli/`, `database/seed.py`)
+  may build a session factory. Everything else takes a session.
+- `async_transaction` is the only way async code commits. A plain
+  `with transaction(...)` inside an `async def` is a silent bug — it
+  would call `commit()` without awaiting, so the block looks fine and
+  writes nothing. There is a test that fails on exactly that shape.
+- Async tests are marked `pytest.mark.anyio` (module-level
+  `pytestmark`); the `anyio_backend` fixture pins asyncio. The anyio
+  plugin ships with anyio, so there is no new test dependency.
+- `AsyncSession` raises on implicit IO, so a relationship the sync code
+  loaded lazily needs `selectinload` or an explicit query once its slice
+  is converted.
+
+Both session factories keep `expire_on_commit=False`: services return ORM
+objects whose attributes are read after the commit, and an async refresh
+would need an await the caller cannot give.
+
+Pool sizes are explicit (`POOL_SIZE`, `MAX_OVERFLOW` in
+`database/database.py`) because during the migration two pools add up
+against one connection limit; [74] tunes the final numbers for the
+Supabase pooler, and [75] settles how they multiply across workers.
 
 ### URL parameters on the student list
 

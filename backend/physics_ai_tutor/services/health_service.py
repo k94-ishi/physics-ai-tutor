@@ -1,9 +1,9 @@
 """Liveness checks behind the health endpoints."""
 
 from sqlalchemy import text
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
-def check_database(db: Session) -> None:
+async def check_database(db: AsyncSession) -> None:
     """Run a trivial query; raises if the database is unreachable."""
-    db.execute(text("SELECT 1"))
+    await db.execute(text("SELECT 1"))

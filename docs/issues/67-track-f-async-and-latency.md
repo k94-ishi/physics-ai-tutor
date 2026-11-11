@@ -73,18 +73,21 @@ wait for the slowest endpoint from "whole answer" to "first words".
    [73], and the database pool is now the next limit)
 4. [71] Streaming `/ai/ask` (SSE): the student reads the answer while it
    generates. The one step with a visible behaviour change.
-5. [72] Background work on the event loop: asyncio tasks, parallel
+5. [82] Never hold a database connection across an LLM call (owner,
+   2026-11-11). [70] left this as the binding constraint, and it must be
+   fixed before concurrency multiplies it.
+6. [72] Background work on the event loop: asyncio tasks, parallel
    translations, bounded concurrency inside AI review runs.
-6. [75] Worker-safe background claims: de-duplication moves into the
+7. [75] Worker-safe background claims: de-duplication moves into the
    database, then run more than one worker. Correctness first, because
    scaling out otherwise doubles the LLM bill.
-7. [73] Convert everything that remains (questions, admin, auth, users,
+8. [73] Convert everything that remains (questions, admin, auth, users,
    concepts); the app keeps no sync engine (CLIs and Alembic keep theirs).
-8. [74] Latency quick wins independent of async: pgvector HNSW index,
+9. [74] Latency quick wins independent of async: pgvector HNSW index,
    pool settings for the Supabase pooler, response compression.
-9. [76] Batch embedding calls on import (2 requests per row -> one per
+10. [76] Batch embedding calls on import (2 requests per row -> one per
    chunk). Independent; can run any time.
-10. [77] Question page: three requests in two waves become one wave.
+11. [77] Question page: three requests in two waves become one wave.
     Independent; can run any time.
 
 [74], [76] and [77] touch no async plumbing and can be picked up

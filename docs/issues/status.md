@@ -87,6 +87,17 @@ including all discussion comments; browse it with `git bug bug` /
 | 64 | closed | 64-refactor-frontend-api-i18n.md | Frontend: split api.ts and translations.ts by feature | — (file-era issue) |
 | 65 | open | 65-english-one-sentence-comments.md | Comments in English, one short sentence (AGENTS.md coding style) | — (file-era issue) |
 | 66 | closed | 66-test-suite-speed.md | Test suite speed: backend 4.5 min -> under 2 min | — (file-era issue) |
+| 67 | open | 67-track-f-async-and-latency.md | Track F: asynchronize the backend and cut latency | — (file-era issue) |
+| 68 | open | 68-latency-baseline-and-stage-timing.md | Latency baseline: stage timing logs and recorded numbers | — (file-era issue) |
+| 69 | open | 69-async-foundation.md | Async foundation: engine, session, transaction, and test plumbing | — (file-era issue) |
+| 70 | open | 70-async-hot-path-ask-and-search.md | Asynchronize the hot path: /ai/ask and similarity search, async LLM clients | — (file-era issue) |
+| 71 | open | 71-streaming-ask-answers.md | Stream /ai/ask answers (SSE) so students read while it generates | — (file-era issue) |
+| 72 | open | 72-async-background-work.md | Background work on the event loop: parallel translations, bounded AI-review concurrency | — (file-era issue) |
+| 73 | open | 73-async-remaining-modules.md | Asynchronize the rest: all routers, services, repositories; app keeps no sync engine | — (file-era issue) |
+| 74 | open | 74-latency-quick-wins.md | Latency quick wins independent of async: vector index, pool settings, compression | — (file-era issue) |
+| 75 | open | 75-worker-safe-background-claims.md | Worker-safe background claims: move de-duplication into the database, then scale out | — (file-era issue) |
+| 76 | open | 76-batch-embedding-calls.md | Batch embedding calls: one OpenAI request per import, not two per row | — (file-era issue) |
+| 77 | open | 77-question-page-request-waves.md | Question page: three requests in two waves become one wave | — (file-era issue) |
 
 ## Notes on the archive column
 

@@ -25,6 +25,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 EMBEDDING_DIMENSIONS = 1536
 ANSWER = "これはダミーの回答です。" * 20
+# Streamed in pieces so the client has something to render early.
+ANSWER_PIECES = ["これはダミーの回答です。"] * 20
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -41,6 +43,39 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _stream_chat(self, request: dict) -> None:
+        """Chat completion as SSE, a few words at a time ([71])."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+
+        words = ANSWER_PIECES
+        per_piece = self.chat_delay / max(len(words), 1)
+        model = request.get("model", "fake-chat")
+
+        for word in words:
+            time.sleep(per_piece)
+            chunk = {
+                "id": "fake",
+                "object": "chat.completion.chunk",
+                "model": model,
+                "choices": [{"index": 0, "delta": {"content": word}}],
+            }
+            self.wfile.write(f"data: {json.dumps(chunk)}\n\n".encode())
+            self.wfile.flush()
+
+        usage_chunk = {
+            "id": "fake",
+            "object": "chat.completion.chunk",
+            "model": model,
+            "choices": [],
+            "usage": {"prompt_tokens": 100, "completion_tokens": 200},
+        }
+        self.wfile.write(f"data: {json.dumps(usage_chunk)}\n\n".encode())
+        self.wfile.write(b"data: [DONE]\n\n")
+        self.wfile.flush()
 
     def do_POST(self) -> None:  # noqa: N802 (http.server's required name)
         length = int(self.headers.get("Content-Length", 0))
@@ -68,6 +103,10 @@ class Handler(BaseHTTPRequestHandler):
                     ],
                 }
             )
+            return
+
+        if request.get("stream"):
+            self._stream_chat(request)
             return
 
         time.sleep(self.chat_delay)

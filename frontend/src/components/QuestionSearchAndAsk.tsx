@@ -9,7 +9,13 @@ import {
     useRef,
     useState,
 } from "react";
-import { ApiError, askAi, fetchQuestionByExactText, searchQuestions } from "@/lib/api";
+import {
+    ApiError,
+    askAi,
+    askAiStream,
+    fetchQuestionByExactText,
+    searchQuestions,
+} from "@/lib/api";
 import { ContentLanguage, SimilarQuestion } from "@/types/question";
 import { AskAiResponse } from "@/types/ai";
 import Card from "@/components/ui/Card";
@@ -102,6 +108,8 @@ export default function QuestionSearchAndAsk({
 
     const [ragAnswer, setRagAnswer] = useState<AskAiResponse | null>(null);
     const [ragLoading, setRagLoading] = useState(false);
+    // Partial answer while it streams in ([71]); cleared once done.
+    const [streamingText, setStreamingText] = useState("");
     const ragRequestId = useLatestRequest();
     // Similarity results open in the preview instead of leaving the page ([56]).
     const [preview, setPreview] = useState<PreviewQuestion | null>(null);
@@ -184,16 +192,42 @@ export default function QuestionSearchAndAsk({
         const isCurrent = ragRequestId.begin();
         setRagLoading(true);
         setRagAnswer(null);
+        setStreamingText("");
+
+        const retrievedQuestionIds = searchResults.map((result) => result.id);
+        const options = {
+            language: contentLanguage,
+            mode: "RAG" as const,
+            retrievedQuestionIds:
+                retrievedQuestionIds.length > 0
+                    ? retrievedQuestionIds
+                    : undefined,
+        };
 
         try {
-            const retrievedQuestionIds = searchResults.map((result) => result.id);
-            const result = await askAi(trimmed, {
-                language: contentLanguage,
-                mode: "RAG",
-                retrievedQuestionIds:
-                    retrievedQuestionIds.length > 0
-                        ? retrievedQuestionIds
-                        : undefined,
+            let streamed = "";
+            let pending = false;
+
+            const result = await askAiStream(trimmed, options, {
+                onDelta: (text) => {
+                    if (!isCurrent()) {
+                        return;
+                    }
+
+                    streamed += text;
+
+                    // One state update per frame: a long answer arrives in
+                    // many small pieces and each would otherwise re-render.
+                    if (!pending) {
+                        pending = true;
+                        requestAnimationFrame(() => {
+                            pending = false;
+                            if (isCurrent()) {
+                                setStreamingText(streamed);
+                            }
+                        });
+                    }
+                },
             });
 
             if (!isCurrent()) {
@@ -201,13 +235,34 @@ export default function QuestionSearchAndAsk({
             }
 
             setRagAnswer(result);
-        } catch (error) {
+            setStreamingText("");
+        } catch (streamError) {
             if (!isCurrent()) {
                 return;
             }
 
-            console.error(error);
-            showToast(t("questionSearch.askFailed"), "error");
+            // Streaming can fail for reasons the plain endpoint will not
+            // (a proxy that buffers, a browser without streams), so fall
+            // back rather than showing the student an error.
+            console.error(streamError);
+            setStreamingText("");
+
+            try {
+                const result = await askAi(trimmed, options);
+
+                if (!isCurrent()) {
+                    return;
+                }
+
+                setRagAnswer(result);
+            } catch (error) {
+                if (!isCurrent()) {
+                    return;
+                }
+
+                console.error(error);
+                showToast(t("questionSearch.askFailed"), "error");
+            }
         } finally {
             if (isCurrent()) {
                 setRagLoading(false);
@@ -391,7 +446,18 @@ export default function QuestionSearchAndAsk({
                         </div>
                     )}
 
-                    {ragLoading && <LoadingState label={t("questionSearch.generating")} />}
+                    {ragLoading && streamingText === "" && (
+                        <LoadingState label={t("questionSearch.generating")} />
+                    )}
+
+                    {ragLoading && streamingText !== "" && (
+                        <Card className="flex flex-col gap-2">
+                            <MarkdownContent
+                                content={streamingText}
+                                variant="full"
+                            />
+                        </Card>
+                    )}
 
                     {!ragLoading && ragAnswer && (
                         <Card className="flex flex-col gap-2">

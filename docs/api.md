@@ -143,6 +143,7 @@ any number per language, and the same word may belong to several senses
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
 | POST | `/api/v1/ai/ask` | Public | Answer a question. Body: `{"question": str, "language": "ja" or "en", "mode": "RAG" or null, "retrieved_question_ids": [int] or null}`. Response: `{"answer", "language", "cached", "question_id", "status"}`. |
+| POST | `/api/v1/ai/ask/stream` | Public | The same, streamed as server-sent events ([71]). Same body, auth, rate limit and cache tiers. |
 
 The flow, in order:
 
@@ -167,6 +168,40 @@ The flow, in order:
    mode (`DIRECT`/`RAG`), and token usage. Admin question responses include
    this as a `generation` object; public responses always return
    `generation: null`.
+
+### Streaming (`/ai/ask/stream`)
+
+`Content-Type: text/event-stream`. Three event types, always ending in
+`done` or `error`:
+
+| Event | Data | Meaning |
+| --- | --- | --- |
+| `delta` | `{"text": str}` | A piece of the answer; concatenating every `delta` gives `answer` |
+| `done` | the `/ask` response body | The answer is complete and, if saved, `question_id` and `status` are set |
+| `error` | `{"detail": str}` | Generation failed after the response had started |
+
+The status line is sent before generation begins, so a failure part-way
+through arrives as an `error` event with HTTP 200 rather than a 503. A
+rate-limited caller is still refused with a plain 429, because the limit
+is checked before the stream opens.
+
+Everything the non-streaming flow guarantees still holds, in particular:
+
+- A cache hit sends the stored answer as one `delta` and never calls the
+  LLM.
+- An off-topic refusal is detected by buffering the opening of the
+  stream until the `[OFF_TOPIC]` sentinel can be ruled in or out, so the
+  sentinel never reaches the client. The refusal is sent as a `delta`,
+  nothing is saved, and the ask still counts against the rate limit.
+- The row is written only once the whole answer has been collected, just
+  before `done`, so a client that disconnects part-way leaves no
+  `UNREVIEWED` row. Its quota stays spent: the generation happened.
+- Translation and the optional AI review run after the stream closes,
+  exactly as they do after a plain response.
+
+Clients should fall back to `/ai/ask` if the stream fails to start: a
+proxy that buffers responses or a browser without streaming support
+would otherwise leave the student with nothing.
 
 Rate limits (anonymous callers are bucketed by IP, signed-in callers by
 account):

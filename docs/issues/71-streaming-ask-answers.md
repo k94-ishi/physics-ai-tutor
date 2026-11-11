@@ -58,14 +58,14 @@ Frontend:
 
 ## Acceptance criteria
 
-- [ ] First visible text within ~2 s of a cache-miss ask on a local
-      stack (mocked-latency test asserts first-chunk-before-completion).
-- [ ] Off-topic questions: the student sees only the decline message;
+- [x] First visible text within ~2 s of a cache-miss ask on a local
+      stack (measured at 0.79 s against a 10.9 s answer).
+- [x] Off-topic questions: the student sees only the decline message;
       nothing is saved; quota spent — identical to today.
-- [ ] After the stream ends, the saved row equals what `/ai/ask` would
+- [x] After the stream ends, the saved row equals what `/ai/ask` would
       have saved (text, metadata, tokens, ask history).
-- [ ] Disconnect mid-stream leaves no UNREVIEWED half-row.
-- [ ] Old endpoint behaviour unchanged.
+- [x] Disconnect mid-stream leaves no UNREVIEWED half-row.
+- [x] Old endpoint behaviour unchanged.
 
 ## Out of scope
 
@@ -89,7 +89,80 @@ today or explicitly from the generator's end.
 
 ## Definition of done
 
-- [ ] Backend: `pytest`, `ruff check`, `mypy` pass
-- [ ] Frontend: `npm run lint`, `tsc --noEmit`, `npm test`, `npm run build` pass
-- [ ] `docs/api.md` documents the streaming endpoint and its events
-- [ ] Manual check on the local Docker stack in both languages
+- [x] Backend: `pytest`, `ruff check`, `mypy` pass
+- [x] Frontend: `npm run lint`, `tsc --noEmit`, `npm test`, `npm run build` pass
+- [x] `docs/api.md` documents the streaming endpoint and its events
+- [ ] Manual check on the local Docker stack in both languages — the
+      curl-level check below covers the wire protocol; the owner should
+      still click through both languages before the deploy
+
+## Log
+
+### 2026-11-11 — done
+
+569 backend tests (was 554) and 186 frontend tests (was 176); ruff,
+mypy, lint, tsc and build all pass.
+
+**The win, measured on a local stack** (fake upstream, 10 s answer):
+
+| | |
+| --- | --- |
+| first visible text | **0.79 s** |
+| full answer | 10.87 s |
+| deltas received | 20, arriving ~0.5 s apart |
+
+Nothing buffered the stream, so `X-Accel-Buffering: no` plus
+`Cache-Control: no-cache` are doing their job locally. The same check
+has to be repeated against Render before the deploy — a proxy there
+could still buffer, and that is on the track's pre-deploy list ([67]).
+
+**The sentinel is the part that needed care.** The model marks a refusal
+with a leading `[OFF_TOPIC]`, and on a stream that marker arrives split
+however the tokeniser felt like splitting it. The opening of the stream
+is therefore buffered until the sentinel can be ruled in or out:
+`_sentinel_undecided` holds back while the text so far is still a strict
+prefix of the sentinel. Four parametrised tests cover the whole answer
+in one chunk, the sentinel split across chunks, one character at a time,
+and with leading whitespace — plus `[OFFSIDE]`, which must *not* be
+treated as a refusal. One of them caught a real bug in the first draft:
+once a refusal was detected I set `opened = True`, which meant every
+later chunk was forwarded to the student as a delta. The refusal text
+would have leaked verbatim.
+
+**Where the row is written.** Only after the full answer is collected,
+immediately before `done`, so an abandoned stream saves nothing while
+the quota stays spent (the generation happened). That invariant is
+tested on the generator itself rather than through the transport:
+consuming one event and calling `aclose()` is deterministic, whereas a
+test that disconnects an httpx stream ends up asserting things about
+httpx's cancellation semantics. My first attempt at the transport-level
+version deadlocked and was removed rather than patched.
+
+**Background work** runs via `BackgroundTask` attached to the
+`StreamingResponse`, which Starlette runs after the body is finished.
+The saved id is not known when the handler returns, so the generator
+writes it into a dict the task reads afterwards. Verified live: the
+`translate_qa` stage logs under `path=background:post_generation` after
+the stream closes.
+
+**Failure after the status line** cannot be a 503, because 200 has
+already been sent. A `DeepSeekGenerationError` mid-stream arrives as an
+`error` event, and the frontend treats that as a reason to fall back to
+`/ai/ask`.
+
+**Frontend.** `askAiStream` reads the body with a `ReadableStream`
+reader (`EventSource` cannot POST) and reassembles frames across chunk
+boundaries — tested explicitly, since the network splits wherever it
+likes, and a naive parser would corrupt any answer containing a blank
+line. Rendering is throttled to one state update per animation frame; a
+20-piece answer would otherwise cause 20 re-renders of a KaTeX document.
+On any stream failure the component falls back to `/ai/ask`, so a
+buffering proxy degrades to the old behaviour instead of an error.
+
+No new user-visible strings were needed: `questionSearch.generating`
+already existed in both languages, and partial text now replaces the
+spinner as soon as the first delta lands.
+
+**The fake upstream** (`scripts/fake_llm_server.py`) learned
+`stream: true`, spreading `--chat-delay` over the pieces, so the whole
+path can be exercised without an API key.

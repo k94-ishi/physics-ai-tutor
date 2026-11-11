@@ -192,6 +192,7 @@ Layout of `backend/tests/`:
 | `test_architecture.py` | Layering rules: routers call services only; only the two `transaction()` helpers commit; sessions come from `database/`; async code never uses the sync helper ([69]) |
 | `test_async_foundation.py` | Async engine, session, `async_transaction` commit/rollback, pool sizing ([69]) |
 | `test_async_hot_path.py` | A pending generation does not hold the server; concurrent generations overlap ([70]) |
+| `test_ask_stream.py` | Streamed answers: SSE events, the off-topic sentinel never leaking, nothing saved on an abandoned stream ([71]) |
 | `test_timing.py` | Stage timing logs and the request-path label ([68]) |
 | `test_language_strict.py` | Students never get the other language on related/prerequisites/concepts; hidden rows are translated once in the background ([53]) |
 | `test_language.py` | Bilingual rows: eager translation, provenance, `lang` resolution, English ask flow, cache tiers, review in either language, translate endpoint, import shapes |
@@ -249,6 +250,7 @@ Test files sit next to the code in `__tests__/` folders and end in
 | `src/lib/__tests__/api.test.ts` | Request building (query params, JSON bodies, multipart), cookie inclusion, `ApiError` on non-2xx, 204 handling |
 | `src/lib/__tests__/markdown.test.ts` | LaTeX delimiter normalisation for DeepSeek output |
 | `src/lib/__tests__/concurrency.test.ts` | Concurrency limiter used by bulk admin actions |
+| `src/lib/__tests__/askAiStream.test.ts` | SSE parsing: frames split across chunks, newlines kept, error and non-2xx handling ([71]) |
 | `src/lib/hooks/__tests__/useQueryState.test.tsx` | URL-backed list state (defaults omitted, `router.replace` without scroll) |
 | `src/lib/i18n/__tests__/` | Translation tables have identical keys and placeholders in `ja` and `en`; language switching, persistence, `<html lang>` |
 | `src/lib/auth/__tests__/AuthContext.test.tsx` | Session bootstrap, 401 treated as logged out, login / logout state |
@@ -516,7 +518,8 @@ python scripts/latency_probe.py --path /api/v1/ai/ask \
   --body '{"question":"テスト {n}"}' -n 60 -c 60    # {n} keeps each request distinct
 
 # A stand-in for OpenAI/DeepSeek with a known delay, so generation time is
-# a constant instead of a variable. No API key, no quota.
+# a constant instead of a variable. No API key, no quota. It also serves
+# `stream: true` as SSE, spreading the delay over the pieces ([71]).
 python scripts/fake_llm_server.py --port 9100 --chat-delay 20
 # then run the backend with OPENAI_BASE_URL and DEEPSEEK_BASE_URL set to it
 ```

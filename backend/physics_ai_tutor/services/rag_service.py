@@ -1,4 +1,5 @@
 import logging
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -267,3 +268,41 @@ async def async_generate_rag_answer(
     )
 
     return result, [item.id for item in context]
+
+
+async def async_stream_rag_answer(
+    db: AsyncSession,
+    question: str,
+    retrieved_question_ids: list[int] | None = None,
+    language: Language | str = Language.JA,
+) -> AsyncIterator[str | tuple[deepseek_service.GenerationResult, list[int]]]:
+    """As `async_generate_rag_answer`, streamed ([71]).
+
+    Yields text deltas, then one `(result, context_ids)` tuple last.
+    """
+    lang = Language(language)
+
+    with timing.stage("rag_context") as stage:
+        if retrieved_question_ids:
+            stage.note(source="client_ids")
+            context = await async_load_context_by_ids(db, retrieved_question_ids, lang)
+        else:
+            stage.note(source="search")
+            context = await async_retrieve_context(db, question, lang)
+        stage.note(count=len(context))
+
+    user_prompt = build_context_prompt(question, context, lang)
+    context_ids = [item.id for item in context]
+
+    async for piece in deepseek_service.async_stream_answer(
+        prompts.RAG_SYSTEM_PROMPTS[lang], user_prompt
+    ):
+        if isinstance(piece, str):
+            yield piece
+        else:
+            logger.info(
+                "RAG answer streamed: question_length=%d context_count=%d",
+                len(question),
+                len(context),
+            )
+            yield piece, context_ids

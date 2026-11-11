@@ -71,8 +71,9 @@ wait for the slowest endpoint from "whole answer" to "first words".
    with `AsyncOpenAI` clients for both providers~~ done 2026-11-11
    (`/health` p95 under load 15.6 s -> 1.6 ms; `/exact-match` deferred to
    [73], and the database pool is now the next limit)
-4. [71] Streaming `/ai/ask` (SSE): the student reads the answer while it
-   generates. The one step with a visible behaviour change.
+4. ~~[71] Streaming `/ai/ask` (SSE): the student reads the answer while
+   it generates~~ done 2026-11-11 (first text at 0.79 s against a 10.9 s
+   answer; the client falls back to `/ai/ask` if a proxy buffers)
 5. [82] Never hold a database connection across an LLM call (owner,
    2026-11-11). [70] left this as the binding constraint, and it must be
    fixed before concurrency multiplies it.

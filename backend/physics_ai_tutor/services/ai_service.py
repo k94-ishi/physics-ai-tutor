@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from physics_ai_tutor.core import prompts, timing
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.database.session import async_background_session
+from physics_ai_tutor.database.transaction import async_transaction
 from physics_ai_tutor.models import Question
 from physics_ai_tutor.schemas.ai import AskAiRequest, AskAiResponse
 from physics_ai_tutor.schemas.question import (
@@ -45,9 +46,13 @@ async def _from_cache(
 ) -> AskAiResponse | None:
     """Cache tier 0: reuse an identical, non-rejected question's answer."""
     with timing.stage("ask_cache_lookup") as stage:
-        cached = await question_read_service.async_find_cached_answer(
-            db, request.question, request.language
-        )
+        # Committed here, not left for the quota recording to flush: the
+        # connection must be back in the pool before a generation starts,
+        # and that must not depend on a callback's side effect ([82]).
+        async with async_transaction(db, "ask_cache_lookup"):
+            cached = await question_read_service.async_find_cached_answer(
+                db, request.question, request.language
+            )
         stage.note(hit=cached is not None)
 
     if cached is None:

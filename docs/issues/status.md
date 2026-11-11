@@ -102,7 +102,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 79 | open | 79-operator-tunable-settings.md | Operator-tunable settings: limits, pools and timeouts move out of the code | — (file-era issue) |
 | 80 | open | 80-tuning-constants-stay-in-code.md | Tuning constants: collect and document them, but keep them out of the environment | — (file-era issue) |
 | 81 | open | 81-track-g-configuration.md | Track G: configuration - what belongs in the environment and what belongs in code | — (file-era issue) |
-| 82 | open | 82-no-connection-held-across-an-llm-call.md | Never hold a database connection across an LLM call: split the translate/embed transaction | — (file-era issue) |
+| 82 | closed | 82-no-connection-held-across-an-llm-call.md | Never hold a database connection across an LLM call: split the translate/embed transaction | — (file-era issue) |
 
 ## Notes on the archive column
 

@@ -185,3 +185,127 @@ def test_the_checks_catch_a_violation():
     # A session factory import is spotted wherever it comes from.
     factory = ast.parse("from physics_ai_tutor.database.database import SessionLocal\n")
     assert any(name.endswith("SessionLocal") for name in _imports(factory))
+
+
+# Functions that leave the process to talk to an LLM provider, directly
+# or through one hop. Name-based on purpose: a connection held across any
+# of these is a connection spent waiting on something the database has no
+# part in ([82]).
+LLM_CALLS = {
+    "generate_answer",
+    "async_generate_answer",
+    "chat_completion",
+    "async_chat_completion",
+    "async_stream_answer",
+    "create_embeddings",
+    "async_create_embeddings",
+    "translate_qa",
+    "async_translate_qa",
+    "extract_concept_names",
+    "grade_answer",
+    "async_grade_answer",
+    "embed_language",
+    "prepare_translation",
+    "async_prepare_translation",
+    "translate_into",
+    "translate_missing",
+    "refresh_machine_translations",
+    "embed_query",
+    "async_embed_query",
+    "generate_rag_answer",
+    "async_generate_rag_answer",
+    "async_stream_rag_answer",
+}
+
+# Sync admin-only paths that keep their transaction across an LLM call on
+# purpose, each with the issue that retires it. This list may only shrink.
+KNOWN_TRANSACTION_LLM_CALLERS = {
+    # The import is all-or-nothing by contract; splitting its transaction
+    # is the batch-embedding rework ([76]).
+    ("services/question_write_service.py", "import_questions_from_jsonl"),
+    # Admin-only writes that embed, translate or extract inside their
+    # transaction; split when [73] converts them. Seconds-long at worst,
+    # admin-rate, and never on the student path.
+    ("services/question_write_service.py", "create_question"),
+    ("services/question_write_service.py", "update_question"),
+    ("services/question_write_service.py", "reextract_concepts_for_questions"),
+}
+
+
+def _llm_calls_inside_transactions(tree: ast.AST) -> dict[str, list[str]]:
+    """{function: [offending call ...]} for one module."""
+
+    def call_name(call: ast.Call) -> str | None:
+        if isinstance(call.func, ast.Attribute):
+            return call.func.attr
+        if isinstance(call.func, ast.Name):
+            return call.func.id
+        return None
+
+    offenders: dict[str, list[str]] = {}
+    for function in ast.walk(tree):
+        if not isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        for block in ast.walk(function):
+            if not isinstance(block, ast.With | ast.AsyncWith):
+                continue
+            in_transaction = any(
+                isinstance(item.context_expr, ast.Call)
+                and call_name(item.context_expr) in {"transaction", "async_transaction"}
+                for item in block.items
+            )
+            if not in_transaction:
+                continue
+            for inner in block.body:
+                for node in ast.walk(inner):
+                    if isinstance(node, ast.Call):
+                        name = call_name(node)
+                        if name in LLM_CALLS:
+                            offenders.setdefault(function.name, []).append(
+                                f"{name} (line {node.lineno})"
+                            )
+    return offenders
+
+
+def test_no_transaction_spans_an_llm_call():
+    """A transaction block must not wait on OpenAI or DeepSeek ([82]).
+
+    Holding a pooled connection across a multi-second network call is
+    what capped the backend at ~15 concurrent operations once threads no
+    longer did. The check is lexical (direct calls only), so it is a
+    tripwire rather than proof - the runtime guarantees live in
+    tests/test_llm_connection_discipline.py.
+    """
+    offenders = {}
+    for path in sorted(PACKAGE.rglob("*.py")):
+        found = _llm_calls_inside_transactions(ast.parse(path.read_text()))
+        relative = str(path.relative_to(PACKAGE))
+        for function, calls in found.items():
+            if (relative, function) in KNOWN_TRANSACTION_LLM_CALLERS:
+                continue
+            offenders[f"{relative}:{function}"] = calls
+    assert offenders == {}
+
+
+def test_the_known_transaction_llm_callers_still_exist():
+    """The allowlist must shrink when a path is fixed, not linger."""
+    stale = set()
+    for relative, function in KNOWN_TRANSACTION_LLM_CALLERS:
+        tree = ast.parse((PACKAGE / relative).read_text())
+        found = _llm_calls_inside_transactions(tree)
+        if function not in found:
+            stale.add((relative, function))
+    assert stale == set()
+
+
+def test_the_llm_transaction_check_catches_a_violation():
+    sample = ast.parse(
+        "def f(db):\n"
+        "    with transaction(db, 'x'):\n"
+        "        deepseek_service.generate_answer(a, b)\n"
+        "async def g(db):\n"
+        "    async with async_transaction(db, 'x'):\n"
+        "        await embedding_service.async_create_embeddings(t)\n"
+    )
+    found = _llm_calls_inside_transactions(sample)
+    assert "f" in found and "g" in found

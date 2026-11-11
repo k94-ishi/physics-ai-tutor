@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core import prompts, timing
+from physics_ai_tutor.database.transaction import async_transaction, transaction
 from physics_ai_tutor.repositories import (
     question_concept_repository,
     question_repository,
@@ -136,12 +137,15 @@ def generate_rag_answer(
     lang = Language(language)
 
     with timing.stage("rag_context") as stage:
-        if retrieved_question_ids:
-            stage.note(source="client_ids")
-            context = load_context_by_ids(db, retrieved_question_ids, lang)
-        else:
-            stage.note(source="search")
-            context = retrieve_context(db, question, lang)
+        # Commit the retrieval reads so no connection waits out the
+        # generation call below ([82]).
+        with transaction(db, "rag_context_read"):
+            if retrieved_question_ids:
+                stage.note(source="client_ids")
+                context = load_context_by_ids(db, retrieved_question_ids, lang)
+            else:
+                stage.note(source="search")
+                context = retrieve_context(db, question, lang)
         stage.note(count=len(context))
 
     user_prompt = build_context_prompt(question, context, lang)
@@ -247,12 +251,17 @@ async def async_generate_rag_answer(
     lang = Language(language)
 
     with timing.stage("rag_context") as stage:
-        if retrieved_question_ids:
-            stage.note(source="client_ids")
-            context = await async_load_context_by_ids(db, retrieved_question_ids, lang)
-        else:
-            stage.note(source="search")
-            context = await async_retrieve_context(db, question, lang)
+        # Commit the retrieval reads so no connection waits out the
+        # generation call below ([82]).
+        async with async_transaction(db, "rag_context_read"):
+            if retrieved_question_ids:
+                stage.note(source="client_ids")
+                context = await async_load_context_by_ids(
+                    db, retrieved_question_ids, lang
+                )
+            else:
+                stage.note(source="search")
+                context = await async_retrieve_context(db, question, lang)
         stage.note(count=len(context))
 
     user_prompt = build_context_prompt(question, context, lang)
@@ -283,12 +292,17 @@ async def async_stream_rag_answer(
     lang = Language(language)
 
     with timing.stage("rag_context") as stage:
-        if retrieved_question_ids:
-            stage.note(source="client_ids")
-            context = await async_load_context_by_ids(db, retrieved_question_ids, lang)
-        else:
-            stage.note(source="search")
-            context = await async_retrieve_context(db, question, lang)
+        # Commit the retrieval reads: the stream below stays open for the
+        # whole generation, which is the worst place to park one ([82]).
+        async with async_transaction(db, "rag_context_read"):
+            if retrieved_question_ids:
+                stage.note(source="client_ids")
+                context = await async_load_context_by_ids(
+                    db, retrieved_question_ids, lang
+                )
+            else:
+                stage.note(source="search")
+                context = await async_retrieve_context(db, question, lang)
         stage.note(count=len(context))
 
     user_prompt = build_context_prompt(question, context, lang)

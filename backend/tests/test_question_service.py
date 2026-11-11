@@ -586,8 +586,11 @@ def test_fetch_question_includes_concepts(db):
     assert found.concepts == ["概念A", "概念B"]
 
 
-def test_save_ai_question_success(db):
-    saved = question_write_service.save_ai_question(db, "AIへの質問", "AIの回答")
+@pytest.mark.anyio
+async def test_save_ai_question_success(db, async_db):
+    saved = await question_write_service.async_save_ai_question(
+        async_db, "AIへの質問", "AIの回答"
+    )
 
     assert saved is not None
     assert saved.status == "UNREVIEWED"
@@ -596,31 +599,43 @@ def test_save_ai_question_success(db):
     assert _embeddings_for(db, saved.id) != []
 
 
-def test_save_ai_question_does_not_extract_concepts(db, monkeypatch):
+@pytest.mark.anyio
+async def test_save_ai_question_does_not_extract_concepts(db, async_db, monkeypatch):
     calls = []
     _spy_extract_concept_names(monkeypatch, calls)
 
-    saved = question_write_service.save_ai_question(db, "AIへの質問2", "AIの回答2")
+    saved = await question_write_service.async_save_ai_question(
+        async_db, "AIへの質問2", "AIの回答2"
+    )
 
     assert calls == []
     assert question_concept_repository.get_concepts_for_question(db, saved.id) == []
 
 
-def test_save_ai_question_duplicate_returns_none(db):
+@pytest.mark.anyio
+async def test_save_ai_question_duplicate_returns_none(db, async_db):
     _create(db, "既にある質問", "既にある回答")
+    db.commit()
 
-    saved = question_write_service.save_ai_question(db, "既にある質問", "別の回答")
+    saved = await question_write_service.async_save_ai_question(
+        async_db, "既にある質問", "別の回答"
+    )
 
     assert saved is None
 
 
-def test_save_ai_question_embedding_failure_returns_none(db, monkeypatch):
+@pytest.mark.anyio
+async def test_save_ai_question_embedding_failure_returns_none(
+    db, async_db, monkeypatch
+):
     def _raise(texts):
         raise EmbeddingGenerationError("boom")
 
     patch_create_embeddings(monkeypatch, _raise)
 
-    saved = question_write_service.save_ai_question(db, "失敗する質問", "失敗する回答")
+    saved = await question_write_service.async_save_ai_question(
+        async_db, "失敗する質問", "失敗する回答"
+    )
 
     assert saved is None
     assert question_read_service.fetch_questions(db, page=1, size=20).items == []

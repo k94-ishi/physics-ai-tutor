@@ -26,12 +26,13 @@ from physics_ai_tutor.schemas.question import (
 )
 from physics_ai_tutor.services import (
     concept_service,
+    embedding_service,
 )
 from physics_ai_tutor.services.question_presentation_service import (
     prepare_for_response,
 )
 from physics_ai_tutor.services.question_translation_service import (
-    async_embed_language,
+    async_write_embeddings,
     embed_language,
     refresh_machine_translations,
     translate_missing,
@@ -270,59 +271,6 @@ def bulk_delete_questions(
     return deleted_count, not_found_ids
 
 
-def save_ai_question(
-    db: Session,
-    question: str,
-    answer: str,
-    language: Language | str = Language.JA,
-    source: str = QuestionSource.AI_GENERATED,
-    retrieved_question_ids: list[int] | None = None,
-    generation: GenerationMeta | None = None,
-) -> Question | None:
-    """Best-effort save of an AI answer as a new UNREVIEWED question.
-
-    Never raises. Translation into the other language is not done here (it
-    would delay the student's response); callers schedule
-    `translate_missing_languages` afterwards.
-    """
-    lang = Language(language)
-
-    try:
-        with transaction(db, "save_ai_question"):
-            if question_repository.get_by_exact_text(db, question, language=lang):
-                logger.info("AI answer not saved: duplicate question text")
-                return None
-
-            db_question = question_repository.create_question(
-                db,
-                texts={lang: (question, answer)},
-                original_language=lang,
-                status=QuestionStatus.UNREVIEWED,
-                source=source,
-                retrieved_question_ids=retrieved_question_ids,
-            )
-
-            if generation is not None:
-                db_question.generation_model = generation.model
-                db_question.prompt_version = generation.prompt_version
-                db_question.generation_mode = generation.mode
-                db_question.prompt_tokens = generation.prompt_tokens
-                db_question.completion_tokens = generation.completion_tokens
-                db.flush()
-
-            embed_language(db, db_question, lang)
-    except Exception:
-        # The student already has the answer; saving it is best effort.
-        logger.warning(
-            "Failed to save AI answer as question; continuing without saving",
-            exc_info=True,
-        )
-        return None
-
-    logger.info("AI answer saved as question: id=%d", db_question.id)
-    return db_question
-
-
 async def async_save_ai_question(
     db: AsyncSession,
     question: str,
@@ -332,10 +280,26 @@ async def async_save_ai_question(
     retrieved_question_ids: list[int] | None = None,
     generation: GenerationMeta | None = None,
 ) -> Question | None:
-    """As `save_ai_question`; still never raises ([70])."""
+    """Best-effort save of an AI answer as a new UNREVIEWED question.
+
+    Never raises. Translation into the other language is not done here
+    (it would delay the student's response); callers schedule
+    `async_translate_missing_languages` afterwards. The sync twin was
+    removed in [82]: nothing had called it since [70].
+
+    The embedding call happens before the transaction opens, so no
+    connection waits on OpenAI ([82]). A duplicate therefore costs one
+    embedding call it did not before - rare (the ask flow already
+    checked the cache for this exact text) and cheaper than every save
+    holding a connection for the call.
+    """
     lang = Language(language)
 
     try:
+        question_vec, answer_vec = await embedding_service.async_create_embeddings(
+            [question, answer]
+        )
+
         async with async_transaction(db, "save_ai_question"):
             if await question_repository.async_get_by_exact_text(
                 db, question, language=lang
@@ -360,7 +324,9 @@ async def async_save_ai_question(
                 db_question.completion_tokens = generation.completion_tokens
                 await db.flush()
 
-            await async_embed_language(db, db_question, lang)
+            await async_write_embeddings(
+                db, db_question.id, lang, question_vec, answer_vec
+            )
     except Exception:
         # The student already has the answer; saving it is best effort.
         logger.warning(

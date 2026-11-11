@@ -251,21 +251,22 @@ def review_question_with_outcome(
     language = Language(question.original_language)
 
     try:
-        # Reads plus the LLM call; a failed read must not poison the session.
-        with (
-            timing.stage("ai_review_item", question_id=question.id),
-            transaction(db, "ai_review_grade"),
-        ):
-            text = question.text(language) or question.original_text()
-            concepts = question_concept_repository.get_concepts_for_questions(
-                db, [question.id], language=language.value
-            ).get(question.id, [])
+        with timing.stage("ai_review_item", question_id=question.id):
+            # The reads commit before the grading call, so no connection
+            # waits out the LLM ([82]); a failed read still rolls back
+            # without poisoning the session.
+            with transaction(db, "ai_review_read"):
+                text = question.text(language) or question.original_text()
+                concepts = question_concept_repository.get_concepts_for_questions(
+                    db, [question.id], language=language.value
+                ).get(question.id, [])
+                context = _build_context(db, question, language)
             graded = grade_answer(
                 text[0],
                 text[1],
                 language,
                 concepts=concepts,
-                context=_build_context(db, question, language),
+                context=context,
             )
     except Exception:
         logger.warning(
@@ -381,21 +382,24 @@ async def async_review_question(
     reference_ids = list(question.retrieved_question_ids or [])
 
     try:
-        # Reads plus the LLM call; a failed read must not poison the session.
         with timing.stage("ai_review_item", question_id=question_id):
-            async with async_transaction(db, "ai_review_grade"):
+            # The reads commit before the grading call, so no connection
+            # waits out the LLM ([82]); a failed read still rolls back
+            # without poisoning the session.
+            async with async_transaction(db, "ai_review_read"):
                 by_question = (
                     await question_concept_repository.async_get_concepts_for_questions(
                         db, [question_id], language=language.value
                     )
                 )
-                graded = await async_grade_answer(
-                    text[0],
-                    text[1],
-                    language,
-                    concepts=by_question.get(question_id, []),
-                    context=await _async_build_context(db, reference_ids, language),
-                )
+                context = await _async_build_context(db, reference_ids, language)
+            graded = await async_grade_answer(
+                text[0],
+                text[1],
+                language,
+                concepts=by_question.get(question_id, []),
+                context=context,
+            )
     except Exception:
         logger.warning(
             "AI review failed before storing: question_id=%d",

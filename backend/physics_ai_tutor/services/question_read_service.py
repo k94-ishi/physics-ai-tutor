@@ -23,7 +23,8 @@ from physics_ai_tutor.services.question_presentation_service import (
     prepare_for_response,
 )
 from physics_ai_tutor.services.question_translation_service import (
-    translate_into,
+    apply_translation,
+    prepare_translation,
 )
 from physics_ai_tutor.services.response_language import (
     ResponseLanguage,
@@ -78,16 +79,22 @@ def fetch_question(
 ) -> tuple[Question | None, TranslationNeeds]:
     """One question; a strict reader gets a missing language translated now."""
     response = ResponseLanguage.of(language)
-    question = question_repository.get_question(
-        db, question_id, exclude_statuses=exclude_statuses
-    )
+    # Committed so the connection is free during a lazy translation ([82]).
+    with transaction(db, "fetch_question_read"):
+        question = question_repository.get_question(
+            db, question_id, exclude_statuses=exclude_statuses
+        )
     if question is None:
         return None, TranslationNeeds()
 
-    # Lazy fill for rows approved before translation existed.
+    # Lazy fill for rows approved before translation existed. The student
+    # waits for the LLM either way ([53]); the pool no longer waits with
+    # them.
     if response.strict and not question.has(response.language):
-        with transaction(db, "lazy_translate"):
-            translate_into(db, question, response.language)
+        prepared = prepare_translation(question, response.language)
+        if prepared is not None:
+            with transaction(db, "lazy_translate"):
+                apply_translation(db, question, response.language, prepared)
 
     return question, prepare_for_response(db, [question], response)
 

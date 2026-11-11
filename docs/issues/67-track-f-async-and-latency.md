@@ -74,9 +74,10 @@ wait for the slowest endpoint from "whole answer" to "first words".
 4. ~~[71] Streaming `/ai/ask` (SSE): the student reads the answer while
    it generates~~ done 2026-11-11 (first text at 0.79 s against a 10.9 s
    answer; the client falls back to `/ai/ask` if a proxy buffers)
-5. [82] Never hold a database connection across an LLM call (owner,
-   2026-11-11). [70] left this as the binding constraint, and it must be
-   fixed before concurrency multiplies it.
+5. ~~[82] Never hold a database connection across an LLM call (owner,
+   2026-11-11)~~ done 2026-11-11 (60 concurrent asks: 50.5 s -> 21.4 s,
+   one generation wave; enforced by an architecture test plus runtime
+   probes)
 6. [72] Background work on the event loop: asyncio tasks, parallel
    translations, bounded concurrency inside AI review runs.
 7. [75] Worker-safe background claims: de-duplication moves into the

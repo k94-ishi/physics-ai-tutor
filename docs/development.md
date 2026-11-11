@@ -192,6 +192,7 @@ Layout of `backend/tests/`:
 | `test_architecture.py` | Layering rules: routers call services only; only the two `transaction()` helpers commit; sessions come from `database/`; async code never uses the sync helper ([69]) |
 | `test_async_foundation.py` | Async engine, session, `async_transaction` commit/rollback, pool sizing ([69]) |
 | `test_async_hot_path.py` | A pending generation does not hold the server; concurrent generations overlap ([70]) |
+| `test_llm_connection_discipline.py` | No transaction is open at the moment any LLM seam is called ([82]) |
 | `test_ask_stream.py` | Streamed answers: SSE events, the off-topic sentinel never leaking, nothing saved on an abandoned stream ([71]) |
 | `test_timing.py` | Stage timing logs and the request-path label ([68]) |
 | `test_language_strict.py` | Students never get the other language on related/prerequisites/concepts; hidden rows are translated once in the background ([53]) |
@@ -284,6 +285,16 @@ enforced by `tests/test_architecture.py`:
   For best-effort work, put the `with` inside your own `try/except`. It is
   the only code that calls `commit()` or `rollback()`.
 - **Repositories** query and flush; they never commit.
+- **No transaction waits on an LLM** ([82]). A `transaction()` /
+  `async_transaction()` block must not contain a call to OpenAI or
+  DeepSeek: the block holds a pooled connection, and a connection parked
+  behind a 20-second network call is what capped the backend at ~15
+  concurrent operations once threads no longer did. Structure such code
+  as *prepare* (LLM calls, no session) then *apply* (short write
+  transaction) — `question_translation_service` is the model. Enforced
+  lexically by `test_architecture.py` (with a shrinking allowlist of
+  admin write paths that [73]/[76] rework) and at runtime by
+  `tests/test_llm_connection_discipline.py`.
 - **Question use cases** live in five modules (since [60]):
   `question_read_service` (list, detail, exact match, ask cache),
   `question_write_service` (create, import, update, delete, AI answers,

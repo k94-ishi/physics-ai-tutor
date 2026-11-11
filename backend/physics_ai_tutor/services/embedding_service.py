@@ -86,7 +86,11 @@ def embed_query(db: Session, text: str) -> list[float]:
     model = settings.embedding_model
 
     with timing.stage("embed_query") as stage:
-        cached = query_embedding_repository.get(db, text_hash, model)
+        # The lookup commits so the connection is back in the pool before
+        # the OpenAI call a miss triggers ([82]).
+        with transaction(db, "query_embedding_lookup"):
+            cached = query_embedding_repository.get(db, text_hash, model)
+
         if cached is not None:
             stage.note(cache="hit")
             try:
@@ -207,7 +211,11 @@ async def async_embed_query(db: AsyncSession, text: str) -> list[float]:
     model = settings.embedding_model
 
     with timing.stage("embed_query") as stage:
-        cached = await query_embedding_repository.async_get(db, text_hash, model)
+        # The lookup commits so the connection is back in the pool before
+        # the OpenAI call a miss triggers ([82]).
+        async with async_transaction(db, "query_embedding_lookup"):
+            cached = await query_embedding_repository.async_get(db, text_hash, model)
+
         if cached is not None:
             stage.note(cache="hit")
             try:

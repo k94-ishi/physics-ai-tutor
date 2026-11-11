@@ -1,16 +1,6 @@
-from datetime import datetime
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints
-
-
-class ConceptResponse(BaseModel):
-    id: int
-    name_ja: str | None
-    name_en: str | None
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
 
 
 class ConceptExtractionRequest(BaseModel):

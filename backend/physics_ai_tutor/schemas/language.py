@@ -16,7 +16,3 @@ class TextProvenance(StrEnum):
 
 
 LANGUAGES: tuple[Language, ...] = (Language.JA, Language.EN)
-
-
-def other_language(language: Language | str) -> Language:
-    return Language.EN if Language(language) == Language.JA else Language.JA

@@ -204,10 +204,6 @@ def label(concept: Concept, language: str) -> tuple[str, bool]:
     return (fallback.term if fallback else ""), True
 
 
-def find_by_word(db: Session, word: str) -> list[Concept]:
-    return concept_term_repository.senses_with_any_term(db, normalize_key(word))
-
-
 # --- search ([55] stage 3) ------------------------------------------------------
 
 PUBLIC_STATUSES = ["APPROVED"]

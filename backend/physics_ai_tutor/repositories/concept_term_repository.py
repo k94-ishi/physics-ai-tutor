@@ -4,17 +4,6 @@ from sqlalchemy.orm import Session
 from physics_ai_tutor.models import Concept, ConceptTerm, Question, QuestionConcept
 
 
-def senses_with_term(db: Session, language: str, normalized: str) -> list[Concept]:
-    """Every sense that has this word in this language."""
-    return (
-        db.query(Concept)
-        .join(ConceptTerm, ConceptTerm.concept_id == Concept.id)
-        .filter(ConceptTerm.language == language, ConceptTerm.normalized == normalized)
-        .distinct()
-        .all()
-    )
-
-
 def senses_with_any_term(db: Session, normalized: str) -> list[Concept]:
     """Senses having this word in either language."""
     return (

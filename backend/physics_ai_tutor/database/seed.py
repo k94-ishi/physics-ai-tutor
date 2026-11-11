@@ -63,10 +63,6 @@ def load_seed_file(seed_file: Path) -> list[tuple[QuestionCreate, SeedExtras]]:
     return rows
 
 
-def load_seed_entries(seed_file: Path) -> list[QuestionCreate]:
-    return [question for question, _ in load_seed_file(seed_file)]
-
-
 def apply_seed_extras(db, question: Question, extras: SeedExtras) -> None:
     """Attach stored tags, then let stored values win over computed ones."""
     if extras.tags is None:

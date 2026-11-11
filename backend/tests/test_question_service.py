@@ -25,8 +25,7 @@ from physics_ai_tutor.services import (
     question_review_service,
     question_write_service,
 )
-from physics_ai_tutor.services.user_service import create_user
-from tests.conftest import patch_create_embeddings
+from tests.conftest import create_user, patch_create_embeddings
 
 
 def _create(db, question: str = "テスト質問", answer: str = "テスト回答"):

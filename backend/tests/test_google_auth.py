@@ -11,7 +11,7 @@ from physics_ai_tutor.core.exceptions import GoogleAuthError
 from physics_ai_tutor.models import User
 from physics_ai_tutor.services import google_auth_service
 from physics_ai_tutor.services.google_auth_service import GoogleIdentity
-from physics_ai_tutor.services.user_service import create_user
+from tests.conftest import create_user, patch_exchange_code
 
 PROVIDERS_PATH = "/api/v1/auth/providers"
 GOOGLE_LOGIN_PATH = "/api/v1/auth/google/login"
@@ -45,7 +45,7 @@ def google_enabled(monkeypatch):
 @pytest.fixture
 def exchange_returns(monkeypatch):
     def _set(identity):
-        monkeypatch.setattr(google_auth_service, "exchange_code", lambda code: identity)
+        patch_exchange_code(monkeypatch, lambda code: identity)
 
     return _set
 
@@ -193,7 +193,7 @@ def test_callback_handles_failed_token_exchange(client, google_enabled, monkeypa
     def _raise(code):
         raise GoogleAuthError("boom")
 
-    monkeypatch.setattr(google_auth_service, "exchange_code", _raise)
+    patch_exchange_code(monkeypatch, _raise)
 
     response = _callback(client)
 

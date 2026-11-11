@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import os
 from pathlib import Path
@@ -21,14 +22,15 @@ from physics_ai_tutor.database import session as session_module
 from physics_ai_tutor.database.base import Base
 from physics_ai_tutor.database.dependency import get_async_db, get_db
 from physics_ai_tutor.main import app
+from physics_ai_tutor.models.user import User
 from physics_ai_tutor.services import (
     concept_service,
     deepseek_service,
     embedding_service,
     rag_service,
     translation_service,
+    user_service,
 )
-from physics_ai_tutor.services.user_service import create_user
 
 ADMIN_EMAIL = "admin@example.com"
 ADMIN_PASSWORD = "adminpass123"
@@ -90,6 +92,28 @@ def _alembic_config() -> Config:
     config.attributes["sqlalchemy_url"] = TEST_DATABASE_URL.replace("%", "%%")
     config.attributes["configure_logger"] = False
     return config
+
+
+def create_user(db, email: str, password: str, role: str = "user"):
+    """Create a user from a sync test ([73]).
+
+    The service is async now, so the many sync tests get one bridge
+    rather than each growing an event loop. The row is returned **loaded
+    into the caller's session**, not detached: tests go on to mutate it
+    (`user.role = "admin"; db.commit()`), which silently does nothing to
+    an object whose session has closed.
+    """
+
+    async def _create():
+        async with AsyncSession(async_engine, expire_on_commit=False) as session:
+            created = await user_service.create_user(
+                session, email, password, role=role
+            )
+            return created.id
+
+    user_id = asyncio.run(_create())
+
+    return db.get(User, user_id)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -370,6 +394,20 @@ def patch_rag_answer(monkeypatch, generate) -> None:
         return generate(*args, **kwargs)
 
     monkeypatch.setattr(rag_service, "async_generate_rag_answer", _async_generate)
+
+
+def patch_exchange_code(monkeypatch, exchange) -> None:
+    """Install a sync stub on the Google token-exchange seam ([73]).
+
+    The exchange is an awaited HTTP call now, so a plain `setattr` with a
+    sync function makes the route await a GoogleIdentity.
+    """
+    from physics_ai_tutor.services import google_auth_service
+
+    async def _async_exchange(*args, **kwargs):
+        return exchange(*args, **kwargs)
+
+    monkeypatch.setattr(google_auth_service, "exchange_code", _async_exchange)
 
 
 def patch_chat_completion(monkeypatch, complete) -> None:

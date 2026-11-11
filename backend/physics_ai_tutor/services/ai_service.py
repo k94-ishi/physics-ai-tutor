@@ -58,7 +58,7 @@ async def _from_cache(
     if cached is None:
         return None
     if user_id is not None:
-        await ask_history_service.async_record_ask(
+        await ask_history_service.record_ask(
             db, cached.id, user_id, request.language, cache_hit=True
         )
     text = cached.text(request.language)
@@ -177,7 +177,7 @@ async def _save_answer(
     if saved is None:
         return None
     if user_id is not None:
-        await ask_history_service.async_record_ask(
+        await ask_history_service.record_ask(
             db, saved.id, user_id, request.language, cache_hit=False
         )
     return saved.id

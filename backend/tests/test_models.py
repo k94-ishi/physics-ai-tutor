@@ -8,7 +8,7 @@ from physics_ai_tutor.models import (
     QuestionConcept,
     QuestionReview,
 )
-from physics_ai_tutor.services.user_service import create_user
+from tests.conftest import create_user
 
 
 def _create_question(db, question="質問", answer="回答"):

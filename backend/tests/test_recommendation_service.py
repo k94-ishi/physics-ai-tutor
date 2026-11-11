@@ -6,7 +6,7 @@ from physics_ai_tutor.repositories import (
 )
 from physics_ai_tutor.schemas.question_review import QuestionReviewAction
 from physics_ai_tutor.services import question_review_service, recommendation_service
-from physics_ai_tutor.services.user_service import create_user
+from tests.conftest import create_user
 
 
 def _create_question_with_embedding(db, question, answer, vector):

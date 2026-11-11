@@ -7,7 +7,7 @@ from physics_ai_tutor.services import deepseek_service, translation_service
 from physics_ai_tutor.services.translation_service import (
     translate_qa as real_translate_qa,
 )
-from tests.conftest import fake_generation, patch_generation
+from tests.conftest import fake_generation, patch_generation, patch_translate_qa
 
 QUESTIONS = "/api/v1/questions"
 REJECT_BODY = {"action": "REJECT", "reason": "PHYSICS_ERROR"}
@@ -84,7 +84,7 @@ def test_create_question_survives_translation_failure(admin_client, monkeypatch)
     def _fail(question, answer, source, target):
         raise translation_service.TranslationError("down")
 
-    monkeypatch.setattr(translation_service, "translate_qa", _fail)
+    patch_translate_qa(monkeypatch, _fail)
 
     response = admin_client.post(
         QUESTIONS, json={"question": "翻訳失敗でも保存", "answer": "回答"}
@@ -132,7 +132,7 @@ def test_public_list_only_shows_rows_with_requested_language(
     def _fail(question, answer, source, target):
         raise translation_service.TranslationError("down")
 
-    monkeypatch.setattr(translation_service, "translate_qa", _fail)
+    patch_translate_qa(monkeypatch, _fail)
     admin_client.post(QUESTIONS, json={"question": "翻訳なし", "answer": "回答"})
 
     public_en = client.get(QUESTIONS, params={"lang": "en"}).json()

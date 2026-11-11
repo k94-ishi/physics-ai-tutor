@@ -132,17 +132,27 @@ def delete_by_question_id(db: Session, question_id: int) -> None:
     db.flush()
 
 
+def _context_question_select(concept_id: int, language: str):
+    column = Question.question_ja if language == "ja" else Question.question_en
+    return (
+        select(column)
+        .join(QuestionConcept, QuestionConcept.question_id == Question.id)
+        .where(QuestionConcept.concept_id == concept_id, column.is_not(None))
+        .order_by(Question.status != "APPROVED", Question.id)
+        .limit(1)
+    )
+
+
 def context_question(db: Session, concept_id: int, language: str) -> str | None:
     """A question text in `language` that uses the concept, for translation."""
-    column = Question.question_ja if language == "ja" else Question.question_en
-    row = (
-        db.query(column)
-        .join(QuestionConcept, QuestionConcept.question_id == Question.id)
-        .filter(QuestionConcept.concept_id == concept_id, column.is_not(None))
-        .order_by(Question.status != "APPROVED", Question.id)
-        .first()
-    )
-    return row[0] if row else None
+    return db.scalars(_context_question_select(concept_id, language)).first()
+
+
+async def async_context_question(
+    db: AsyncSession, concept_id: int, language: str
+) -> str | None:
+    """A question text in `language` that uses the concept, for translation."""
+    return (await db.scalars(_context_question_select(concept_id, language))).first()
 
 
 def link_many(db: Session, question_id: int, concept_ids: list[int]) -> None:

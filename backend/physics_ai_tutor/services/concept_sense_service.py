@@ -10,6 +10,7 @@ import logging
 import math
 from dataclasses import dataclass
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core.text import normalize_key
@@ -57,6 +58,38 @@ def sync_mirror(concept: Concept) -> None:
         setattr(concept, f"name_{language}", preferred.term if preferred else None)
 
 
+def _build_term(
+    concept: Concept,
+    language: str,
+    term: str,
+    source: str,
+    preferred: bool | None,
+) -> ConceptTerm | None:
+    """The term a caller would add, or None when the sense already has it.
+
+    Shared by the sync and async variants so the preferred-word rule
+    cannot drift between them.
+    """
+    term = term.strip()[:255]
+    if not term or has_term(concept, language, term):
+        return None
+
+    make_preferred = (
+        preferred_term(concept, language) is None if preferred is None else preferred
+    )
+    if make_preferred:
+        _clear_preferred(concept, language)
+
+    return ConceptTerm(
+        concept_id=concept.id,
+        language=language,
+        term=term,
+        normalized=normalize_key(term),
+        is_preferred=make_preferred,
+        source=source,
+    )
+
+
 def add_term(
     db: Session,
     concept: Concept,
@@ -69,25 +102,31 @@ def add_term(
 
     `preferred=None` makes it preferred only when the language has none yet.
     """
-    term = term.strip()[:255]
-    if not term or has_term(concept, language, term):
+    new = _build_term(concept, language, term, source, preferred)
+    if new is None:
         return None
 
-    make_preferred = (
-        preferred_term(concept, language) is None if preferred is None else preferred
-    )
-    if make_preferred:
-        _clear_preferred(concept, language)
-    new = ConceptTerm(
-        concept_id=concept.id,
-        language=language,
-        term=term,
-        normalized=normalize_key(term),
-        is_preferred=make_preferred,
-        source=source,
-    )
     concept.terms.append(new)
     db.flush()
+    sync_mirror(concept)
+    return new
+
+
+async def async_add_term(
+    db: AsyncSession,
+    concept: Concept,
+    language: str,
+    term: str,
+    source: str,
+    preferred: bool | None = None,
+) -> ConceptTerm | None:
+    """As `add_term`, on an AsyncSession ([72])."""
+    new = _build_term(concept, language, term, source, preferred)
+    if new is None:
+        return None
+
+    concept.terms.append(new)
+    await db.flush()
     sync_mirror(concept)
     return new
 

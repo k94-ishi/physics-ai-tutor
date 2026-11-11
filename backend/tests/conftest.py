@@ -342,6 +342,16 @@ def patch_generation(monkeypatch, generate) -> None:
     monkeypatch.setattr(deepseek_service, "async_generate_answer", _async_generate)
 
 
+def patch_translate_qa(monkeypatch, translate) -> None:
+    """As `patch_generation`, for the translation seam ([72])."""
+    monkeypatch.setattr(translation_service, "translate_qa", translate)
+
+    async def _async_translate(*args, **kwargs):
+        return translate(*args, **kwargs)
+
+    monkeypatch.setattr(translation_service, "async_translate_qa", _async_translate)
+
+
 def patch_create_embeddings(monkeypatch, create) -> None:
     """As `patch_generation`, for the embedding seam ([70])."""
     monkeypatch.setattr(embedding_service, "create_embeddings", create)

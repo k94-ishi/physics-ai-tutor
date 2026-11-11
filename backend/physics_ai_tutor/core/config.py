@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     # Reviewer output includes a full suggested answer, so it needs more
     # room than a student answer or its JSON gets truncated.
     ai_review_max_tokens: int = 3000
+    # Questions graded at the same time inside one run ([72]). Low by
+    # default: it multiplies the DeepSeek request rate, and a run is
+    # never urgent.
+    ai_review_concurrency: int = 3
+    # Rows translated at the same time by the background task ([72]).
+    translation_concurrency: int = 3
     # DeepSeek's discounted window, UTC "HH:MM" (JST 01:30-09:30); the
     # window wraps midnight. The review CLI refuses to start outside it
     # unless --force, so bulk runs land on the cheap tariff.

@@ -2,6 +2,7 @@ import logging
 import re
 from dataclasses import dataclass
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core import prompts
@@ -9,7 +10,7 @@ from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.exceptions import ConceptExtractionError, TranslationError
 from physics_ai_tutor.core.prompt_library import load_library
 from physics_ai_tutor.core.text import concept_pair_text, normalize_key
-from physics_ai_tutor.database.transaction import transaction
+from physics_ai_tutor.database.transaction import async_transaction, transaction
 from physics_ai_tutor.models import Concept
 from physics_ai_tutor.repositories import (
     concept_repository,
@@ -285,25 +286,18 @@ def translate_missing_name(db: Session, concept_id: int) -> bool:
     and a QA that uses it as the answer, so the translator sees the context
     that separates 位相 (phase) from 位相 (topology). No new prompt ([53]).
     """
-    concept = db.get(Concept, concept_id)
-    if concept is None:
-        return False
-    missing = [
-        lang
-        for lang in ("ja", "en")
-        if concept_sense_service.preferred_term(concept, lang) is None
-    ]
-    present = [lang for lang in ("ja", "en") if lang not in missing]
-    if not missing or not present:
+    # The reads commit before the LLM call, so no connection waits ([82]).
+    with transaction(db, "concept_name_read"):
+        plan = _name_translation_plan(db, concept_id)
+
+    if plan is None:
         return False
 
-    source, target = Language(present[0]), Language(missing[0])
-    word = concept_sense_service.preferred_term(concept, source.value)
-    assert word is not None
-    context = question_concept_repository.context_question(db, concept_id, source.value)
+    concept, source, target, word, context = plan
+
     try:
         translated, _ = translation_service.translate_qa(
-            word.term, context or word.term, source, target
+            word, context or word, source, target
         )
     except TranslationError:
         logger.warning("Concept name translation failed: concept_id=%d", concept_id)
@@ -311,6 +305,77 @@ def translate_missing_name(db: Session, concept_id: int) -> bool:
 
     with transaction(db, "translate_concept_name"):
         added = concept_sense_service.add_term(
+            db,
+            concept,
+            target.value,
+            translated,
+            concept_sense_service.TermSource.MACHINE,
+        )
+    return added is not None
+
+
+def _missing_and_present(concept: Concept) -> tuple[list[str], list[str]]:
+    missing = [
+        lang
+        for lang in ("ja", "en")
+        if concept_sense_service.preferred_term(concept, lang) is None
+    ]
+    present = [lang for lang in ("ja", "en") if lang not in missing]
+    return missing, present
+
+
+def _name_translation_plan(db: Session, concept_id: int):
+    """What to translate for this sense, or None when there is nothing."""
+    concept = db.get(Concept, concept_id)
+    if concept is None:
+        return None
+
+    missing, present = _missing_and_present(concept)
+    if not missing or not present:
+        return None
+
+    source, target = Language(present[0]), Language(missing[0])
+    word = concept_sense_service.preferred_term(concept, source.value)
+    assert word is not None
+    context = question_concept_repository.context_question(db, concept_id, source.value)
+
+    return concept, source, target, word.term, context
+
+
+async def async_translate_missing_name(db: AsyncSession, concept_id: int) -> bool:
+    """As `translate_missing_name`, on the event loop ([72])."""
+    async with async_transaction(db, "concept_name_read"):
+        concept = await db.get(Concept, concept_id)
+        if concept is None:
+            plan = None
+        else:
+            missing, present = _missing_and_present(concept)
+            if not missing or not present:
+                plan = None
+            else:
+                source, target = Language(present[0]), Language(missing[0])
+                word = concept_sense_service.preferred_term(concept, source.value)
+                assert word is not None
+                context = await question_concept_repository.async_context_question(
+                    db, concept_id, source.value
+                )
+                plan = (source, target, word.term, context)
+
+    if plan is None or concept is None:
+        return False
+
+    source, target, word_text, context = plan
+
+    try:
+        translated, _ = await translation_service.async_translate_qa(
+            word_text, context or word_text, source, target
+        )
+    except TranslationError:
+        logger.warning("Concept name translation failed: concept_id=%d", concept_id)
+        return False
+
+    async with async_transaction(db, "translate_concept_name"):
+        added = await concept_sense_service.async_add_term(
             db,
             concept,
             target.value,

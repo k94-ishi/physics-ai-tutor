@@ -309,3 +309,66 @@ def test_the_llm_transaction_check_catches_a_violation():
     )
     found = _llm_calls_inside_transactions(sample)
     assert "f" in found and "g" in found
+
+
+def test_services_use_no_threading_primitives():
+    """Background work is asyncio, not threads ([72]).
+
+    A lock or thread-local in a service is a sign that something is
+    coordinating across threads, which the event loop makes both
+    unnecessary and misleading - it holds inside one process only, and
+    [75] is where cross-process claims belong.
+    """
+    offenders = {}
+    for path in _modules("services"):
+        names = _imports(ast.parse(path.read_text()))
+        bad = [
+            name
+            for name in names
+            if name == "threading" or name.startswith("threading.")
+        ]
+        if bad:
+            offenders[path.name] = bad
+    assert offenders == {}
+
+
+def test_every_background_task_target_is_async():
+    """`add_task` must be handed a coroutine function ([72]).
+
+    A sync target runs on the anyio thread pool, which is what [68]
+    measured competing with request handling; one left behind would
+    quietly reintroduce that.
+    """
+    targets: list[tuple[str, str]] = []
+    for path in _modules("api"):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "add_task"
+                and node.args
+            ):
+                first = node.args[0]
+                if isinstance(first, ast.Attribute):
+                    targets.append((first.value.id, first.attr))
+
+    assert targets, "no background tasks found; has the scan broken?"
+
+    # Resolve each target in its service module and check it is `async def`.
+    not_async = []
+    for module_name, function_name in targets:
+        candidates = list(PACKAGE.joinpath("services").glob(f"{module_name}.py"))
+        assert candidates, f"cannot locate service module {module_name}"
+        tree = ast.parse(candidates[0].read_text())
+        found = [
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+            and node.name == function_name
+        ]
+        assert found, f"{module_name}.{function_name} not found"
+        if not isinstance(found[0], ast.AsyncFunctionDef):
+            not_async.append(f"{module_name}.{function_name}")
+
+    assert not_async == []

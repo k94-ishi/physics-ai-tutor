@@ -92,7 +92,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 69 | closed | 69-async-foundation.md | Async foundation: engine, session, transaction, and test plumbing | — (file-era issue) |
 | 70 | closed | 70-async-hot-path-ask-and-search.md | Asynchronize the hot path: /ai/ask and similarity search, async LLM clients | — (file-era issue) |
 | 71 | closed | 71-streaming-ask-answers.md | Stream /ai/ask answers (SSE) so students read while it generates | — (file-era issue) |
-| 72 | open | 72-async-background-work.md | Background work on the event loop: parallel translations, bounded AI-review concurrency | — (file-era issue) |
+| 72 | closed | 72-async-background-work.md | Background work on the event loop: parallel translations, bounded AI-review concurrency | — (file-era issue) |
 | 73 | open | 73-async-remaining-modules.md | Asynchronize the rest: all routers, services, repositories; app keeps no sync engine | — (file-era issue) |
 | 74 | open | 74-latency-quick-wins.md | Latency quick wins independent of async: vector index, pool settings, compression | — (file-era issue) |
 | 75 | open | 75-worker-safe-background-claims.md | Worker-safe background claims: move de-duplication into the database, then scale out | — (file-era issue) |

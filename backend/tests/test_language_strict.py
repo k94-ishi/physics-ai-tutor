@@ -1,10 +1,13 @@
 """Students never read the other language on the question page ([53])."""
 
+import pytest
+
 from physics_ai_tutor.models import Question
 from physics_ai_tutor.services import (
     background_translation_service,
     translation_service,
 )
+from tests.conftest import patch_translate_qa
 
 QUESTIONS = "/api/v1/questions"
 
@@ -88,7 +91,8 @@ def test_admin_keeps_the_fallback(admin_client, monkeypatch):
     assert other in [item["id"] for item in related]
 
 
-def test_background_translation_skips_rows_that_are_not_approved(db):
+@pytest.mark.anyio
+async def test_background_translation_skips_rows_that_are_not_approved(db):
     unreviewed = Question(
         question_ja="未承認",
         answer_ja="回答",
@@ -99,23 +103,26 @@ def test_background_translation_skips_rows_that_are_not_approved(db):
     db.commit()
 
     claimed = background_translation_service.claim([unreviewed.id])
-    background_translation_service.translate_missing(claimed)
+    await background_translation_service.translate_missing(claimed)
 
     db.expire_all()
     assert db.get(Question, unreviewed.id).question_en is None
+    # The claim is released even when the row is skipped, or the row
+    # could never be picked up again after it is approved.
+    assert background_translation_service.claim([unreviewed.id]) == [unreviewed.id]
+    background_translation_service.release(unreviewed.id)
 
 
 def test_claim_deduplicates_rows_in_flight():
     first = background_translation_service.claim([901, 902, 901])
     second = background_translation_service.claim([902, 903])
-    background_translation_service.translate_missing([])
 
     assert first == [901, 902]
     assert second == [903]
 
     # Release so other tests start clean.
     for question_id in (901, 902, 903):
-        background_translation_service._release(question_id)
+        background_translation_service.release(question_id)
 
 
 def test_concept_name_missing_in_lang_is_translated_once(
@@ -128,7 +135,7 @@ def test_concept_name_missing_in_lang_is_translated_once(
         calls.append(question)
         return f"[{target}] {question}", f"[{target}] {answer}"
 
-    monkeypatch.setattr(translation_service, "translate_qa", _translate)
+    patch_translate_qa(monkeypatch, _translate)
 
     first = client.get(f"{QUESTIONS}/{current}", params={"lang": "en"}).json()
     assert first["concepts"] == ["concept A"]
@@ -151,7 +158,7 @@ def test_translated_concept_word_may_equal_another_senses_word(
         seen.append((question, answer))
         return "concept A", "context"
 
-    monkeypatch.setattr(translation_service, "translate_qa", _translate)
+    patch_translate_qa(monkeypatch, _translate)
 
     client.get(f"{QUESTIONS}/{current}", params={"lang": "en"})
     again = client.get(f"{QUESTIONS}/{current}", params={"lang": "en"}).json()

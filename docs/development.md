@@ -193,6 +193,7 @@ Layout of `backend/tests/`:
 | `test_async_foundation.py` | Async engine, session, `async_transaction` commit/rollback, pool sizing ([69]) |
 | `test_async_hot_path.py` | A pending generation does not hold the server; concurrent generations overlap ([70]) |
 | `test_llm_connection_discipline.py` | No transaction is open at the moment any LLM seam is called ([82]) |
+| `test_background_concurrency.py` | Background items overlap up to the limit; takeover stops a run; one call per row ([72]) |
 | `test_ask_stream.py` | Streamed answers: SSE events, the off-topic sentinel never leaking, nothing saved on an abandoned stream ([71]) |
 | `test_timing.py` | Stage timing logs and the request-path label ([68]) |
 | `test_language_strict.py` | Students never get the other language on related/prerequisites/concepts; hidden rows are translated once in the background ([53]) |
@@ -313,6 +314,17 @@ enforced by `tests/test_architecture.py`:
 - **Background tasks** open their session with `background_session()`
   (`database/session.py`); tests point that one helper at the test
   database. CLIs keep their own `SessionLocal`.
+- **Background work is asyncio, a few items at a time** ([72]). Every
+  `add_task` target is a coroutine function — a sync one would run on
+  the anyio thread pool and compete with request handling, which is what
+  [68] measured. Items run under a small semaphore
+  (`AI_REVIEW_CONCURRENCY`, `TRANSLATION_CONCURRENCY`), and **each
+  concurrent item opens its own session**, because a session cannot be
+  shared between tasks running at once. No `threading` primitives in
+  services; both rules are enforced by `tests/test_architecture.py`.
+  In-process tasks still die with a deploy or restart: translations
+  self-heal on the next view and runs are reaped by the timeout guard,
+  which is the same trade-off as before concurrency.
 
 ### Two stacks during the async migration ([69])
 
@@ -570,6 +582,8 @@ Backend (`backend/.env`):
 | `AI_REVIEW_ENABLED` | no | Grade each new AI answer into `ai_reviews` (default `false`; one extra DeepSeek call per generation) |
 | `AI_REVIEW_DAILY_CAP` | no | Rolling 24h budget of reviewer calls across all runs (default `200`) |
 | `AI_REVIEW_MAX_TOKENS` | no | Output budget for reviewer calls (default `3000`); below ~2500 the JSON with a full suggested answer gets truncated |
+| `AI_REVIEW_CONCURRENCY` | no | Questions graded at the same time inside one run (default `3`, [72]); multiplies the DeepSeek request rate |
+| `TRANSLATION_CONCURRENCY` | no | Rows translated at the same time by the background task (default `3`, [72]) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | no | Enable Google Sign-In for students; all three must be set (see below) |
 | `FRONTEND_URL` | no | Where the Google callback redirects the browser (default `http://localhost:3000`) |
 

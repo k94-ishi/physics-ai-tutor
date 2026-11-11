@@ -125,7 +125,8 @@ def start_ai_review_run(
         run.scope,
         run.requested_count,
     )
-    background_tasks.add_task(ai_review_service.execute_run_in_background, run.id)
+    # Async so the run grades a few questions at a time ([72]).
+    background_tasks.add_task(ai_review_service.async_execute_run_in_background, run.id)
 
     return run
 

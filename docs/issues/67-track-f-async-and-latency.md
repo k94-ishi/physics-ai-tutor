@@ -78,8 +78,10 @@ wait for the slowest endpoint from "whole answer" to "first words".
    2026-11-11)~~ done 2026-11-11 (60 concurrent asks: 50.5 s -> 21.4 s,
    one generation wave; enforced by an architecture test plus runtime
    probes)
-6. [72] Background work on the event loop: asyncio tasks, parallel
-   translations, bounded concurrency inside AI review runs.
+6. ~~[72] Background work on the event loop: asyncio tasks, parallel
+   translations, bounded concurrency inside AI review runs~~ done
+   2026-11-12 (3.0x at K=3, 6.0x at K=6, exactly linear; a 200-question
+   nightly run goes from over an hour to about twenty minutes)
 7. [75] Worker-safe background claims: de-duplication moves into the
    database, then run more than one worker. Correctness first, because
    scaling out otherwise doubles the LLM bill.

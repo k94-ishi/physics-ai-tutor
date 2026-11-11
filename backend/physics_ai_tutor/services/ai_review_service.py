@@ -1,9 +1,12 @@
+import asyncio
 import json
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from typing import cast
 
-from sqlalchemy import func
+from sqlalchemy import CursorResult, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -11,7 +14,10 @@ from sqlalchemy.orm import Session
 from physics_ai_tutor.core import timing
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.prompt_library import load_library
-from physics_ai_tutor.database.session import background_session
+from physics_ai_tutor.database.session import (
+    async_background_session,
+    background_session,
+)
 from physics_ai_tutor.database.transaction import async_transaction, transaction
 from physics_ai_tutor.models import AiReview, AiReviewRun, Question
 from physics_ai_tutor.repositories import (
@@ -647,3 +653,171 @@ def list_runs(db: Session, limit: int) -> list[AiReviewRun]:
 
 def get_run(db: Session, run_id: int) -> AiReviewRun | None:
     return db.get(AiReviewRun, run_id)
+
+
+# --- concurrent runs ([72]) -----------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ItemResult:
+    """One graded question, as plain values the run row can add up.
+
+    Token counts are read inside the item's own session and carried out as
+    integers, so the run bookkeeping never touches a detached ORM row.
+    """
+
+    outcome: Outcome
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+
+def _apply_item(run: AiReviewRun, result: ItemResult) -> None:
+    """Fold one item's outcome into the run's counters."""
+    if result.outcome is Outcome.REVIEWED:
+        run.reviewed_count += 1
+        run.prompt_tokens += result.prompt_tokens
+        run.completion_tokens += result.completion_tokens
+    elif result.outcome is Outcome.SKIPPED:
+        run.skipped_count += 1
+    else:
+        run.failed_count += 1
+
+    run.heartbeat_at = datetime.now(UTC)
+
+
+async def async_review_question_with_outcome(
+    db: AsyncSession, question: Question
+) -> tuple[AiReview | None, Outcome]:
+    """As `review_question_with_outcome`, on the event loop ([72])."""
+    if _skip_reason(question) is not None:
+        logger.info(
+            "AI review skipped: question_id=%d reason=%s",
+            question.id,
+            _skip_reason(question),
+        )
+        return None, Outcome.SKIPPED
+
+    row = await async_review_question(db, question)
+    if row is None:
+        return None, Outcome.FAILED
+
+    return row, Outcome.REVIEWED
+
+
+async def _still_running(db: AsyncSession, run_id: int) -> bool:
+    """Whether this run is still ours to execute ([34])."""
+    async with async_transaction(db, "ai_review_run_status"):
+        status = await db.scalar(
+            select(AiReviewRun.status).where(AiReviewRun.id == run_id)
+        )
+    return status == "running"
+
+
+async def async_execute_run(db: AsyncSession, run_id: int) -> AiReviewRun | None:
+    """Process the run's question list, a few at a time ([72]).
+
+    Each item grades on its own session, because a session cannot be
+    shared between tasks running at once. The run row is updated from one
+    place, under a lock, so progress polling still sees counts climb and
+    two items never write the row at the same time.
+    """
+    run = await db.get(AiReviewRun, run_id)
+    if run is None or run.status != "running":
+        return run
+
+    question_ids = list(run.question_ids)
+    limiter = asyncio.Semaphore(max(1, settings.ai_review_concurrency))
+    progress = asyncio.Lock()
+    taken_over = asyncio.Event()
+
+    async def record(result: ItemResult) -> None:
+        async with progress:
+            async with async_transaction(db, "ai_review_progress"):
+                await db.refresh(run)
+                if run.status != "running":
+                    taken_over.set()
+                    return
+                _apply_item(run, result)
+
+    async def review_one(question_id: int) -> None:
+        async with limiter:
+            if taken_over.is_set():
+                return
+
+            try:
+                async with async_background_session() as item_db:
+                    # Another start may have reaped this run as timed out
+                    # and begun its own. Checked per item so a takeover
+                    # stops the queue rather than only the next item.
+                    if not await _still_running(item_db, run_id):
+                        taken_over.set()
+                        return
+
+                    question = await item_db.get(Question, question_id)
+                    if question is None:
+                        result = ItemResult(Outcome.SKIPPED)
+                    else:
+                        row, outcome = await async_review_question_with_outcome(
+                            item_db, question
+                        )
+                        result = ItemResult(
+                            outcome,
+                            (row.prompt_tokens or 0) if row is not None else 0,
+                            (row.completion_tokens or 0) if row is not None else 0,
+                        )
+            except Exception:
+                logger.exception(
+                    "AI review item crashed: run_id=%d question_id=%d",
+                    run_id,
+                    question_id,
+                )
+                result = ItemResult(Outcome.FAILED)
+
+            await record(result)
+
+    try:
+        await asyncio.gather(*(review_one(qid) for qid in question_ids))
+
+        if taken_over.is_set():
+            logger.warning("AI review run stopped: run_id=%d taken_over=1", run_id)
+            await db.refresh(run)
+            return run
+
+        if await _async_finish(db, run, "done"):
+            return run
+        logger.warning("AI review run was taken over: run_id=%d", run_id)
+    except Exception:
+        logger.exception("AI review run failed: run_id=%d", run_id)
+        await _async_finish(db, run, "failed", "unexpected error; see server logs")
+
+    return run
+
+
+async def _async_finish(
+    db: AsyncSession, run: AiReviewRun, status: str, error: str | None = None
+) -> bool:
+    """Close the run, but only while it is still ours. True when written."""
+    async with async_transaction(db, "finish_ai_review_run"):
+        result = cast(
+            CursorResult,
+            await db.execute(
+                update(AiReviewRun)
+                .where(AiReviewRun.id == run.id, AiReviewRun.status == "running")
+                .values(status=status, error=error, finished_at=func.now())
+            ),
+        )
+        updated = result.rowcount
+    await db.refresh(run)
+
+    return bool(updated)
+
+
+async def async_execute_run_in_background(run_id: int) -> None:
+    """Run the reviewer after the response is sent, on its own session ([72])."""
+    with timing.request_path("background:ai_review_run"):
+        async with async_background_session() as db:
+            try:
+                with timing.stage("ai_review_run", run_id=run_id):
+                    await async_execute_run(db, run_id)
+            except Exception:
+                logger.exception("Background AI review run crashed: run_id=%d", run_id)

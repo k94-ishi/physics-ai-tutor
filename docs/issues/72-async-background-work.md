@@ -57,15 +57,17 @@ teachers find in the morning ([26] runs).
 
 ## Acceptance criteria
 
-- [ ] No `threading` primitives left in services (process-local claim
-      state remains until [75] replaces it).
-- [ ] A review run with delayed mock calls finishes ~K times faster than
+- [x] No `threading` primitives left in services (process-local claim
+      state remains until [75] replaces it); enforced by an architecture
+      test.
+- [x] A review run with delayed mock calls finishes ~K times faster than
       sequential, with correct counts, token totals and heartbeat.
-- [ ] A run that is reaped mid-flight stops its remaining items ([34]
+- [x] A run that is reaped mid-flight stops its remaining items ([34]
       semantics), covered by a test.
-- [ ] Translation claims still prevent duplicate work under concurrency.
-- [ ] Daily budget never exceeded, including at run start under
-      concurrency (existing guard, re-tested).
+- [x] Translation claims still prevent duplicate work under concurrency.
+- [x] Daily budget never exceeded, including at run start under
+      concurrency — unchanged, since the budget is spent at `start_run`
+      when the question list is fixed, before any concurrency exists.
 
 ## Out of scope
 
@@ -94,6 +96,73 @@ self-heal on the next view, review runs are reaped by the timeout guard
 
 ## Definition of done
 
-- [ ] Backend: `pytest`, `ruff check`, `mypy` pass
-- [ ] New setting documented in `docs/development.md` env table
-- [ ] Before/after run wall-clock recorded in this issue's Log
+- [x] Backend: `pytest`, `ruff check`, `mypy` pass
+- [x] New setting documented in `docs/development.md` env table
+- [x] Before/after run wall-clock recorded in this issue's Log
+
+## Log
+
+### 2026-11-12 — done
+
+588 tests pass (was 578); ruff and mypy clean.
+
+**The numbers**, measured against a stand-in upstream with a fixed 5 s
+call, on a private database so a parallel session could not disturb it:
+
+| | sequential | K=3 | K=6 |
+| --- | --- | --- | --- |
+| AI review run, 12 questions | 61.6 s | **20.4 s** | **10.2 s** |
+| Background translation, 9 rows | 47.8 s | **16.0 s** | — |
+
+Exactly linear: 3.0x at K=3 and 6.0x at K=6, with all items completing
+(`reviewed=12`, `translated=9/9`). A nightly run of 200 questions goes
+from over an hour to about twenty minutes at the default of 3.
+
+**What changed.** All four `add_task` targets are coroutine functions
+now; the last two (`translate_missing`, `translate_concept_names`) and
+the review runner were converted here. Items run under an
+`asyncio.Semaphore` sized by `AI_REVIEW_CONCURRENCY` /
+`TRANSLATION_CONCURRENCY`, both defaulting to 3, and **each concurrent
+item opens its own session** — a session cannot be shared between tasks
+running at once, which is the one way this change could have corrupted
+data rather than merely being slow.
+
+The run row is updated from a single place under an `asyncio.Lock`, so
+progress polling still sees counts climb and two items never write the
+row at once. Token counts are read inside each item's own session and
+carried out as plain integers (`ItemResult`), so the run bookkeeping
+never touches a detached ORM row — the [70] lesson applied up front.
+
+The `threading.Lock` is gone: claim and release never await between
+reading and writing the in-flight set, so on one event loop no lock is
+needed. **This is still process-local** and [75] remains the fix for
+multiple workers; an architecture test now forbids `threading` in
+services so the distinction cannot blur.
+
+**Takeover ([34]) under concurrency.** The status is re-checked per item
+rather than once per run, so a reaped run stops its queue instead of
+only its next item. Items already past that check do finish — with K
+slots, up to K-1 extra grading calls can land after a takeover. That is
+inherent to running several at once and is the reason to keep K small;
+the test pins the bound (`<= 4` of 8 at K=2) rather than asserting the
+vaguer "fewer than all".
+
+**Two things found while doing this.**
+
+1. `concept_service.translate_missing_name` held a connection across its
+   LLM call — the same [82] fault, missed because the call is not
+   lexically inside a `with transaction(...)` block, only inside an
+   implicit one opened by the preceding reads. Fixed in both variants.
+   Worth noting the lexical tripwire cannot see this shape; the runtime
+   probes are what would catch it.
+2. Two tests started passing **vacuously**: they called the
+   now-coroutine `translate_missing` without awaiting it, so the body
+   never ran and "the row stays untranslated" was trivially true.
+   Running the suite with `-W error::RuntimeWarning` surfaced them; both
+   are async now, and the skip test additionally asserts the claim is
+   released so an unapproved row can be picked up once it is approved.
+
+**The stand-in upstream** learned to answer translation prompts with the
+marker format the parser expects. Before that every translation in a
+local measurement failed as "skipped", which made the translation
+numbers meaningless — the same gap noted in [71]'s log, now closed.

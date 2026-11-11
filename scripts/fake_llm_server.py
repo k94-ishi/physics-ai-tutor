@@ -27,6 +27,27 @@ EMBEDDING_DIMENSIONS = 1536
 ANSWER = "これはダミーの回答です。" * 20
 # Streamed in pieces so the client has something to render early.
 ANSWER_PIECES = ["これはダミーの回答です。"] * 20
+QUESTION_MARKER = "=====QUESTION====="
+ANSWER_MARKER = "=====ANSWER====="
+
+
+def _reply_for(request: dict) -> str:
+    """The text a real provider would return for this prompt.
+
+    A translation prompt expects the two marker lines back, so a plain
+    sentence would fail parsing and every translation would be "skipped".
+    Detected from the prompt rather than configured, so the translation
+    paths are exercisable too ([72]).
+    """
+    prompt = " ".join(
+        message.get("content", "") for message in request.get("messages", [])
+    )
+    if QUESTION_MARKER in prompt:
+        return (
+            f"{QUESTION_MARKER}\n[translated] dummy question\n"
+            f"{ANSWER_MARKER}\n[translated] dummy answer"
+        )
+    return ANSWER
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -51,7 +72,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
 
-        words = ANSWER_PIECES
+        reply = _reply_for(request)
+        words = ANSWER_PIECES if reply is ANSWER else [reply]
         per_piece = self.chat_delay / max(len(words), 1)
         model = request.get("model", "fake-chat")
 
@@ -119,7 +141,10 @@ class Handler(BaseHTTPRequestHandler):
                 "choices": [
                     {
                         "index": 0,
-                        "message": {"role": "assistant", "content": ANSWER},
+                        "message": {
+                            "role": "assistant",
+                            "content": _reply_for(request),
+                        },
                         "finish_reason": "stop",
                     }
                 ],

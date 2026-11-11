@@ -5,7 +5,7 @@ import pytest
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.text import normalize_text
 from physics_ai_tutor.models import QueryEmbedding
-from physics_ai_tutor.services import embedding_service
+from tests.conftest import fake_generation, patch_create_embeddings, patch_generation
 
 SEARCH_PATH = "/api/v1/questions/search"
 
@@ -18,7 +18,7 @@ def _counted_embeddings(monkeypatch):
         calls["n"] += 1
         return [[0.1] * 1536 for _ in texts]
 
-    monkeypatch.setattr(embedding_service, "create_embeddings", _fake)
+    patch_create_embeddings(monkeypatch, _fake)
     return calls
 
 
@@ -72,10 +72,8 @@ def test_rag_ask_reuses_a_searched_query_embedding(
 ):
     """The ask path goes through the same cache: search first, ask after -
     the ask's retrieval embeds nothing new."""
-    from physics_ai_tutor.services import deepseek_service
-    from tests.conftest import fake_generation
 
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
 
     client.post(SEARCH_PATH, json={"query": "空気抵抗がある場合の斜方投射"})
     before = _counted_embeddings["n"]

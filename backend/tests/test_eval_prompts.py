@@ -3,8 +3,9 @@ from types import SimpleNamespace
 
 from physics_ai_tutor.cli import eval_prompts
 from physics_ai_tutor.schemas.ai_review import AiReviewVerdict
-from physics_ai_tutor.services import ai_review_service, deepseek_service
+from physics_ai_tutor.services import ai_review_service
 from physics_ai_tutor.services.deepseek_service import GenerationResult
+from tests.conftest import patch_generation
 
 
 def test_golden_set_is_valid_and_balanced():
@@ -129,7 +130,7 @@ def test_dry_run_needs_no_api(monkeypatch, capsys):
         raise AssertionError("dry run must not call the API")
 
     monkeypatch.setattr(ai_review_service, "grade_answer", _forbidden)
-    monkeypatch.setattr(deepseek_service, "generate_answer", _forbidden)
+    patch_generation(monkeypatch, _forbidden)
 
     assert eval_prompts.main(dry_run=True) == 0
     assert "no API calls made" in capsys.readouterr().out
@@ -147,7 +148,7 @@ def test_regenerate_uses_the_answer_prompt_at_temperature_zero(monkeypatch, tmp_
             content="regenerated", model="mock", prompt_tokens=1, completion_tokens=1
         )
 
-    monkeypatch.setattr(deepseek_service, "generate_answer", _generate)
+    patch_generation(monkeypatch, _generate)
 
     captured = {"answers": set()}
 

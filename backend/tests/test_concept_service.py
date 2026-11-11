@@ -5,11 +5,11 @@ from physics_ai_tutor.repositories import concept_repository, question_repositor
 from physics_ai_tutor.services import (
     concept_service,
     deepseek_service,
-    embedding_service,
 )
 from physics_ai_tutor.services.concept_service import (
     extract_concept_names as real_extract_concept_names,
 )
+from tests.conftest import patch_create_embeddings
 
 
 def _create_question(db, question="質問", answer="回答"):
@@ -81,7 +81,7 @@ def test_attach_concepts_to_question_embeds_the_name_only(db, monkeypatch):
         captured.extend(texts)
         return [[0.1] * 1536 for _ in texts]
 
-    monkeypatch.setattr(embedding_service, "create_embeddings", fake_create_embeddings)
+    patch_create_embeddings(monkeypatch, fake_create_embeddings)
 
     concept_service.attach_concepts_to_question(
         db, question_id=question.id, concept_names=["加速度"]

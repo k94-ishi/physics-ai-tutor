@@ -67,8 +67,10 @@ wait for the slowest endpoint from "whole answer" to "first words".
    plumbing, one small route converted as proof~~ done 2026-11-11
    (adds greenlet via `sqlalchemy[asyncio]`; conventions in
    docs/development.md, "Two stacks during the async migration")
-3. [70] Hot path: `/ai/ask` and similarity search go async end to end,
-   with `AsyncOpenAI` clients for both providers.
+3. ~~[70] Hot path: `/ai/ask` and similarity search go async end to end,
+   with `AsyncOpenAI` clients for both providers~~ done 2026-11-11
+   (`/health` p95 under load 15.6 s -> 1.6 ms; `/exact-match` deferred to
+   [73], and the database pool is now the next limit)
 4. [71] Streaming `/ai/ask` (SSE): the student reads the answer while it
    generates. The one step with a visible behaviour change.
 5. [72] Background work on the event loop: asyncio tasks, parallel

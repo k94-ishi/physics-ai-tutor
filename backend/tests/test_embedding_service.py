@@ -8,6 +8,7 @@ from physics_ai_tutor.services import embedding_service
 from physics_ai_tutor.services.embedding_service import (
     create_embeddings as real_create_embeddings,
 )
+from tests.conftest import patch_create_embeddings
 
 
 class _FakeOpenAIError(OpenAIError):
@@ -21,7 +22,7 @@ def test_search_similar_questions_calls_create_embeddings_with_query(db, monkeyp
         calls.append(texts)
         return [[0.1] * 1536]
 
-    monkeypatch.setattr(embedding_service, "create_embeddings", fake_create_embeddings)
+    patch_create_embeddings(monkeypatch, fake_create_embeddings)
     monkeypatch.setattr(
         embedding_service,
         "search_similar_embeddings",

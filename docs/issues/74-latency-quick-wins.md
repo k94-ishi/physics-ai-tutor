@@ -28,10 +28,13 @@ cannot: query cost, connection setup, and bytes on the wire.
   `<=>` queries in `embedding_repository`). HNSW recall is approximate;
   verify the golden similarity expectations in the suite still hold with
   the index on.
-- **Connection pool**: explicit `pool_size`/`max_overflow`/
-  `pool_pre_ping` against the Supabase pooler (today's defaults are
-  implicit); avoids first-request reconnect stalls after idle periods
-  and connection churn under load.
+- **Connection pool**: sizes are explicit since [69] (5 + 10 with
+  `pool_pre_ping`); what remains is choosing the right numbers against
+  the Supabase pooler and the worker count ([75]). [70] showed the pool
+  is now the binding constraint once threads no longer are - 60
+  concurrent asks took 50.5 s against a 15-connection pool - so size it
+  together with [72]'s fix for connections held across LLM calls, and
+  re-measure rather than assuming a bigger pool is the answer.
 - **Response compression**: long markdown answers and admin lists are
   text; check what Render/Vercel already compress, and if the backend
   responses cross the wire uncompressed, add `GZipMiddleware` with a

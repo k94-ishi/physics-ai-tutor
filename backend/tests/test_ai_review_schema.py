@@ -2,14 +2,13 @@ from physics_ai_tutor.repositories import ai_review_repository
 from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
 from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.question_review import QuestionReviewReason
-from physics_ai_tutor.services import deepseek_service
-from tests.conftest import fake_generation
+from tests.conftest import fake_generation, patch_generation
 
 ASK_PATH = "/api/v1/ai/ask"
 
 
 def _make_question(client, monkeypatch, text="AIレビューの対象質問") -> int:
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
     return client.post(ASK_PATH, json={"question": text}).json()["question_id"]
 
 

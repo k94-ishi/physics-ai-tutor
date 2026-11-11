@@ -50,6 +50,14 @@ teachers find in the morning ([26] runs).
 - `translate_into` stays translation-then-embedding (the embedding needs
   the translated text), but a question's independent targets and the
   question/answer embedding pair may run concurrently if it stays simple.
+- **Stop holding a database connection across the LLM call.**
+  `translate_missing_languages` wraps translate *and* embed in one
+  transaction, so every background translation occupies one of the 15
+  pooled connections for its whole ~20 s call. [70] measured this as the
+  bottleneck that replaced thread starvation: 60 concurrent asks take
+  50.5 s instead of one ~21 s wave, purely from connection contention.
+  Split the transaction so the connection is held for the writes, not
+  for the wait.
 
 ## Acceptance criteria
 

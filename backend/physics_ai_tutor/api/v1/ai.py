@@ -1,14 +1,14 @@
 import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.api.dependencies import (
     AiAskRateLimit,
     enforce_ai_ask_rate_limit,
     get_current_user_optional,
 )
-from physics_ai_tutor.database.dependency import get_db
+from physics_ai_tutor.database.dependency import get_async_db
 from physics_ai_tutor.schemas.ai import AskAiRequest, AskAiResponse
 from physics_ai_tutor.schemas.token import JWTPayload
 from physics_ai_tutor.services import ai_service
@@ -19,14 +19,14 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 
 
 @router.post("/ask", response_model=AskAiResponse)
-def ask_ai(
+async def ask_ai(
     request: AskAiRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     rate_limit: AiAskRateLimit = Depends(enforce_ai_ask_rate_limit),
     user: JWTPayload | None = Depends(get_current_user_optional),
 ):
-    outcome = ai_service.ask(
+    outcome = await ai_service.ask(
         db,
         request,
         user_id=int(user.sub) if user is not None else None,

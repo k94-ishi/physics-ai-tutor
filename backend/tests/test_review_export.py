@@ -6,8 +6,8 @@ from sqlalchemy.orm import sessionmaker
 
 from physics_ai_tutor.cli import export_reviews as export_cli
 from physics_ai_tutor.models import QuestionReview
-from physics_ai_tutor.services import deepseek_service, review_export_service
-from tests.conftest import engine, fake_generation
+from physics_ai_tutor.services import review_export_service
+from tests.conftest import engine, fake_generation, patch_generation
 
 ASK_PATH = "/api/v1/ai/ask"
 QUESTIONS = "/api/v1/questions"
@@ -15,9 +15,7 @@ EXPORT_PATH = "/api/v1/admin/reviews/export"
 
 
 def _ask_and_edit_approve(client, admin_client, monkeypatch, text="輸出テスト質問"):
-    monkeypatch.setattr(
-        deepseek_service, "generate_answer", fake_generation("元の回答")
-    )
+    patch_generation(monkeypatch, fake_generation("元の回答"))
     question_id = client.post(ASK_PATH, json={"question": text}).json()["question_id"]
 
     review = admin_client.post(
@@ -178,7 +176,7 @@ def test_export_carries_the_ai_verdict_the_teacher_could_see(
     from physics_ai_tutor.schemas.language import Language
     from physics_ai_tutor.schemas.question_review import QuestionReviewReason
 
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
     question_id = client.post(ASK_PATH, json={"question": "AI付き輸出の質問"}).json()[
         "question_id"
     ]

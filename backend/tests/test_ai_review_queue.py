@@ -2,15 +2,14 @@ from physics_ai_tutor.repositories import ai_review_repository
 from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
 from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.question_review import QuestionReviewReason
-from physics_ai_tutor.services import deepseek_service
-from tests.conftest import fake_generation
+from tests.conftest import fake_generation, patch_generation
 
 ASK_PATH = "/api/v1/ai/ask"
 QUESTIONS = "/api/v1/questions"
 
 
 def _ask(client, monkeypatch, text, answer="回答"):
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation(answer))
+    patch_generation(monkeypatch, fake_generation(answer))
     return client.post(ASK_PATH, json={"question": text}).json()["question_id"]
 
 
@@ -95,7 +94,7 @@ def test_sort_by_asked_count(client, user_client, admin_client, db, monkeypatch)
     popular = _ask(client, monkeypatch, "よく聞かれる質問です")
     quiet = _ask(client, monkeypatch, "あまり聞かれない質問です")
     # Two signed-in asks (one hit) for the popular question, none for the other.
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
     user_client.post(ASK_PATH, json={"question": "よく聞かれる質問です"})
     user_client.post(ASK_PATH, json={"question": "よく聞かれる質問です"})
 

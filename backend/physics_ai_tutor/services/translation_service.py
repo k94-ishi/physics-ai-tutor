@@ -28,17 +28,8 @@ def _parse(content: str) -> tuple[str, str]:
     return question, answer
 
 
-def translate_qa(
-    question: str,
-    answer: str,
-    source: Language,
-    target: Language,
-) -> tuple[str, str]:
-    """Translate a question/answer pair. Raises TranslationError on failure.
-
-    This is the single seam for swapping the translation backend.
-    """
-    user_prompt = prompts.TRANSLATE_USER_TEMPLATE.format(
+def _user_prompt(question: str, answer: str, source: Language, target: Language) -> str:
+    return prompts.TRANSLATE_USER_TEMPLATE.format(
         source=prompts.LANGUAGE_NAMES[source],
         target=prompts.LANGUAGE_NAMES[target],
         glossary=prompts.glossary_block(),
@@ -46,13 +37,8 @@ def translate_qa(
         answer=answer,
     )
 
-    try:
-        content = deepseek_service.chat_completion(
-            prompts.TRANSLATE_SYSTEM_PROMPT, user_prompt
-        )
-    except Exception as exc:
-        raise TranslationError("Translation request failed.") from exc
 
+def _translated(content: str, source: Language, target: Language) -> tuple[str, str]:
     translated = _parse(content)
 
     logger.info(
@@ -63,3 +49,42 @@ def translate_qa(
     )
 
     return translated
+
+
+def translate_qa(
+    question: str,
+    answer: str,
+    source: Language,
+    target: Language,
+) -> tuple[str, str]:
+    """Translate a question/answer pair. Raises TranslationError on failure.
+
+    This is the single seam for swapping the translation backend.
+    """
+    try:
+        content = deepseek_service.chat_completion(
+            prompts.TRANSLATE_SYSTEM_PROMPT,
+            _user_prompt(question, answer, source, target),
+        )
+    except Exception as exc:
+        raise TranslationError("Translation request failed.") from exc
+
+    return _translated(content, source, target)
+
+
+async def async_translate_qa(
+    question: str,
+    answer: str,
+    source: Language,
+    target: Language,
+) -> tuple[str, str]:
+    """As `translate_qa`, on the event loop ([70])."""
+    try:
+        content = await deepseek_service.async_chat_completion(
+            prompts.TRANSLATE_SYSTEM_PROMPT,
+            _user_prompt(question, answer, source, target),
+        )
+    except Exception as exc:
+        raise TranslationError("Translation request failed.") from exc
+
+    return _translated(content, source, target)

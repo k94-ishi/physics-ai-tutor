@@ -5,14 +5,14 @@ this. Behaviour is unchanged; see docs/api.md (AI) for the flow.
 """
 
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.core import prompts, timing
 from physics_ai_tutor.core.config import settings
-from physics_ai_tutor.database.session import background_session
+from physics_ai_tutor.database.session import async_background_session
 from physics_ai_tutor.models import Question
 from physics_ai_tutor.schemas.ai import AskAiRequest, AskAiResponse
 from physics_ai_tutor.schemas.question import (
@@ -40,12 +40,12 @@ class AskOutcome:
     saved_question_id: int | None = None
 
 
-def _from_cache(
-    db: Session, request: AskAiRequest, user_id: int | None
+async def _from_cache(
+    db: AsyncSession, request: AskAiRequest, user_id: int | None
 ) -> AskAiResponse | None:
     """Cache tier 0: reuse an identical, non-rejected question's answer."""
     with timing.stage("ask_cache_lookup") as stage:
-        cached = question_read_service.find_cached_answer(
+        cached = await question_read_service.async_find_cached_answer(
             db, request.question, request.language
         )
         stage.note(hit=cached is not None)
@@ -53,7 +53,7 @@ def _from_cache(
     if cached is None:
         return None
     if user_id is not None:
-        ask_history_service.record_ask(
+        await ask_history_service.async_record_ask(
             db, cached.id, user_id, request.language, cache_hit=True
         )
     text = cached.text(request.language)
@@ -72,14 +72,14 @@ def _from_cache(
     )
 
 
-def _generate(db: Session, request: AskAiRequest):
+async def _generate(db: AsyncSession, request: AskAiRequest):
     """Call the LLM in the requested mode; returns (result, ids, source, mode)."""
     if request.mode == "RAG":
-        result, retrieved_ids = rag_service.generate_rag_answer(
+        result, retrieved_ids = await rag_service.async_generate_rag_answer(
             db, request.question, request.retrieved_question_ids, request.language
         )
         return result, retrieved_ids, QuestionSource.RAG_RESULT, "RAG"
-    result = deepseek_service.generate_answer(
+    result = await deepseek_service.async_generate_answer(
         prompts.SYSTEM_PROMPTS[request.language], request.question
     )
     return result, [], QuestionSource.AI_GENERATED, "DIRECT"
@@ -94,21 +94,21 @@ def _declined_message(answer: str, request: AskAiRequest) -> str | None:
     return message or prompts.OFF_TOPIC_FALLBACK[request.language]
 
 
-def ask(
-    db: Session,
+async def ask(
+    db: AsyncSession,
     request: AskAiRequest,
     user_id: int | None,
-    record_generation: Callable[[], None],
+    record_generation: Callable[[], Awaitable[None]],
     rate_limit_bucket: str,
 ) -> AskOutcome:
     """Answer one question; `record_generation` spends quota on a cache miss."""
-    cached = _from_cache(db, request, user_id)
+    cached = await _from_cache(db, request, user_id)
     if cached is not None:
         return AskOutcome(cached)
 
     # Only a cache miss costs quota; it is about to trigger a generation.
-    record_generation()
-    result, retrieved_ids, source, mode = _generate(db, request)
+    await record_generation()
+    result, retrieved_ids, source, mode = await _generate(db, request)
 
     # A declined off-topic question is returned but never saved: it must not
     # enter the knowledge base nor be served from the cache to someone else.
@@ -128,7 +128,9 @@ def ask(
         request.mode,
         request.language,
     )
-    saved_id = _save_answer(db, request, user_id, result, retrieved_ids, source, mode)
+    saved_id = await _save_answer(
+        db, request, user_id, result, retrieved_ids, source, mode
+    )
     return AskOutcome(
         AskAiResponse(
             answer=result.content,
@@ -140,8 +142,8 @@ def ask(
     )
 
 
-def _save_answer(
-    db: Session,
+async def _save_answer(
+    db: AsyncSession,
     request: AskAiRequest,
     user_id: int | None,
     result,
@@ -151,7 +153,7 @@ def _save_answer(
 ) -> int | None:
     """Store the answer as UNREVIEWED and record the ask; None if not saved."""
     with timing.stage("save_answer"):
-        saved = question_write_service.save_ai_question(
+        saved = await question_write_service.async_save_ai_question(
             db,
             request.question,
             result.content,
@@ -170,30 +172,33 @@ def _save_answer(
     if saved is None:
         return None
     if user_id is not None:
-        ask_history_service.record_ask(
+        await ask_history_service.async_record_ask(
             db, saved.id, user_id, request.language, cache_hit=False
         )
     return saved.id
 
 
-def post_generation_tasks(question_id: int) -> None:
+async def post_generation_tasks(question_id: int) -> None:
     """After the response is sent: translate, then (if enabled) AI-review.
 
     Each step is best effort and isolated; a failure in one must not stop
     the other, and neither can affect the already-sent answer.
     """
     # Stages here belong to no request; name them so the logs say so ([68]).
-    with timing.request_path("background:post_generation"), background_session() as db:
-        try:
-            question_translation_service.translate_missing_languages(db, question_id)
-        except Exception:
-            logger.warning(
-                "Background translation failed: question_id=%d",
-                question_id,
-                exc_info=True,
-            )
+    with timing.request_path("background:post_generation"):
+        async with async_background_session() as db:
+            try:
+                await question_translation_service.async_translate_missing_languages(
+                    db, question_id
+                )
+            except Exception:
+                logger.warning(
+                    "Background translation failed: question_id=%d",
+                    question_id,
+                    exc_info=True,
+                )
 
-        if settings.ai_review_enabled:
-            question = db.get(Question, question_id)
-            if question is not None:
-                ai_review_service.review_question(db, question)
+            if settings.ai_review_enabled:
+                question = await db.get(Question, question_id)
+                if question is not None:
+                    await ai_review_service.async_review_question(db, question)

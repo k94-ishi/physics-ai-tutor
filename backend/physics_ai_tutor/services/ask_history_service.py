@@ -1,8 +1,9 @@
 import logging
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from physics_ai_tutor.database.transaction import transaction
+from physics_ai_tutor.database.transaction import async_transaction, transaction
 from physics_ai_tutor.repositories import question_ask_repository
 from physics_ai_tutor.schemas.ask_history import MyQuestionEntry, MyQuestionsResponse
 from physics_ai_tutor.schemas.language import Language
@@ -22,6 +23,31 @@ def record_ask(
     try:
         with transaction(db, "record_ask"):
             question_ask_repository.create(
+                db, question_id, user_id, Language(language).value, cache_hit=cache_hit
+            )
+    except Exception:
+        logger.warning(
+            "Recording ask failed: question_id=%d user_id=%d",
+            question_id,
+            user_id,
+            exc_info=True,
+        )
+        return
+
+    logger.info("Ask recorded: question_id=%d user_id=%d", question_id, user_id)
+
+
+async def async_record_ask(
+    db: AsyncSession,
+    question_id: int,
+    user_id: int,
+    language: Language | str,
+    cache_hit: bool,
+) -> None:
+    """As `record_ask`; still best effort ([70])."""
+    try:
+        async with async_transaction(db, "record_ask"):
+            await question_ask_repository.async_create(
                 db, question_id, user_id, Language(language).value, cache_hit=cache_hit
             )
     except Exception:

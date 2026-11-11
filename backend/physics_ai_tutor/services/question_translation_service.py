@@ -2,6 +2,7 @@
 
 import logging
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core import timing
@@ -10,7 +11,7 @@ from physics_ai_tutor.core.exceptions import (
     EmbeddingGenerationError,
     TranslationError,
 )
-from physics_ai_tutor.database.transaction import transaction
+from physics_ai_tutor.database.transaction import async_transaction, transaction
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.repositories import (
     embedding_repository,
@@ -103,8 +104,7 @@ def refresh_machine_translations(
 def translate_missing_languages(db: Session, question_id: int) -> list[Language]:
     """Fill every missing language of one question; commits on its own.
 
-    Used by the background task after an AI answer, the admin endpoint, and
-    the backfill CLI.
+    Used by the admin endpoint and the backfill CLI.
     """
     question = question_repository.get_question(db, question_id)
 
@@ -113,4 +113,95 @@ def translate_missing_languages(db: Session, question_id: int) -> list[Language]
 
     with transaction(db, "translate_missing"):
         filled = translate_missing(db, question)
+    return filled
+
+
+async def async_embed_language(
+    db: AsyncSession, question: Question, language: Language
+) -> None:
+    """As `embed_language`, on the event loop ([70])."""
+    text = question.text(language)
+    if text is None:
+        return
+
+    question_vec, answer_vec = await embedding_service.async_create_embeddings(
+        list(text)
+    )
+    await embedding_repository.async_delete_by_question_id(
+        db, question.id, language=language
+    )
+
+    for embedding_type, vector in (("question", question_vec), ("answer", answer_vec)):
+        await embedding_repository.async_create_embedding(
+            db,
+            question_id=question.id,
+            embedding=vector,
+            embedding_type=embedding_type,
+            model=settings.embedding_model,
+            language=language.value,
+        )
+
+
+async def async_translate_into(
+    db: AsyncSession,
+    question: Question,
+    target: Language,
+    source: Language | None = None,
+) -> bool:
+    """As `translate_into`. Best effort; returns success ([70])."""
+    src = source or Language(question.original_language)
+    text = question.text(src)
+    if text is None:
+        src = Language(question.original_language)
+        text = question.original_text()
+
+    try:
+        with timing.stage("translate_qa", question_id=question.id, target=target.value):
+            translated_q, translated_a = await translation_service.async_translate_qa(
+                text[0], text[1], source=src, target=target
+            )
+        question.set_text(target, translated_q, translated_a, TextProvenance.MACHINE)
+        await db.flush()
+        with timing.stage(
+            "embed_language", question_id=question.id, target=target.value
+        ):
+            await async_embed_language(db, question, target)
+    except (TranslationError, EmbeddingGenerationError):
+        logger.warning(
+            "Translation skipped: question_id=%d target=%s",
+            question.id,
+            target,
+            exc_info=True,
+        )
+        return False
+
+    logger.info("Question translated: question_id=%d target=%s", question.id, target)
+    return True
+
+
+async def async_translate_missing(
+    db: AsyncSession, question: Question
+) -> list[Language]:
+    """As `translate_missing` ([70])."""
+    filled = []
+    for lang in Language:
+        if not question.has(lang) and await async_translate_into(db, question, lang):
+            filled.append(lang)
+    return filled
+
+
+async def async_translate_missing_languages(
+    db: AsyncSession, question_id: int
+) -> list[Language]:
+    """Fill every missing language of one question; commits on its own.
+
+    Used by the background task after an AI answer ([70]).
+    """
+    question = await db.get(Question, question_id)
+
+    if question is None:
+        return []
+
+    async with async_transaction(db, "translate_missing"):
+        filled = await async_translate_missing(db, question)
     return filled

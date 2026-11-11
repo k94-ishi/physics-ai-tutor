@@ -14,8 +14,8 @@ from physics_ai_tutor.repositories.review_metrics_repository import ReviewPair
 from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
 from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.question_review import QuestionReviewReason
-from physics_ai_tutor.services import deepseek_service, review_metrics_service
-from tests.conftest import engine, fake_generation
+from physics_ai_tutor.services import review_metrics_service
+from tests.conftest import engine, fake_generation, patch_generation
 
 ASK_PATH = "/api/v1/ai/ask"
 QUESTIONS = "/api/v1/questions"
@@ -123,7 +123,7 @@ def test_empty_input_yields_null_rates():
 
 
 def _ask(client, monkeypatch, text):
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
     return client.post(ASK_PATH, json={"question": text}).json()["question_id"]
 
 

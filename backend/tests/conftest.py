@@ -23,7 +23,9 @@ from physics_ai_tutor.database.dependency import get_async_db, get_db
 from physics_ai_tutor.main import app
 from physics_ai_tutor.services import (
     concept_service,
+    deepseek_service,
     embedding_service,
+    rag_service,
     translation_service,
 )
 from physics_ai_tutor.services.user_service import create_user
@@ -206,11 +208,15 @@ def _cheap_password_hashing():
 
 @pytest.fixture(autouse=True)
 def _mock_create_embeddings(monkeypatch):
-    monkeypatch.setattr(
-        embedding_service,
-        "create_embeddings",
-        lambda texts: [[0.1] * 1536 for _ in texts],
-    )
+    def _fake(texts):
+        return [[0.1] * 1536 for _ in texts]
+
+    async def _fake_async(texts):
+        return _fake(texts)
+
+    monkeypatch.setattr(embedding_service, "create_embeddings", _fake)
+    # Both seams, so a converted caller is mocked too ([70]).
+    monkeypatch.setattr(embedding_service, "async_create_embeddings", _fake_async)
 
 
 @pytest.fixture(autouse=True)
@@ -227,9 +233,15 @@ def fake_translate(question, answer, source, target):
     return f"[{target}] {question}", f"[{target}] {answer}"
 
 
+async def fake_translate_async(question, answer, source, target):
+    return fake_translate(question, answer, source, target)
+
+
 @pytest.fixture(autouse=True)
 def _mock_translate(monkeypatch):
     monkeypatch.setattr(translation_service, "translate_qa", fake_translate)
+    # Both seams, so a converted caller is mocked too ([70]).
+    monkeypatch.setattr(translation_service, "async_translate_qa", fake_translate_async)
 
 
 @pytest.fixture(autouse=True)
@@ -311,3 +323,50 @@ def fake_generation(answer: str):
         )
 
     return _generate
+
+
+def patch_generation(monkeypatch, generate) -> None:
+    """Install one sync stub on both DeepSeek seams ([70]).
+
+    Converted callers await `async_generate_answer` while runs, the eval
+    and concept extraction still call `generate_answer`, so a test that
+    patches only one of them silently reaches the real API. Stubs stay
+    plain sync callables; the adapter forwards arguments and lets
+    exceptions through unchanged. [73] drops the sync line here.
+    """
+    monkeypatch.setattr(deepseek_service, "generate_answer", generate)
+
+    async def _async_generate(*args, **kwargs):
+        return generate(*args, **kwargs)
+
+    monkeypatch.setattr(deepseek_service, "async_generate_answer", _async_generate)
+
+
+def patch_create_embeddings(monkeypatch, create) -> None:
+    """As `patch_generation`, for the embedding seam ([70])."""
+    monkeypatch.setattr(embedding_service, "create_embeddings", create)
+
+    async def _async_create(*args, **kwargs):
+        return create(*args, **kwargs)
+
+    monkeypatch.setattr(embedding_service, "async_create_embeddings", _async_create)
+
+
+def patch_rag_answer(monkeypatch, generate) -> None:
+    """As `patch_generation`, for the RAG generation seam ([70])."""
+    monkeypatch.setattr(rag_service, "generate_rag_answer", generate)
+
+    async def _async_generate(*args, **kwargs):
+        return generate(*args, **kwargs)
+
+    monkeypatch.setattr(rag_service, "async_generate_rag_answer", _async_generate)
+
+
+def patch_chat_completion(monkeypatch, complete) -> None:
+    """As `patch_generation`, for the plain-text completion seam ([70])."""
+    monkeypatch.setattr(deepseek_service, "chat_completion", complete)
+
+    async def _async_complete(*args, **kwargs):
+        return complete(*args, **kwargs)
+
+    monkeypatch.setattr(deepseek_service, "async_chat_completion", _async_complete)

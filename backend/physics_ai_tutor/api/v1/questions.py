@@ -7,13 +7,14 @@ from fastapi import (
     HTTPException,
     Query,
 )
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.api.dependencies import (
     get_current_user_optional,
     is_admin,
 )
-from physics_ai_tutor.database.dependency import get_db
+from physics_ai_tutor.database.dependency import get_async_db, get_db
 from physics_ai_tutor.schemas.embedding import (
     SimilarQuestionRequest,
     SimilarQuestionResponse,
@@ -38,7 +39,7 @@ from physics_ai_tutor.services import (
     recommendation_service,
 )
 from physics_ai_tutor.services.embedding_service import (
-    search_similar_questions,
+    async_search_similar_questions,
 )
 from physics_ai_tutor.services.response_language import (
     ResponseLanguage,
@@ -293,12 +294,13 @@ def get_prerequisites(
     "/search",
     response_model=list[SimilarQuestionResponse],
 )
-def search_questions(
+async def search_questions(
     request: SimilarQuestionRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
-    return search_similar_questions(
+    # Converted in [70]: this is the read that costs an OpenAI call.
+    return await async_search_similar_questions(
         db=db,
         query=request.query,
         limit=request.limit,

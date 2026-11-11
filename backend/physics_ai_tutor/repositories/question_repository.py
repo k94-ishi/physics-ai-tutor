@@ -1,4 +1,5 @@
-from sqlalchemy import func, nullslast, or_
+from sqlalchemy import func, nullslast, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Query, Session
 
 from physics_ai_tutor.core.text import normalize_key
@@ -72,16 +73,31 @@ def _filter_by_keyword(
     return query
 
 
+def _status_conditions(status: str | None, exclude_statuses: list[str] | None) -> list:
+    """The status predicate, shared by the sync and async readers.
+
+    Security-relevant: `exclude_statuses` is what keeps unapproved rows
+    away from students and REJECTED answers out of the ask cache, so both
+    variants must build it from here rather than each spelling it out.
+    """
+    conditions = []
+
+    if status is not None:
+        conditions.append(Question.status == status)
+
+    if exclude_statuses:
+        conditions.append(Question.status.notin_(exclude_statuses))
+
+    return conditions
+
+
 def _filter_by_status(
     query: Query,
     status: str | None,
     exclude_statuses: list[str] | None,
 ) -> Query:
-    if status is not None:
-        query = query.filter(Question.status == status)
-
-    if exclude_statuses:
-        query = query.filter(Question.status.notin_(exclude_statuses))
+    for condition in _status_conditions(status, exclude_statuses):
+        query = query.filter(condition)
 
     return query
 
@@ -189,7 +205,28 @@ def get_questions_by_ids(db: Session, ids: list[int]) -> list[Question]:
     if not ids:
         return []
 
-    return db.query(Question).filter(Question.id.in_(ids)).all()
+    return list(db.scalars(select(Question).where(Question.id.in_(ids))).all())
+
+
+async def async_get_questions_by_ids(
+    db: AsyncSession, ids: list[int]
+) -> list[Question]:
+    if not ids:
+        return []
+
+    return list((await db.scalars(select(Question).where(Question.id.in_(ids)))).all())
+
+
+def _exact_text_select(
+    question_text: str,
+    language: Language | str,
+    exclude_statuses: list[str] | None,
+):
+    column = getattr(Question, f"question_{Language(language)}")
+
+    return select(Question).where(
+        column == question_text, *_status_conditions(None, exclude_statuses)
+    )
 
 
 def get_by_exact_text(
@@ -198,11 +235,20 @@ def get_by_exact_text(
     language: Language | str = Language.JA,
     exclude_statuses: list[str] | None = None,
 ) -> Question | None:
-    column = getattr(Question, f"question_{Language(language)}")
-    query = db.query(Question).filter(column == question_text)
-    query = _filter_by_status(query, None, exclude_statuses)
+    query = _exact_text_select(question_text, language, exclude_statuses)
 
-    return query.first()
+    return db.scalars(query).first()
+
+
+async def async_get_by_exact_text(
+    db: AsyncSession,
+    question_text: str,
+    language: Language | str = Language.JA,
+    exclude_statuses: list[str] | None = None,
+) -> Question | None:
+    query = _exact_text_select(question_text, language, exclude_statuses)
+
+    return (await db.scalars(query)).first()
 
 
 def get_missing_language(
@@ -271,6 +317,25 @@ def create_question(
 
     db.add(db_question)
     db.flush()
+
+    return db_question
+
+
+async def async_create_question(
+    db: AsyncSession,
+    texts: dict[Language, tuple[str, str]],
+    original_language: Language | str = Language.JA,
+    status: str = "APPROVED",
+    source: str = "MANUAL",
+    retrieved_question_ids: list[int] | None = None,
+) -> Question:
+    """As `create_question`, without the legacy single-language form ([70])."""
+    db_question = _new_question(
+        texts, original_language, status, source, retrieved_question_ids, None
+    )
+
+    db.add(db_question)
+    await db.flush()
 
     return db_question
 

@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from physics_ai_tutor.cli import backfill_levels as backfill_cli
 from physics_ai_tutor.models import Question
 from physics_ai_tutor.services import concept_service
-from tests.conftest import engine
+from tests.conftest import engine, fake_generation, patch_generation
 
 QUESTIONS = "/api/v1/questions"
 ASK = "/api/v1/ai/ask"
@@ -31,10 +31,8 @@ def test_approval_stores_levels_and_payload_carries_them(
     client, admin_client, db, monkeypatch, _rated_extraction
 ):
     """Extraction (and with it the rating) runs when a question is APPROVED."""
-    from physics_ai_tutor.services import deepseek_service
-    from tests.conftest import fake_generation
 
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
     client.post(ASK, json={"question": "難易度が付く質問ですか？"})
 
     row = db.query(Question).one()

@@ -1,7 +1,19 @@
 from sqlalchemy import func
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.models import Question, QuestionAsk
+
+
+def _new_ask(
+    question_id: int, user_id: int, language: str, cache_hit: bool
+) -> QuestionAsk:
+    return QuestionAsk(
+        question_id=question_id,
+        user_id=user_id,
+        language=language,
+        cache_hit=cache_hit,
+    )
 
 
 def create(
@@ -11,15 +23,25 @@ def create(
     language: str,
     cache_hit: bool,
 ) -> QuestionAsk:
-    ask = QuestionAsk(
-        question_id=question_id,
-        user_id=user_id,
-        language=language,
-        cache_hit=cache_hit,
-    )
+    ask = _new_ask(question_id, user_id, language, cache_hit)
 
     db.add(ask)
     db.flush()
+
+    return ask
+
+
+async def async_create(
+    db: AsyncSession,
+    question_id: int,
+    user_id: int,
+    language: str,
+    cache_hit: bool,
+) -> QuestionAsk:
+    ask = _new_ask(question_id, user_id, language, cache_hit)
+
+    db.add(ask)
+    await db.flush()
 
     return ask
 

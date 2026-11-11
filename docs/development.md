@@ -191,6 +191,7 @@ Layout of `backend/tests/`:
 | `test_comment_style.py` | Comments are English (Japanese only as quoted data) ([65]) |
 | `test_architecture.py` | Layering rules: routers call services only; only the two `transaction()` helpers commit; sessions come from `database/`; async code never uses the sync helper ([69]) |
 | `test_async_foundation.py` | Async engine, session, `async_transaction` commit/rollback, pool sizing ([69]) |
+| `test_async_hot_path.py` | A pending generation does not hold the server; concurrent generations overlap ([70]) |
 | `test_timing.py` | Stage timing logs and the request-path label ([68]) |
 | `test_language_strict.py` | Students never get the other language on related/prerequisites/concepts; hidden rows are translated once in the background ([53]) |
 | `test_language.py` | Bilingual rows: eager translation, provenance, `lang` resolution, English ask flow, cache tiers, review in either language, translate endpoint, import shapes |
@@ -205,8 +206,14 @@ Conventions:
   already patches `embedding_service.create_embeddings`,
   `concept_service.extract_concept_names` and
   `translation_service.translate_qa` (which returns `"[en] <text>"` style
-  markers so tests can assert on translations); patch `deepseek_service`
-  per test.
+  markers so tests can assert on translations).
+- Patch LLM seams through the `conftest` helpers, never with a bare
+  `monkeypatch.setattr` ([70]): `patch_generation`,
+  `patch_chat_completion`, `patch_create_embeddings` and
+  `patch_rag_answer` each install one plain sync stub on *both* the sync
+  and the `async_` function. Patching only one of them leaves the other
+  pointing at the real API, which fails with an authentication error
+  rather than an obvious one.
 - Admin-only endpoints need a test for `admin_client` (success),
   `user_client` (403) and `client` (401).
 - Any endpoint that returns question content needs a test proving
@@ -315,6 +322,21 @@ Rules, all enforced by `tests/test_architecture.py`:
   repositories of one call chain move together. Never call a sync
   repository from an async service, and never bridge with
   `run_in_executor` — convert the callee instead.
+- **Shared functions get an `async_` twin, not a rewrite.** A repository
+  or service used by both converted and unconverted callers keeps its
+  sync function and gains `async_<name>` beside it ([70]); [73] deletes
+  the sync half and drops the prefix. Where the two would otherwise
+  duplicate a rule, extract it: the status predicate
+  (`_status_conditions`), the vector-search statement
+  (`_similar_embeddings_select`) and the strict-language naming
+  (`_names_by_question`) are shared by both variants on purpose, because
+  a filter drifting between them is a security bug, not a style problem.
+- **Read what you need off an ORM row before a transaction that might
+  roll back.** A rollback expires the object, and reading an expired
+  attribute afterwards is implicit IO, which `AsyncSession` refuses with
+  `MissingGreenlet` — so an error path that logs `question.id` crashes
+  instead of logging. `async_review_question` captures its scalars up
+  front for exactly this reason.
 - Only `database/` (and script entry points: `cli/`, `database/seed.py`)
   may build a session factory. Everything else takes a session.
 - `async_transaction` is the only way async code commits. A plain

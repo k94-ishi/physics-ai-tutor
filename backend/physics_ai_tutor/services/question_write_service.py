@@ -2,13 +2,14 @@
 
 import logging
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core.exceptions import (
     ConceptExtractionError,
     DuplicateQuestionError,
 )
-from physics_ai_tutor.database.transaction import transaction
+from physics_ai_tutor.database.transaction import async_transaction, transaction
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.repositories import (
     question_concept_repository,
@@ -30,6 +31,7 @@ from physics_ai_tutor.services.question_presentation_service import (
     prepare_for_response,
 )
 from physics_ai_tutor.services.question_translation_service import (
+    async_embed_language,
     embed_language,
     refresh_machine_translations,
     translate_missing,
@@ -309,6 +311,56 @@ def save_ai_question(
                 db.flush()
 
             embed_language(db, db_question, lang)
+    except Exception:
+        # The student already has the answer; saving it is best effort.
+        logger.warning(
+            "Failed to save AI answer as question; continuing without saving",
+            exc_info=True,
+        )
+        return None
+
+    logger.info("AI answer saved as question: id=%d", db_question.id)
+    return db_question
+
+
+async def async_save_ai_question(
+    db: AsyncSession,
+    question: str,
+    answer: str,
+    language: Language | str = Language.JA,
+    source: str = QuestionSource.AI_GENERATED,
+    retrieved_question_ids: list[int] | None = None,
+    generation: GenerationMeta | None = None,
+) -> Question | None:
+    """As `save_ai_question`; still never raises ([70])."""
+    lang = Language(language)
+
+    try:
+        async with async_transaction(db, "save_ai_question"):
+            if await question_repository.async_get_by_exact_text(
+                db, question, language=lang
+            ):
+                logger.info("AI answer not saved: duplicate question text")
+                return None
+
+            db_question = await question_repository.async_create_question(
+                db,
+                texts={lang: (question, answer)},
+                original_language=lang,
+                status=QuestionStatus.UNREVIEWED,
+                source=source,
+                retrieved_question_ids=retrieved_question_ids,
+            )
+
+            if generation is not None:
+                db_question.generation_model = generation.model
+                db_question.prompt_version = generation.prompt_version
+                db_question.generation_mode = generation.mode
+                db_question.prompt_tokens = generation.prompt_tokens
+                db_question.completion_tokens = generation.completion_tokens
+                await db.flush()
+
+            await async_embed_language(db, db_question, lang)
     except Exception:
         # The student already has the answer; saving it is best effort.
         logger.warning(

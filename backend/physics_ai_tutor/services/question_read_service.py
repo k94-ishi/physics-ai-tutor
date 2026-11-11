@@ -3,6 +3,7 @@
 import logging
 from dataclasses import replace
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.database.transaction import transaction
@@ -116,6 +117,18 @@ def find_cached_answer(
     question text in `language`, including unreviewed AI answers.
     """
     return question_repository.get_by_exact_text(
+        db,
+        question_text,
+        language=language,
+        exclude_statuses=[QuestionStatus.REJECTED],
+    )
+
+
+async def async_find_cached_answer(
+    db: AsyncSession, question_text: str, language: Language | str
+) -> Question | None:
+    """As `find_cached_answer`, on the event loop ([70])."""
+    return await question_repository.async_get_by_exact_text(
         db,
         question_text,
         language=language,

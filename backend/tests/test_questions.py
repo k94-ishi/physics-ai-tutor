@@ -4,7 +4,7 @@ from enum import StrEnum
 from physics_ai_tutor.core.exceptions import EmbeddingGenerationError
 from physics_ai_tutor.models import Question, QuestionEmbedding
 from physics_ai_tutor.repositories import question_repository
-from physics_ai_tutor.services import embedding_service
+from tests.conftest import patch_create_embeddings
 
 PATH = "/api/v1/questions"
 IMPORT_PATH = f"{PATH}/import"
@@ -652,7 +652,7 @@ def test_create_question_embedding_failure_returns_503(admin_client, monkeypatch
     def _raise(texts):
         raise EmbeddingGenerationError("boom")
 
-    monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
+    patch_create_embeddings(monkeypatch, _raise)
 
     response = _post(admin_client, "質問", "回答")
 
@@ -670,7 +670,7 @@ def test_search_questions_embedding_failure_returns_503(client, monkeypatch):
     def _raise(texts):
         raise EmbeddingGenerationError("boom")
 
-    monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
+    patch_create_embeddings(monkeypatch, _raise)
 
     response = client.post(SEARCH_PATH, json={"query": "質問"})
 
@@ -687,7 +687,7 @@ def test_update_question_embedding_failure_returns_503(admin_client, monkeypatch
     def _raise(texts):
         raise EmbeddingGenerationError("boom")
 
-    monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
+    patch_create_embeddings(monkeypatch, _raise)
 
     response = admin_client.put(
         f"{PATH}/{question_id}",
@@ -712,7 +712,7 @@ def test_import_questions_embedding_failure_returns_503(admin_client, monkeypatc
     def _raise(texts):
         raise EmbeddingGenerationError("boom")
 
-    monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
+    patch_create_embeddings(monkeypatch, _raise)
 
     response = _post_import(admin_client, [("一括質問1", "一括回答1")])
 

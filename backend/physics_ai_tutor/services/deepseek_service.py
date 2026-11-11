@@ -5,7 +5,7 @@ from openai import OpenAIError
 
 from physics_ai_tutor.core import timing
 from physics_ai_tutor.core.config import settings
-from physics_ai_tutor.core.deepseek import client
+from physics_ai_tutor.core.deepseek import async_client, client
 from physics_ai_tutor.core.exceptions import DeepSeekGenerationError
 
 logger = logging.getLogger(__name__)
@@ -82,6 +82,12 @@ def generate_answer(
 ) -> GenerationResult:
     """Answer generation; records the model and token usage for the row."""
     response = _request(system_prompt, user_prompt, temperature, max_tokens)
+
+    return _result_from(response)
+
+
+def _result_from(response) -> GenerationResult:
+    """Shape one completion into a GenerationResult."""
     content = response.choices[0].message.content or ""
     usage = getattr(response, "usage", None)
     # What the API actually served, which an alias may not name.
@@ -99,3 +105,69 @@ def generate_answer(
         prompt_tokens=getattr(usage, "prompt_tokens", None),
         completion_tokens=getattr(usage, "completion_tokens", None),
     )
+
+
+async def _async_request(
+    system_prompt: str,
+    user_prompt: str,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+):
+    """As `_request`, awaiting instead of blocking a thread ([70])."""
+    logger.debug(
+        "Requesting DeepSeek chat completion: prompt_length=%d", len(user_prompt)
+    )
+
+    extra: dict = {}
+    if temperature is not None:
+        # Evaluation runs pin temperature for reproducibility.
+        extra["temperature"] = temperature
+
+    try:
+        # The dominant stage of any uncached answer ([68]).
+        with timing.stage("deepseek_chat", prompt_length=len(user_prompt)) as stage:
+            response = await async_client.chat.completions.create(
+                model=settings.deepseek_chat_model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                max_tokens=max_tokens or settings.deepseek_max_tokens,
+                **extra,
+            )
+            usage = getattr(response, "usage", None)
+            stage.note(
+                completion_tokens=getattr(usage, "completion_tokens", None),
+            )
+            return response
+    except OpenAIError as exc:
+        logger.warning("DeepSeek chat completion failed: %s", type(exc).__name__)
+        raise DeepSeekGenerationError(
+            "Failed to generate a response via the DeepSeek API."
+        ) from exc
+
+
+async def async_chat_completion(system_prompt: str, user_prompt: str) -> str:
+    """As `chat_completion`, on the event loop ([70])."""
+    response = await _async_request(system_prompt, user_prompt)
+    content = response.choices[0].message.content
+
+    logger.info(
+        "DeepSeek chat completion succeeded: model=%s response_length=%d",
+        settings.deepseek_chat_model,
+        len(content or ""),
+    )
+
+    return content or ""
+
+
+async def async_generate_answer(
+    system_prompt: str,
+    user_prompt: str,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+) -> GenerationResult:
+    """As `generate_answer`, on the event loop ([70])."""
+    response = await _async_request(system_prompt, user_prompt, temperature, max_tokens)
+
+    return _result_from(response)

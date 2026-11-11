@@ -6,8 +6,8 @@ from physics_ai_tutor.core.text import normalize_key
 from physics_ai_tutor.models import Concept, ConceptTerm, Question, QuestionConcept
 from physics_ai_tutor.services import (
     concept_service,
-    embedding_service,
 )
+from tests.conftest import engine, patch_create_embeddings
 
 CONCEPTS = "/api/v1/concepts"
 ADMIN = "/api/v1/admin/concepts"
@@ -39,7 +39,7 @@ def _meaning_embeddings(monkeypatch):
         calls.append(list(texts))
         return [_axis(MEANINGS.get(text, 0)) for text in texts]
 
-    monkeypatch.setattr(embedding_service, "create_embeddings", _embed)
+    patch_create_embeddings(monkeypatch, _embed)
     return calls
 
 
@@ -295,7 +295,6 @@ def test_split_cli_reattaches_glued_questions_to_their_own_sense(
     from sqlalchemy.orm import sessionmaker
 
     from physics_ai_tutor.cli import split_merged_concepts as cli
-    from tests.conftest import engine
 
     # The CLI opens its own session against the test database.
     monkeypatch.setattr(

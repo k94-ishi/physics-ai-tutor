@@ -90,7 +90,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 67 | open | 67-track-f-async-and-latency.md | Track F: asynchronize the backend and cut latency | — (file-era issue) |
 | 68 | closed | 68-latency-baseline-and-stage-timing.md | Latency baseline: stage timing logs and recorded numbers | — (file-era issue) |
 | 69 | closed | 69-async-foundation.md | Async foundation: engine, session, transaction, and test plumbing | — (file-era issue) |
-| 70 | open | 70-async-hot-path-ask-and-search.md | Asynchronize the hot path: /ai/ask and similarity search, async LLM clients | — (file-era issue) |
+| 70 | closed | 70-async-hot-path-ask-and-search.md | Asynchronize the hot path: /ai/ask and similarity search, async LLM clients | — (file-era issue) |
 | 71 | open | 71-streaming-ask-answers.md | Stream /ai/ask answers (SSE) so students read while it generates | — (file-era issue) |
 | 72 | open | 72-async-background-work.md | Background work on the event loop: parallel translations, bounded AI-review concurrency | — (file-era issue) |
 | 73 | open | 73-async-remaining-modules.md | Asynchronize the rest: all routers, services, repositories; app keeps no sync engine | — (file-era issue) |

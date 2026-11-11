@@ -1,11 +1,12 @@
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.models import AiReview
 from physics_ai_tutor.schemas.ai_review import AiReviewCreate
 
 
-def create(db: Session, review: AiReviewCreate) -> AiReview:
-    row = AiReview(
+def _new_review(review: AiReviewCreate) -> AiReview:
+    return AiReview(
         question_id=review.question_id,
         language=review.language.value,
         verdict=review.verdict.value if review.verdict else None,
@@ -20,8 +21,21 @@ def create(db: Session, review: AiReviewCreate) -> AiReview:
         completion_tokens=review.completion_tokens,
     )
 
+
+def create(db: Session, review: AiReviewCreate) -> AiReview:
+    row = _new_review(review)
+
     db.add(row)
     db.flush()
+
+    return row
+
+
+async def async_create(db: AsyncSession, review: AiReviewCreate) -> AiReview:
+    row = _new_review(review)
+
+    db.add(row)
+    await db.flush()
 
     return row
 

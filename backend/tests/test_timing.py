@@ -6,8 +6,7 @@ import re
 import pytest
 
 from physics_ai_tutor.core import timing
-from physics_ai_tutor.services import deepseek_service
-from tests.conftest import fake_generation
+from tests.conftest import fake_generation, patch_generation
 
 LOGGER = "physics_ai_tutor.core.timing"
 STAGE_LINE = re.compile(
@@ -92,7 +91,7 @@ def test_ask_request_emits_its_stages_under_the_request_path(
     client, monkeypatch, caplog
 ):
     """A cache-miss ask is explainable from its stage lines alone."""
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
 
     with caplog.at_level(logging.INFO, logger=LOGGER):
         response = client.post(
@@ -109,7 +108,7 @@ def test_ask_request_emits_its_stages_under_the_request_path(
 
 def test_post_generation_stages_are_labelled_as_background(client, monkeypatch, caplog):
     """Work after the response is not charged to the request that caused it."""
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
 
     with caplog.at_level(logging.INFO, logger=LOGGER):
         response = client.post(
@@ -125,7 +124,7 @@ def test_post_generation_stages_are_labelled_as_background(client, monkeypatch, 
 
 
 def test_rag_ask_times_retrieval_and_the_query_embedding(client, monkeypatch, caplog):
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
 
     with caplog.at_level(logging.INFO):
         response = client.post(

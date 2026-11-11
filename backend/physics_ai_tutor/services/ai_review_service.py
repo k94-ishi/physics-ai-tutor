@@ -5,13 +5,14 @@ from enum import StrEnum
 
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core import timing
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.prompt_library import load_library
 from physics_ai_tutor.database.session import background_session
-from physics_ai_tutor.database.transaction import transaction
+from physics_ai_tutor.database.transaction import async_transaction, transaction
 from physics_ai_tutor.models import AiReview, AiReviewRun, Question
 from physics_ai_tutor.repositories import (
     ai_review_repository,
@@ -242,14 +243,9 @@ def review_question_with_outcome(
     db: Session, question: Question
 ) -> tuple[AiReview | None, Outcome]:
     """As `review_question`, but says whether None meant skipped or failed."""
-    if question.source not in AI_SOURCES:
-        logger.info("AI review skipped: question_id=%d reason=not_ai", question.id)
-        return None, Outcome.SKIPPED
-
-    if question.status != QuestionStatus.UNREVIEWED:
-        logger.info(
-            "AI review skipped: question_id=%d reason=already_reviewed", question.id
-        )
+    skip = _skip_reason(question)
+    if skip is not None:
+        logger.info("AI review skipped: question_id=%d reason=%s", question.id, skip)
         return None, Outcome.SKIPPED
 
     language = Language(question.original_language)
@@ -279,24 +275,11 @@ def review_question_with_outcome(
         )
         return None, Outcome.FAILED
 
-    review = AiReviewCreate(
-        question_id=question.id,
-        language=language,
-        verdict=graded.verdict,
-        confidence=graded.confidence,
-        reasons=graded.reasons,
-        rationale=graded.rationale,
-        suggested_answer=graded.suggested_answer,
-        rubric=graded.rubric,
-        model=graded.model,
-        prompt_version=REVIEW_PROMPT_VERSION,
-        prompt_tokens=graded.prompt_tokens,
-        completion_tokens=graded.completion_tokens,
-    )
-
     try:
         with transaction(db, "store_ai_review"):
-            row = ai_review_repository.create(db, review)
+            row = ai_review_repository.create(
+                db, _review_to_store(question.id, language, graded)
+            )
     except Exception:
         logger.warning(
             "Storing AI review failed: question_id=%d", question.id, exc_info=True
@@ -311,6 +294,135 @@ def review_question_with_outcome(
     )
 
     return row, Outcome.REVIEWED
+
+
+def _review_to_store(question_id: int, language: Language, graded) -> AiReviewCreate:
+    """The row one grading produces, shared by both variants."""
+    return AiReviewCreate(
+        question_id=question_id,
+        language=language,
+        verdict=graded.verdict,
+        confidence=graded.confidence,
+        reasons=graded.reasons,
+        rationale=graded.rationale,
+        suggested_answer=graded.suggested_answer,
+        rubric=graded.rubric,
+        model=graded.model,
+        prompt_version=REVIEW_PROMPT_VERSION,
+        prompt_tokens=graded.prompt_tokens,
+        completion_tokens=graded.completion_tokens,
+    )
+
+
+def _skip_reason(question: Question) -> str | None:
+    """Why this question needs no review, or None if it does."""
+    if question.source not in AI_SOURCES:
+        return "not_ai"
+    if question.status != QuestionStatus.UNREVIEWED:
+        return "already_reviewed"
+    return None
+
+
+async def async_grade_answer(
+    question_text: str,
+    answer_text: str,
+    language: Language,
+    concepts: list[str] | None = None,
+    context: str = "",
+    temperature: float | None = None,
+) -> GradedAnswer:
+    """As `grade_answer`, on the event loop ([70])."""
+    system_prompt, user_prompt = build_review_prompts(
+        question_text, answer_text, language, concepts, context
+    )
+    result = await deepseek_service.async_generate_answer(
+        system_prompt,
+        user_prompt,
+        temperature=temperature,
+        max_tokens=settings.ai_review_max_tokens,
+    )
+
+    return GradedAnswer(result, _parse_output(result.content))
+
+
+async def _async_build_context(
+    db: AsyncSession, ids: list[int], language: Language
+) -> str:
+    """As `_build_context`, but given the ids rather than the row ([70])."""
+    if not ids:
+        return ""
+
+    references = await rag_service.async_load_context_by_ids(db, ids, language)
+    if not references:
+        return ""
+
+    header = _LIBRARY.get("ai_review", "context_header", language)
+    blocks = "\n\n".join(f"Q: {item.question}\nA: {item.answer}" for item in references)
+
+    return f"\n{header}{blocks}\n"
+
+
+async def async_review_question(
+    db: AsyncSession, question: Question
+) -> AiReview | None:
+    """As `review_question`; advisory only and never raises ([70])."""
+    skip = _skip_reason(question)
+    if skip is not None:
+        logger.info("AI review skipped: question_id=%d reason=%s", question.id, skip)
+        return None
+
+    # Read everything off the row up front. A rollback expires the ORM
+    # object, and reading an expired attribute afterwards is implicit IO,
+    # which an AsyncSession refuses with MissingGreenlet - so the error
+    # path must not need the row.
+    question_id = question.id
+    language = Language(question.original_language)
+    text = question.text(language) or question.original_text()
+    reference_ids = list(question.retrieved_question_ids or [])
+
+    try:
+        # Reads plus the LLM call; a failed read must not poison the session.
+        with timing.stage("ai_review_item", question_id=question_id):
+            async with async_transaction(db, "ai_review_grade"):
+                by_question = (
+                    await question_concept_repository.async_get_concepts_for_questions(
+                        db, [question_id], language=language.value
+                    )
+                )
+                graded = await async_grade_answer(
+                    text[0],
+                    text[1],
+                    language,
+                    concepts=by_question.get(question_id, []),
+                    context=await _async_build_context(db, reference_ids, language),
+                )
+    except Exception:
+        logger.warning(
+            "AI review failed before storing: question_id=%d",
+            question_id,
+            exc_info=True,
+        )
+        return None
+
+    try:
+        async with async_transaction(db, "store_ai_review"):
+            row = await ai_review_repository.async_create(
+                db, _review_to_store(question_id, language, graded)
+            )
+    except Exception:
+        logger.warning(
+            "Storing AI review failed: question_id=%d", question_id, exc_info=True
+        )
+        return None
+
+    logger.info(
+        "AI review stored: question_id=%d verdict=%s confidence=%s",
+        question_id,
+        row.verdict,
+        row.confidence,
+    )
+
+    return row
 
 
 # --- runs ----------------------------------------------------------------------

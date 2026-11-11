@@ -7,8 +7,8 @@ from physics_ai_tutor.repositories import (
     question_concept_repository,
     question_repository,
 )
-from physics_ai_tutor.services import deepseek_service, embedding_service, rag_service
-from tests.conftest import fake_generation
+from physics_ai_tutor.services import embedding_service, rag_service
+from tests.conftest import fake_generation, patch_create_embeddings, patch_generation
 
 DIM = 1536
 
@@ -136,7 +136,7 @@ def test_generate_rag_answer_uses_rag_system_prompt_and_returns_ids(db, monkeypa
         calls.append((system_prompt, user_prompt))
         return fake_generation("生成された回答")(system_prompt, user_prompt)
 
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generate_answer)
+    patch_generation(monkeypatch, fake_generate_answer)
 
     result, ids = rag_service.generate_rag_answer(db, "力の説明をして")
 
@@ -149,7 +149,7 @@ def test_generate_rag_answer_uses_rag_system_prompt_and_returns_ids(db, monkeypa
 
 def test_generate_rag_answer_without_context_still_answers(db, monkeypatch):
     _stub_query_embedding(monkeypatch, _vector(0))
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
 
     result, ids = rag_service.generate_rag_answer(db, "誰も答えたことのない質問")
 
@@ -212,8 +212,8 @@ def test_generate_rag_answer_with_ids_skips_embedding_search(db, monkeypatch):
     def _fail_create_embeddings(texts):
         raise AssertionError("create_embeddings should not be called")
 
-    monkeypatch.setattr(embedding_service, "create_embeddings", _fail_create_embeddings)
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_create_embeddings(monkeypatch, _fail_create_embeddings)
+    patch_generation(monkeypatch, fake_generation("回答"))
 
     result, ids = rag_service.generate_rag_answer(
         db, "力の説明をして", retrieved_question_ids=[question.id]
@@ -227,7 +227,7 @@ def test_generate_rag_answer_falls_back_to_search_when_no_approved_ids(db, monke
     question = _create_question(db, "力とは何ですか", "力は説明です")
     _embed_question(db, question, _vector(0))
     _stub_query_embedding(monkeypatch, _vector(0))
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
 
     result, ids = rag_service.generate_rag_answer(
         db, "力の説明をして", retrieved_question_ids=None

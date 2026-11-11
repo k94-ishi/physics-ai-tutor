@@ -20,13 +20,13 @@ from physics_ai_tutor.schemas.question import (
 from physics_ai_tutor.schemas.question_review import QuestionReviewAction
 from physics_ai_tutor.services import (
     concept_service,
-    embedding_service,
     question_presentation_service,
     question_read_service,
     question_review_service,
     question_write_service,
 )
 from physics_ai_tutor.services.user_service import create_user
+from tests.conftest import patch_create_embeddings
 
 
 def _create(db, question: str = "テスト質問", answer: str = "テスト回答"):
@@ -256,7 +256,7 @@ def test_create_question_rolls_back_on_embedding_failure(db, monkeypatch):
     def _raise(texts):
         raise EmbeddingGenerationError("boom")
 
-    monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
+    patch_create_embeddings(monkeypatch, _raise)
 
     with pytest.raises(EmbeddingGenerationError):
         _create(db)
@@ -293,7 +293,7 @@ def test_update_question_rolls_back_on_embedding_failure(db, monkeypatch):
     def _raise(texts):
         raise EmbeddingGenerationError("boom")
 
-    monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
+    patch_create_embeddings(monkeypatch, _raise)
 
     with pytest.raises(EmbeddingGenerationError):
         question_write_service.update_question(
@@ -328,7 +328,7 @@ def test_import_questions_rolls_back_on_embedding_failure(db, monkeypatch):
     def _raise(texts):
         raise EmbeddingGenerationError("boom")
 
-    monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
+    patch_create_embeddings(monkeypatch, _raise)
 
     with pytest.raises(EmbeddingGenerationError):
         question_write_service.import_questions_from_jsonl(
@@ -618,7 +618,7 @@ def test_save_ai_question_embedding_failure_returns_none(db, monkeypatch):
     def _raise(texts):
         raise EmbeddingGenerationError("boom")
 
-    monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
+    patch_create_embeddings(monkeypatch, _raise)
 
     saved = question_write_service.save_ai_question(db, "失敗する質問", "失敗する回答")
 

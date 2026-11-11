@@ -6,9 +6,9 @@ from sqlalchemy.orm import sessionmaker
 from physics_ai_tutor.cli import review_pending as review_pending_cli
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.models import AiReview, Question
-from physics_ai_tutor.services import ai_review_service, deepseek_service
+from physics_ai_tutor.services import ai_review_service
 from physics_ai_tutor.services.deepseek_service import GenerationResult
-from tests.conftest import engine, fake_generation
+from tests.conftest import engine, fake_generation, patch_generation
 
 ASK_PATH = "/api/v1/ai/ask"
 
@@ -45,7 +45,7 @@ def _sequenced_generation(monkeypatch, *contents):
             content=content, model="mock-model", prompt_tokens=5, completion_tokens=7
         )
 
-    monkeypatch.setattr(deepseek_service, "generate_answer", _next)
+    patch_generation(monkeypatch, _next)
 
 
 def test_new_ai_answer_gets_exactly_one_review(client, db, monkeypatch, review_enabled):
@@ -82,7 +82,7 @@ def test_cache_hit_triggers_no_review(client, db, monkeypatch, review_enabled):
 
 
 def test_disabled_flag_skips_the_review(client, db, monkeypatch):
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
 
     client.post(ASK_PATH, json={"question": "フラグ無効の質問です"})
 
@@ -113,7 +113,7 @@ def test_reviewer_failure_does_not_break_translation(
             raise RuntimeError("reviewer down")
         return fake_generation("回答")(system_prompt, user_prompt)
 
-    monkeypatch.setattr(deepseek_service, "generate_answer", _answer_then_error)
+    patch_generation(monkeypatch, _answer_then_error)
 
     response = client.post(ASK_PATH, json={"question": "翻訳は守られる質問です"})
     assert response.status_code == 200
@@ -169,7 +169,7 @@ def test_reviewer_prompt_matches_the_questions_language(
             content=content, model="mock-model", prompt_tokens=1, completion_tokens=1
         )
 
-    monkeypatch.setattr(deepseek_service, "generate_answer", _capture)
+    patch_generation(monkeypatch, _capture)
 
     client.post(ASK_PATH, json={"question": "What is momentum here?", "language": "en"})
 
@@ -201,14 +201,13 @@ def test_cli_backfills_only_pending_questions(
     client, db, monkeypatch, _bind_review_cli
 ):
     # Two generations with the reviewer disabled -> no rows yet.
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
     client.post(ASK_PATH, json={"question": "バックフィル質問その1"})
     client.post(ASK_PATH, json={"question": "バックフィル質問その2"})
     assert db.query(AiReview).count() == 0
 
-    monkeypatch.setattr(
-        deepseek_service,
-        "generate_answer",
+    patch_generation(
+        monkeypatch,
         fake_generation(json.dumps(VALID_REVIEW)),
     )
 
@@ -229,7 +228,7 @@ def test_cli_exits_nonzero_when_the_run_fails(
     client, db, monkeypatch, _bind_review_cli
 ):
     """A scheduled run ([26]) can only alert if failure reaches the exit code."""
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
     client.post(ASK_PATH, json={"question": "失敗するはずの質問です"})
 
     from physics_ai_tutor.models import AiReviewRun
@@ -262,7 +261,7 @@ def test_service_skips_non_ai_and_already_reviewed_questions(
 
 
 def _three_pending(client, monkeypatch):
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
     return [
         client.post(ASK_PATH, json={"question": f"ラン対象の質問その{i}"}).json()[
             "question_id"
@@ -275,9 +274,8 @@ def test_run_over_pending_questions_counts_and_sums_tokens(
     client, db, monkeypatch, _bind_review_cli
 ):
     ids = _three_pending(client, monkeypatch)
-    monkeypatch.setattr(
-        deepseek_service,
-        "generate_answer",
+    patch_generation(
+        monkeypatch,
         fake_generation(json.dumps(VALID_REVIEW)),
     )
 
@@ -328,7 +326,7 @@ def test_one_failure_is_counted_and_does_not_stop_the_run(client, db, monkeypatc
             completion_tokens=22,
         )
 
-    monkeypatch.setattr(deepseek_service, "generate_answer", _second_fails)
+    patch_generation(monkeypatch, _second_fails)
     from physics_ai_tutor.services import ai_review_service as service
 
     run = service.start_run(db, scope="pending", trigger="cli")
@@ -367,9 +365,8 @@ def test_stale_scope_picks_only_old_prompt_versions(client, db, monkeypatch):
 def test_daily_cap_truncates_and_then_refuses(client, db, monkeypatch):
     _three_pending(client, monkeypatch)
     monkeypatch.setattr(settings, "ai_review_daily_cap", 2)
-    monkeypatch.setattr(
-        deepseek_service,
-        "generate_answer",
+    patch_generation(
+        monkeypatch,
         fake_generation(json.dumps(VALID_REVIEW)),
     )
     from physics_ai_tutor.services import ai_review_service as service
@@ -414,9 +411,8 @@ def test_question_reviewed_mid_run_counts_as_skipped_not_failed(
     question.status = "APPROVED"
     db.commit()
 
-    monkeypatch.setattr(
-        deepseek_service,
-        "generate_answer",
+    patch_generation(
+        monkeypatch,
         fake_generation(json.dumps(VALID_REVIEW)),
     )
     service.execute_run(db, run.id)
@@ -432,13 +428,11 @@ def test_unparsed_verdict_is_retried_then_given_up_on(client, db, monkeypatch):
     from physics_ai_tutor.repositories import ai_review_repository
     from physics_ai_tutor.services import ai_review_service as service
 
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
     asked = client.post(ASK_PATH, json={"question": "解析できない判定の質問"})
     question_id = asked.json()["question_id"]
 
-    monkeypatch.setattr(
-        deepseek_service, "generate_answer", fake_generation("not json at all")
-    )
+    patch_generation(monkeypatch, fake_generation("not json at all"))
 
     attempts = ai_review_repository.MAX_PARSE_ATTEMPTS
     for attempt in range(attempts):
@@ -450,9 +444,8 @@ def test_unparsed_verdict_is_retried_then_given_up_on(client, db, monkeypatch):
     assert question_id not in ai_review_repository.list_pending_question_ids(db, 10)
 
     # A readable verdict settles it immediately.
-    monkeypatch.setattr(
-        deepseek_service,
-        "generate_answer",
+    patch_generation(
+        monkeypatch,
         fake_generation(json.dumps(VALID_REVIEW)),
     )
     other = client.post(ASK_PATH, json={"question": "普通に判定できる質問"}).json()
@@ -562,9 +555,8 @@ def test_run_endpoints(client, user_client, admin_client, db, monkeypatch):
     assert user_client.get(COUNT).status_code == 403
 
     _three_pending(client, monkeypatch)
-    monkeypatch.setattr(
-        deepseek_service,
-        "generate_answer",
+    patch_generation(
+        monkeypatch,
         fake_generation(json.dumps(VALID_REVIEW)),
     )
 
@@ -616,7 +608,7 @@ def test_reviewer_calls_use_the_larger_token_budget(monkeypatch):
             completion_tokens=1,
         )
 
-    monkeypatch.setattr(deepseek_service, "generate_answer", _capture)
+    patch_generation(monkeypatch, _capture)
 
     service.grade_answer("質問", "回答", Language.JA)
 
@@ -710,9 +702,8 @@ def test_cli_refuses_outside_the_window_and_force_overrides(
     from datetime import UTC, datetime
 
     _three_pending(client, monkeypatch)
-    monkeypatch.setattr(
-        deepseek_service,
-        "generate_answer",
+    patch_generation(
+        monkeypatch,
         fake_generation(json.dumps(VALID_REVIEW)),
     )
     # Midday UTC is well outside the 16:30-00:30 window.
@@ -753,9 +744,8 @@ def test_cli_scheduled_both_reviews_pending_then_stale(
     )
     db.commit()
 
-    monkeypatch.setattr(
-        deepseek_service,
-        "generate_answer",
+    patch_generation(
+        monkeypatch,
         fake_generation(json.dumps(VALID_REVIEW)),
     )
 

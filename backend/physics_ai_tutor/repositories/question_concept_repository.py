@@ -1,3 +1,5 @@
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.models import Concept, Question, QuestionConcept
@@ -43,13 +45,38 @@ def get_concepts_for_questions(
     if not question_ids:
         return {}
 
-    rows = (
-        db.query(QuestionConcept.question_id, Concept)
+    rows = db.execute(_concepts_for_questions_select(question_ids)).all()
+
+    return _names_by_question(rows, question_ids, language, strict)
+
+
+async def async_get_concepts_for_questions(
+    db: AsyncSession,
+    question_ids: list[int],
+    language: str = "ja",
+    strict: bool = False,
+) -> dict[int, list[str]]:
+    """As `get_concepts_for_questions` ([70])."""
+    if not question_ids:
+        return {}
+
+    rows = (await db.execute(_concepts_for_questions_select(question_ids))).all()
+
+    return _names_by_question(rows, question_ids, language, strict)
+
+
+def _concepts_for_questions_select(question_ids: list[int]):
+    return (
+        select(QuestionConcept.question_id, Concept)
         .join(Concept, Concept.id == QuestionConcept.concept_id)
-        .filter(QuestionConcept.question_id.in_(question_ids))
-        .all()
+        .where(QuestionConcept.question_id.in_(question_ids))
     )
 
+
+def _names_by_question(
+    rows, question_ids: list[int], language: str, strict: bool
+) -> dict[int, list[str]]:
+    """The strict-vs-fallback naming rule, shared by both variants ([53])."""
     result: dict[int, list[str]] = {question_id: [] for question_id in question_ids}
     for question_id, concept in rows:
         name = concept.name_in(language) if strict else concept.display_name(language)

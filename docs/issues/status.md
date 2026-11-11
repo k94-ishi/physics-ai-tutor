@@ -98,6 +98,10 @@ including all discussion comments; browse it with `git bug bug` /
 | 75 | open | 75-worker-safe-background-claims.md | Worker-safe background claims: move de-duplication into the database, then scale out | — (file-era issue) |
 | 76 | open | 76-batch-embedding-calls.md | Batch embedding calls: one OpenAI request per import, not two per row | — (file-era issue) |
 | 77 | open | 77-question-page-request-waves.md | Question page: three requests in two waves become one wave | — (file-era issue) |
+| 78 | open | 78-config-hygiene-and-startup-validation.md | Config hygiene: fix the defaults, validate at startup, end the template drift | — (file-era issue) |
+| 79 | open | 79-operator-tunable-settings.md | Operator-tunable settings: limits, pools and timeouts move out of the code | — (file-era issue) |
+| 80 | open | 80-tuning-constants-stay-in-code.md | Tuning constants: collect and document them, but keep them out of the environment | — (file-era issue) |
+| 81 | open | 81-track-g-configuration.md | Track G: configuration - what belongs in the environment and what belongs in code | — (file-era issue) |
 
 ## Notes on the archive column
 

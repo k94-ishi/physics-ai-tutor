@@ -88,20 +88,28 @@ wait for the slowest endpoint from "whole answer" to "first words".
    two workers is the ceiling until [73] halves the pools per worker)
 8. [73] Convert everything that remains; the app keeps no sync engine.
    Slice 1 (auth, users, sessions) merged 2026-11-12; the rest was
-   **re-scoped on 2026-11-13 into six issues**, each its own PR, after
+   **re-scoped on 2026-11-13 into small issues**, each its own PR, after
    a one-pass attempt proved too big to merge ([73]'s Log):
    1. ~~[83] public question reads (list, detail, exact match, related,
       prerequisites) - also makes an un-awaited coroutine a test failure~~
       done 2026-11-13 (601 tests; no regression at concurrency 8)
-   2. [84] concepts: student search and the admin tag editor
-   3. [85] admin review workflow: review, bulk review, history,
-      translate, re-extract
-   4. [86] admin content writes: create, update, delete, import; the
-      seed and three CLIs follow ([76] recommended first)
-   5. [87] admin stats, exports and AI review runs; the nightly CLI
-   6. [88] retire the sync stack: one engine, plain names, docs,
-      connection count re-measured - closes [73]
-   [84] and [87] need only [83] and can run beside [85]/[86].
+   2. [84] Asynchronize the public tag search (GET /concepts)
+   3. [89] Asynchronize the admin tag editor reads: list and detail
+   4. [90] Asynchronize the admin tag editor writes: gloss, words, merge, split
+   5. [91] Asynchronize concept extraction and the re-extract route
+   6. [85] Asynchronize the review routes: review, bulk review, history
+   7. [92] Asynchronize the fill-translations route (POST /questions/translate)
+   8. [86] Asynchronize delete and bulk delete
+   9. [93] Asynchronize create and update (prepare/apply)
+   10. [94] Asynchronize JSONL import
+   11. [95] Seed and translation CLIs on the async services; delete the sync translation half
+   12. [87] Asynchronize the usage dashboard and the agreement report
+   13. [96] Asynchronize the review dataset export
+   14. [97] Asynchronize AI review runs; one ai_review_service
+   15. [88] Delete the sync engine, sync LLM clients and remaining sync twins
+   16. [98] Rename pass: drop the async_ prefixes
+   17. [99] Async end state: architecture test, docs, connection budget (closes [73])
+   Re-split 2026-11-13 into ~10-test slices; [87] can run beside the concept chain.
 9. [74] Latency quick wins independent of async: pgvector HNSW index,
    pool settings for the Supabase pooler, response compression. The
    pool numbers are best chosen after [88], when there is one pool.

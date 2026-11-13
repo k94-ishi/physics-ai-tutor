@@ -104,11 +104,22 @@ including all discussion comments; browse it with `git bug bug` /
 | 81 | open | 81-track-g-configuration.md | Track G: configuration - what belongs in the environment and what belongs in code | — (file-era issue) |
 | 82 | closed | 82-no-connection-held-across-an-llm-call.md | Never hold a database connection across an LLM call: split the translate/embed transaction | — (file-era issue) |
 | 83 | closed | 83-async-public-question-reads.md | Asynchronize the public question reads: list, detail, exact match, related, prerequisites | — (file-era issue) |
-| 84 | open | 84-async-concepts.md | Asynchronize concepts: student tag search and the admin tag editor | — (file-era issue) |
-| 85 | open | 85-async-admin-review-workflow.md | Asynchronize the admin review workflow: review, bulk review, history, translate, re-extract | — (file-era issue) |
-| 86 | open | 86-async-admin-content-writes.md | Asynchronize admin content writes: create, update, delete, import; the seed and backfill CLIs follow | — (file-era issue) |
-| 87 | open | 87-async-admin-stats-exports-and-ai-review-runs.md | Asynchronize admin stats, exports and AI review runs; one ai_review_service | — (file-era issue) |
-| 88 | open | 88-retire-the-sync-stack.md | Retire the sync stack: one engine, one session type, no async_ prefixes (closes [73]) | — (file-era issue) |
+| 84 | open | 84-async-concepts.md | Asynchronize the public tag search (GET /concepts) | — (file-era issue) |
+| 85 | open | 85-async-admin-review-workflow.md | Asynchronize the review routes: review, bulk review, history | — (file-era issue) |
+| 86 | open | 86-async-admin-content-writes.md | Asynchronize delete and bulk delete | — (file-era issue) |
+| 87 | open | 87-async-admin-stats-exports-and-ai-review-runs.md | Asynchronize the usage dashboard and the agreement report | — (file-era issue) |
+| 88 | open | 88-retire-the-sync-stack.md | Delete the sync engine, sync LLM clients and remaining sync twins | — (file-era issue) |
+| 89 | open | 89-async-admin-concept-reads.md | Asynchronize the admin tag editor reads: list and detail | — (file-era issue) |
+| 90 | open | 90-async-admin-concept-writes.md | Asynchronize the admin tag editor writes: gloss, words, merge, split | — (file-era issue) |
+| 91 | open | 91-async-concept-extraction.md | Asynchronize concept extraction and the re-extract route | — (file-era issue) |
+| 92 | open | 92-async-translate-route.md | Asynchronize the fill-translations route (POST /questions/translate) | — (file-era issue) |
+| 93 | open | 93-async-create-update.md | Asynchronize create and update (prepare/apply) | — (file-era issue) |
+| 94 | open | 94-async-import.md | Asynchronize JSONL import | — (file-era issue) |
+| 95 | open | 95-async-seed-and-clis.md | Seed and translation CLIs on the async services; delete the sync translation half | — (file-era issue) |
+| 96 | open | 96-async-review-export.md | Asynchronize the review dataset export | — (file-era issue) |
+| 97 | open | 97-async-ai-review-runs.md | Asynchronize AI review runs; one ai_review_service | — (file-era issue) |
+| 98 | open | 98-async-rename-pass.md | Rename pass: drop the async_ prefixes | — (file-era issue) |
+| 99 | open | 99-async-end-state-and-docs.md | Async end state: architecture test, docs, connection budget (closes [73]) | — (file-era issue) |
 
 ## Notes on the archive column
 

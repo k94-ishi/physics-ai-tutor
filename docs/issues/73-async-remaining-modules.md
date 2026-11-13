@@ -1,5 +1,5 @@
 ---
-title: "[73] Asynchronize the rest (umbrella for [83]-[88]): every route on the async stack; app keeps no sync engine"
+title: "[73] Asynchronize the rest (umbrella for [83]-[99]): every route on the async stack; app keeps no sync engine"
 labels: [backend, async, refactor, epic]
 milestone: M1 Student value
 priority: P2
@@ -33,18 +33,28 @@ stands between two workers and four.
 Each slice is its own PR with the suite green after it. Order is by
 traffic first, then by which sync functions can be deleted soonest.
 
-| # | Issue | What converts | Tests re-written (est.) | Status |
-| --- | --- | --- | --- | --- |
-| 1 | (this issue, 260d7c2) | Auth, users, sessions; `google_auth_service` over async HTTP | — | merged 2026-11-12 |
-| 2 | [83] | Public question reads: list, detail, exact match, related, prerequisites; read twins in the repositories; `RuntimeWarning` becomes a test failure | 35 moved, 3 new | done 2026-11-13 |
-| 3 | [84] | Concepts: student search and the admin tag editor | ~25 | open |
-| 4 | [85] | Admin review workflow: review, bulk review, history, translate, re-extract; extraction out of the transaction | ~40 | open |
-| 5 | [86] | Admin content writes: create, update, delete, import; the seed and three CLIs; sync translation half deleted | ~60 | open |
-| 6 | [87] | Admin stats, exports, AI review runs; `ai_review_service` twins collapse; nightly CLI | ~70 | open |
-| 7 | [88] | Retire the sync stack: delete engine, clients, twins; rename `async_*`; docs and measurements | mechanical | open |
+| # | Issue | What converts | Status |
+| --- | --- | --- | --- |
+| 1 | (this issue, 260d7c2) | Auth, users, sessions | merged 2026-11-12 |
+| 2 | [83] | Public question reads | done 2026-11-13 |
+| 3 | [84] | Asynchronize the public tag search (GET /concepts) | open |
+| 4 | [89] | Asynchronize the admin tag editor reads: list and detail | open |
+| 5 | [90] | Asynchronize the admin tag editor writes: gloss, words, merge, split | open |
+| 6 | [91] | Asynchronize concept extraction and the re-extract route | open |
+| 7 | [85] | Asynchronize the review routes: review, bulk review, history | open |
+| 8 | [92] | Asynchronize the fill-translations route (POST /questions/translate) | open |
+| 9 | [86] | Asynchronize delete and bulk delete | open |
+| 10 | [93] | Asynchronize create and update (prepare/apply) | open |
+| 11 | [94] | Asynchronize JSONL import | open |
+| 12 | [95] | Seed and translation CLIs on the async services; delete the sync translation half | open |
+| 13 | [87] | Asynchronize the usage dashboard and the agreement report | open |
+| 14 | [96] | Asynchronize the review dataset export | open |
+| 15 | [97] | Asynchronize AI review runs; one ai_review_service | open |
+| 16 | [88] | Delete the sync engine, sync LLM clients and remaining sync twins | open |
+| 17 | [98] | Rename pass: drop the async_ prefixes | open |
+| 18 | [99] | Async end state: architecture test, docs, connection budget (closes [73]) | open |
 
-[84] and [87] depend only on [83] and can run in parallel with [85]/[86]
-if two sessions coordinate. [76] (batch embeddings on import) is
+Chains: concepts [84]→[89]→[90]→[91], review [85]→[92], writes [86]→[93]→[94]→[95], admin stats [87]→[96]→[97], end [88]→[98]→[99]. [87] needs only [83] and can run beside the concept chain. [76] (batch embeddings on import) is
 recommended before [86].
 
 ## Acceptance criteria (the end state, ticked by [88])
@@ -212,3 +222,7 @@ attached. It should have been five issues from the start.
   opened by preceding reads rather than a `with` block. Fixed in [72];
   this is the second instance, so the runtime probes are the load-bearing
   check, not the AST one.
+
+### 2026-11-13 — slices split again
+
+[83] (22 files, 35 tests) was still too big for the owner. Each remaining slice is now one route group or one script group, about ten tests or fewer: [84]-[88] were narrowed and [89]-[99] filed.

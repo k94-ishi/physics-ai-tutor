@@ -185,17 +185,19 @@ async def extract_concepts(
     "/translate",
     response_model=TranslationBatchResponse,
 )
-def translate_questions(
+async def translate_questions(
     data: BulkDeleteRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
     """Fill missing languages of the given questions by machine translation."""
     results = []
     for question_id in data.question_ids:
         try:
-            filled = question_translation_service.translate_missing_languages(
-                db, question_id
+            filled = (
+                await question_translation_service.async_translate_missing_languages(
+                    db, question_id
+                )
             )
         except Exception:
             logger.warning(

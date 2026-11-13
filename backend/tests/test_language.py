@@ -375,6 +375,29 @@ def test_translate_endpoint_fills_missing_language(admin_client, db):
     assert {"question_id": 99999, "success": False, "language": None} in results
 
 
+def test_translate_endpoint_reports_a_failed_translation(admin_client, db, monkeypatch):
+    legacy = Question(
+        question_ja="翻訳失敗", answer_ja="回答", ja_provenance="ORIGINAL"
+    )
+    db.add(legacy)
+    db.commit()
+
+    def _fail(question, answer, source, target):
+        raise translation_service.TranslationError("down")
+
+    patch_translate_qa(monkeypatch, _fail)
+
+    response = admin_client.post(
+        f"{QUESTIONS}/translate", json={"question_ids": [legacy.id]}
+    )
+
+    assert response.json()["results"] == [
+        {"question_id": legacy.id, "success": False, "language": None}
+    ]
+    db.expire_all()
+    assert db.get(Question, legacy.id).question_en is None
+
+
 def test_import_accepts_explicit_language_columns(admin_client):
     content = "\n".join(
         [

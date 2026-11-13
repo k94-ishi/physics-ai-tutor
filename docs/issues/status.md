@@ -112,7 +112,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 89 | closed | 89-async-admin-concept-reads.md | Asynchronize the admin tag editor reads: list and detail | — (file-era issue) |
 | 90 | closed | 90-async-admin-concept-writes.md | Asynchronize the admin tag editor writes: gloss, words, merge, split | — (file-era issue) |
 | 91 | closed | 91-async-concept-extraction.md | Asynchronize concept extraction and the re-extract route | — (file-era issue) |
-| 92 | open | 92-async-translate-route.md | Asynchronize the fill-translations route (POST /questions/translate) | — (file-era issue) |
+| 92 | closed | 92-async-translate-route.md | Asynchronize the fill-translations route (POST /questions/translate) | — (file-era issue) |
 | 93 | open | 93-async-create-update.md | Asynchronize create and update (prepare/apply) | — (file-era issue) |
 | 94 | open | 94-async-import.md | Asynchronize JSONL import | — (file-era issue) |
 | 95 | open | 95-async-seed-and-clis.md | Seed and translation CLIs on the async services; delete the sync translation half | — (file-era issue) |

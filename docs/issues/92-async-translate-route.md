@@ -18,7 +18,7 @@ One small slice of [73]: admin translation trigger. No behaviour change.
 
 ## Acceptance criteria
 
-- [ ] Translate-endpoint tests in `test_language.py` green.
+- [x] Translate-endpoint tests in `test_language.py` green.
 
 ## Dependencies
 
@@ -36,5 +36,24 @@ One small slice of [73]: admin translation trigger. No behaviour change.
 
 ## Definition of done
 
-- [ ] Backend: `pytest`, `ruff check`, `mypy` pass
-- [ ] Log entry in this file; `status.md`, [67] and [73] updated
+- [x] Backend: `pytest`, `ruff check`, `mypy` pass
+- [x] Log entry in this file; `status.md`, [67] and [73] updated
+
+## Log
+
+### 2026-11-13 — done
+
+606 tests pass (605 + 1 new); ruff and mypy clean; frontend untouched.
+1 production file, 1 test file.
+
+- `POST /questions/translate` is async and calls the existing
+  `async_translate_missing_languages`, which already reads, translates
+  with no transaction, and writes per language ([82]).
+- The sync `translate_missing_languages` stays: the `translate_missing`
+  CLI uses it until [95].
+- New test: a failed translation through the route reports
+  `success: false` and leaves the row untranslated.
+- Test database: the `elm` session was using the name this session had
+  picked (`physics_ai_tutor_test_elm_session`), so the suite's lock
+  refused a run. Left alone; this session's database name now carries a
+  random part.

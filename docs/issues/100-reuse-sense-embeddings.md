@@ -32,19 +32,30 @@ results.
 
 ## Scope
 
-Pick one, and write down why:
+**Decision (owner, 2026-11-13): a migration is acceptable.** Both
+options discussed keep vectors in the database; they differ in the key.
+A vector keyed by the sense goes stale on a rename; a vector keyed by
+the text cannot. The plan takes the best of both:
 
-1. **Use the stored vector.** Compare against `concepts.embedding`. It
-   was computed from the sense's words at creation; a teacher may have
-   renamed the sense since ([55] editor), so the stored vector can be
-   stale. Either re-embed on rename (the editor then calls OpenAI), or
-   accept comparing against the original meaning.
-2. **Cache by text.** A small table keyed by (hash of the pair text,
-   model), like `query_embeddings` ([49]). Always exact; costs a
-   migration.
-
-Either way: keep the matching rule shared by the sync and async paths
-([91]), and keep the offline seed at zero OpenAI calls.
+- **Keep the vector on the sense** (`concepts.embedding`) and add one
+  column, `concepts.embedding_text_hash`: SHA-256 of the model and the
+  exact `"<ja> | <en>"` text the vector was made from (same scheme as
+  `embedding_service.vector_key`).
+- Matching uses the stored vector when the hash equals the hash of the
+  sense's current text, and re-embeds only the senses whose hash
+  differs, saving the new vector and hash in the same short write.
+- Why not a separate text-keyed table: `recommendation_service`
+  (`average_concept_similarity`) also reads `concepts.embedding` to rank
+  related questions. A cache table would leave that column stale after a
+  rename; fixing the column itself fixes both readers.
+- Migration: add the nullable column; existing rows start NULL, which
+  counts as "unknown" and is re-embedded the first time the sense is a
+  candidate (or by an optional one-off backfill CLI). Downgrade drops
+  the column.
+- New senses store the hash at creation; the editor rename ([90]) does
+  not call OpenAI - the mismatch is caught lazily at the next match.
+- Keep the matching rule shared ([91]) and the offline seed at zero
+  OpenAI calls (the seed file carries the vectors; write the hash too).
 
 ## Acceptance criteria
 
@@ -67,5 +78,14 @@ Either way: keep the matching rule shared by the sync and async paths
 ## Definition of done
 
 - [ ] Backend: `pytest`, `ruff check`, `mypy` pass
-- [ ] Migration with verified downgrade, if option 2
-- [ ] `docs/database.md` updated if a table is added
+- [ ] Migration with verified downgrade
+- [ ] `docs/database.md` documents the column
+
+## Log
+
+### 2026-11-13 — plan chosen
+
+Owner asked where the vector lives (the database, in both options) and
+accepted a migration. Chosen: vector on the sense plus a text hash, for
+the reason under Scope: the related-questions ranking reads the same
+column, so a separate cache would leave it stale.

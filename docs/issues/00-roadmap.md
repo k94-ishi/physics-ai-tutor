@@ -5,14 +5,14 @@ milestone: M0 Deploy Google Sign-In
 priority: P0
 ---
 
-Last revised **2026-11-11** (previous revision 2026-10-28, kept below as
-history). The tracks hold the ordered queues; this page says where the
+Last revised **2026-11-13** (previous revisions 2026-11-11 and
+2026-10-28; the older one is kept below as history). The tracks hold the ordered queues; this page says where the
 project stands and how the tracks relate. Update it when the order between
 tracks changes.
 
 ---
 
-## Where the project is (2026-11-11)
+## Where the project is (2026-11-13)
 
 - **Student side**: approved Q&A in Japanese and English; students only
   ever read their chosen language - missing text and tag names are
@@ -29,24 +29,38 @@ tracks changes.
   against teachers on a golden set (Tracks B and D).
 - **Data**: the local database is disposable - `seed.json` plus
   `seed_embeddings.jsonl.gz` rebuild it with no API key.
+- **Backend speed** (Track F, [67], since 2026-11-11): the ask path,
+  search, auth and all background work run on the async stack; answers
+  stream ([71]); no connection waits on an LLM ([82]); background work is
+  claimed in the database so two workers cannot repeat it ([75]).
+  Under 60 concurrent asks, `/health` went from 15.6 s to under 2 ms.
+  The remaining routes (public reads, concepts, admin) are still sync;
+  [73] was split into six slices [83]-[88] on 2026-11-13.
 - **Production** is still at Alembic `7f3b1c9d4e21` and on old code; the
   rollout ([54], owner) is on hold until the owner can reach production.
+  Track F deploys as one piece when it is finished (owner, 2026-11-11).
 
 ## What comes next, in order
 
 | # | Track | Status | Next item |
 | --- | --- | --- | --- |
-| 1 | **E - refactoring** [57] | active | remaining: [65] comments; [61] skipped for now |
-| 2 | D - owner's queue [48] | waiting on the owner | [54] production rollout; [52] production sample after it |
-| 3 | A - student experience [45] | paused until E's backend steps land | [21] /help page |
-| 4 | B - review pipeline [46] | paused | [16] few-shot grounding; policies [18]/[19] after the agreement gate |
-| 5 | C - housekeeping [47] | any gap | [23] deleted-user data disposal |
+| 1 | **F - async and latency** [67] | active | [83] public reads, then [84]-[88]; [74], [76], [77] in gaps |
+| 2 | E - refactoring [57] | nearly done | [65] part 2 waits on the owner; [61] skipped for now |
+| 3 | D - owner's queue [48] | waiting on the owner | [54] production rollout; [52] production sample after it |
+| 4 | A - student experience [45] | paused until F lands | [21] /help page |
+| 5 | B - review pipeline [46] | paused | [16] few-shot grounding; policies [18]/[19] after the agreement gate |
+| 6 | C - housekeeping [47] | any gap | [23] deleted-user data disposal |
+| 7 | G - configuration [81] | not started; any gap | [78] config hygiene, then [79], [80] |
 
 Why this order:
 
 - **Refactor before new features** (owner, 2026-11-10): the November
   features made the structure hard to change; Track E keeps behaviour
   identical and makes the next features cheaper.
+- **Async before new features too** (owner, 2026-11-11): the server
+  spent its threads waiting on LLM calls, so a few slow asks stalled
+  everyone. Track F fixes that in small, separately merged slices and
+  deploys once at the end.
 - **Production waits for the owner**, not for E. [61] (dropping the old
   tag-name columns) is the one E step that must wait until [54] has
   migrated production.
@@ -65,6 +79,8 @@ Why this order:
 | 2026-11-10 | The local database is disposable; everything needed lives in the seed files |
 | 2026-11-10 | Refactor (Track E) before new features |
 | 2026-11-11 | [20] prompt A/B rollouts and [44] closed as not needed |
+| 2026-11-11 | Asynchronize the whole backend and cut latency ([67]); deploy the track as one piece at the end |
+| 2026-11-11 | Never hold a database connection across an LLM call ([82]) |
 
 ---
 

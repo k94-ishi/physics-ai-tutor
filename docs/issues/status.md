@@ -93,7 +93,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 70 | closed | 70-async-hot-path-ask-and-search.md | Asynchronize the hot path: /ai/ask and similarity search, async LLM clients | — (file-era issue) |
 | 71 | closed | 71-streaming-ask-answers.md | Stream /ai/ask answers (SSE) so students read while it generates | — (file-era issue) |
 | 72 | closed | 72-async-background-work.md | Background work on the event loop: parallel translations, bounded AI-review concurrency | — (file-era issue) |
-| 73 | open | 73-async-remaining-modules.md | Asynchronize the rest: all routers, services, repositories; app keeps no sync engine | — (file-era issue) |
+| 73 | open | 73-async-remaining-modules.md | Asynchronize the rest (umbrella for [83]-[88]): every route on the async stack; app keeps no sync engine | — (file-era issue) |
 | 74 | open | 74-latency-quick-wins.md | Latency quick wins independent of async: vector index, pool settings, compression | — (file-era issue) |
 | 75 | closed | 75-worker-safe-background-claims.md | Worker-safe background claims: move de-duplication into the database, then scale out | — (file-era issue) |
 | 76 | open | 76-batch-embedding-calls.md | Batch embedding calls: one OpenAI request per import, not two per row | — (file-era issue) |
@@ -103,6 +103,12 @@ including all discussion comments; browse it with `git bug bug` /
 | 80 | open | 80-tuning-constants-stay-in-code.md | Tuning constants: collect and document them, but keep them out of the environment | — (file-era issue) |
 | 81 | open | 81-track-g-configuration.md | Track G: configuration - what belongs in the environment and what belongs in code | — (file-era issue) |
 | 82 | closed | 82-no-connection-held-across-an-llm-call.md | Never hold a database connection across an LLM call: split the translate/embed transaction | — (file-era issue) |
+| 83 | open | 83-async-public-question-reads.md | Asynchronize the public question reads: list, detail, exact match, related, prerequisites | — (file-era issue) |
+| 84 | open | 84-async-concepts.md | Asynchronize concepts: student tag search and the admin tag editor | — (file-era issue) |
+| 85 | open | 85-async-admin-review-workflow.md | Asynchronize the admin review workflow: review, bulk review, history, translate, re-extract | — (file-era issue) |
+| 86 | open | 86-async-admin-content-writes.md | Asynchronize admin content writes: create, update, delete, import; the seed and backfill CLIs follow | — (file-era issue) |
+| 87 | open | 87-async-admin-stats-exports-and-ai-review-runs.md | Asynchronize admin stats, exports and AI review runs; one ai_review_service | — (file-era issue) |
+| 88 | open | 88-retire-the-sync-stack.md | Retire the sync stack: one engine, one session type, no async_ prefixes (closes [73]) | — (file-era issue) |
 
 ## Notes on the archive column
 

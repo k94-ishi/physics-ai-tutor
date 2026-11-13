@@ -1,6 +1,6 @@
 ---
-title: "[73] Asynchronize the rest: all routers, services, repositories; app keeps no sync engine"
-labels: [backend, async, refactor]
+title: "[73] Asynchronize the rest (umbrella for [83]-[88]): every route on the async stack; app keeps no sync engine"
+labels: [backend, async, refactor, epic]
 milestone: M1 Student value
 priority: P2
 ---
@@ -9,12 +9,14 @@ priority: P2
 
 ## Summary
 
-Convert everything [70] and [72] did not cover — question reads/writes/
-review, admin, auth, users, concepts, stats — slice by slice, until the
-application serves every request through the async stack. Then remove
-the sync engine from the app; CLIs and Alembic keep their own sync
-sessions, wrapping async services with `asyncio.run` where they call
-them.
+Convert everything [70] and [72] did not cover, until the application
+serves every request through the async stack, then remove the sync
+engine from the app. CLIs and Alembic: Alembic keeps its own sync
+engine; CLIs run the async services through `asyncio.run`.
+
+**Re-scoped 2026-11-13.** This issue is now the umbrella: the work is
+in seven slices, one merged and six open as their own issues. It stays
+open until [88] lands and the acceptance criteria below are ticked.
 
 ## Motivation
 
@@ -22,37 +24,33 @@ Finishes the owner's "asynchronize the whole system" goal and ends the
 two-stack period from [69]: one session type, one `transaction()`, one
 set of fixtures, and no leftover routes that can still tie up threads
 (admin bulk actions, review endpoints with translation side effects).
-Half-converted codebases rot; this closes the migration.
+Half-converted codebases rot; this closes the migration. It is also
+what halves the connection demand per worker ([75]), which is what
+stands between two workers and four.
 
-## Scope
+## Scope: the slices
 
-**Re-scoped 2026-11-12 after attempting it in one pass** — see the Log.
-Slice 1 is merged; slices 2-5 below are each their own issue-sized piece
-of work, because the test-suite migration turned out to dominate and a
-single change cannot keep the suite green across it.
+Each slice is its own PR with the suite green after it. Order is by
+traffic first, then by which sync functions can be deleted soonest.
 
-Slices, each its own PR, suite green after each (order by traffic):
+| # | Issue | What converts | Tests re-written (est.) | Status |
+| --- | --- | --- | --- | --- |
+| 1 | (this issue, 260d7c2) | Auth, users, sessions; `google_auth_service` over async HTTP | — | merged 2026-11-12 |
+| 2 | [83] | Public question reads: list, detail, exact match, related, prerequisites; read twins in the repositories; `RuntimeWarning` becomes a test failure | ~50 | open |
+| 3 | [84] | Concepts: student search and the admin tag editor | ~25 | open |
+| 4 | [85] | Admin review workflow: review, bulk review, history, translate, re-extract; extraction out of the transaction | ~40 | open |
+| 5 | [86] | Admin content writes: create, update, delete, import; the seed and three CLIs; sync translation half deleted | ~60 | open |
+| 6 | [87] | Admin stats, exports, AI review runs; `ai_review_service` twins collapse; nightly CLI | ~70 | open |
+| 7 | [88] | Retire the sync stack: delete engine, clients, twins; rename `async_*`; docs and measurements | mechanical | open |
 
-1. Public question reads: list/detail/related/prerequisites +
-   `question_read_service`, `question_presentation_service`,
-   `recommendation_service`, `prerequisite_service`, `concept` reads.
-2. Auth and users: `auth_service`, `google_auth_service` (its outbound
-   HTTP calls become async too), `user_service`.
-3. Admin: `admin.py`, `admin_questions.py`, review/write/translation
-   services, stats, review metrics, exports, concept admin.
-4. Cleanup: drop `get_db`/sync `SessionLocal` from the app path, drop
-   the sync `transaction()` once unused, tighten
-   `test_architecture.py` to forbid sync sessions outside `cli/` and
-   `alembic/`, remove sync conftest fixtures that no longer have users.
-5. CLIs (`create_user`, `translate_missing`, `review_pending`,
-   `eval_prompts`, exporters, backfills): keep working; where a service
-   went async they call `asyncio.run(...)`. The nightly workflow ([26])
-   runs unchanged.
+[84] and [87] depend only on [83] and can run in parallel with [85]/[86]
+if two sessions coordinate. [76] (batch embeddings on import) is
+recommended before [86].
 
-## Acceptance criteria
+## Acceptance criteria (the end state, ticked by [88])
 
 - [ ] No route resolves a sync `Session`; `rg "SessionLocal"` outside
-      `cli/`, `alembic/`, `tests/` finds nothing app-side.
+      `database/`, `alembic/`, `tests/` finds nothing app-side.
 - [ ] One engine, one pool at runtime; pool settings documented.
 - [ ] Architecture test enforces the end state.
 - [ ] Behaviour identical: strict-language rule ([53]), admin fallback,
@@ -64,29 +62,92 @@ Slices, each its own PR, suite green after each (order by traffic):
   as in Track E).
 - Frontend changes.
 
+## Rules shared by every slice
+
+- **Twins until the last caller goes.** A function used by both
+  converted and unconverted callers keeps its sync version and gains
+  `async_<name>` ([70]). The slice that removes the last sync caller
+  deletes the sync version; [88] drops the prefixes. Where a twin would
+  duplicate a rule (status filter, strict-language naming), extract and
+  share the rule.
+- **Convert callees before callers; never bridge with
+  `run_in_executor`.** A slice is router, services and repositories of
+  one call chain, plus any CLI or script that calls them.
+- **No LLM call inside a transaction** ([82]): prepare, then apply. The
+  allowlist in `test_architecture.py` only shrinks.
+- **Read scalars off ORM rows before a transaction that might roll
+  back** ([70]); use `selectinload` for relationships the sync code
+  loaded lazily.
+- **The WIP branch is a reference, not a source.**
+  `wip/73-async-remaining` (9c42cfd, directly on top of slice 1) holds a
+  finished, type-checked conversion of all 51 production files. Each
+  slice issue names the `git diff 260d7c2 9c42cfd -- <paths>` to look
+  at. The branch collapsed every twin at once, which is exactly why its
+  suite was red; take bodies from it, keep the twins the slice still
+  needs, and write the test changes fresh. Its `conftest.py` is not the
+  reference ([88] explains).
+- Before each PR: pytest, ruff, mypy; frontend checks untouched but CI
+  green. Production `DATABASE_URL` and real API keys are never touched.
+
 ## Technical notes
 
-This is mostly mechanical but wide (~15 repositories, ~25 services, 9
-routers, 522 tests): expect the test churn to dominate. Convert callees
-before callers inside a slice; never bridge with `run_in_executor`.
-Watch lazy loading — `AsyncSession` raises on implicit IO, so any
-relationship the sync code loaded lazily needs explicit
-`selectinload`/explicit queries; the existing repository tests catch
-most of these. `question.text()`-style pure helpers are unaffected.
+~15 repositories, ~25 services, 9 routers, 598 tests: expect the test
+churn to dominate every slice. An un-awaited `db.commit()` on an
+`AsyncSession` keeps its row locks and deadlocks the *next* HTTP call
+rather than failing — [83] makes `RuntimeWarning` an error in pytest
+so this shows up as a failure, not a hang. A scripted `def` →
+`async def` pass must count only the awaits belonging to the function
+itself, not to nested ones.
 
 ## Dependencies
 
-- Blocked by: [70], [72].
-- Blocks: nothing, but ends the dual-stack period from [69].
+- Blocked by: [70], [72] (done).
+- Blocks: raising the worker count past two ([75]); the end-of-track
+  pre-deploy check ([67]).
 
 ## Definition of done
 
-- [ ] Backend: `pytest`, `ruff check`, `mypy` pass
-- [ ] Frontend suite still green in CI (no contract change)
+- [ ] [83]-[88] closed
 - [ ] `docs/development.md` backend-layers section describes only the
       async stack; dual-stack notes removed
+- [ ] This issue closed in `status.md`
 
 ## Log
+
+### 2026-11-13 — turned into an umbrella; six slice issues filed
+
+The 2026-11-12 entry below proposed five slices inside this issue but
+left them as prose. Checked against the code today (HEAD cb87d57):
+auth/users/sessions are async; `questions.py` has 5 of 6 routes sync,
+`admin_questions.py` 10 of 10, `admin.py` 7 of 7, `concepts.py` 10 of
+10. Still fully sync: `question_presentation`, `recommendation`,
+`prerequisite`, `question_review`, `review_export`, `review_metrics`,
+`stats` services and the `concept_term`, `question_review`,
+`review_metrics`, `stats` repositories; twin pairs remain in eight
+services and six repositories.
+
+Changes from the 2026-11-12 proposal:
+
+- The proposal's "slice 2, auth and users" was the slice already
+  merged; removed.
+- "Admin" (28 routes, 8 services, 8 repositories, ~170 tests) was the
+  same too-big shape again. It is now four issues by call chain:
+  concepts [84], review workflow [85], content writes [86], stats and
+  runs [87]. Each has a single-caller repository it can convert
+  outright, which is what keeps twins few.
+- "CLIs" is no longer a slice. A slice cannot merge with its CLI
+  callers broken (`test_cli.py`, `test_seed.py` run them), so each CLI
+  moves with the service it calls; only `export_seed`,
+  `export_seed_embeddings` and `init_db` are left for [88].
+- The WIP branch is named in every slice as the reference for the
+  production side, with the warning that its collapsed twins and its
+  conftest are not to be taken as is.
+- Two guards added early: `RuntimeWarning` as a test failure ([83]) and
+  a pinned test for the legacy create form ([86]).
+
+Not run here: the suite (this worktree has no test database container
+running); the slice sizes are estimates from grep counts, listed in
+each issue.
 
 ### 2026-11-12 — slice 1 merged; the rest re-scoped
 
@@ -125,8 +186,7 @@ because the suite was otherwise trustworthy.
 
 **The real lesson:** the scope was wrong, not the approach. "Convert
 everything that remains" is 9,000 lines across 51 files with ~600 tests
-attached. It should have been five issues from the start. The
-re-scoped slices above are the proposal.
+attached. It should have been five issues from the start.
 
 **Two traps, recorded for whoever finishes this:**
 

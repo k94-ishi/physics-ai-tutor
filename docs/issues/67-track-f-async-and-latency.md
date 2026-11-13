@@ -86,12 +86,27 @@ wait for the slowest endpoint from "whole answer" to "first words".
    database, then run more than one worker~~ done 2026-11-12 (a
    `background_claims` table; eight racing processes yield one winner;
    two workers is the ceiling until [73] halves the pools per worker)
-8. [73] Convert everything that remains (questions, admin, auth, users,
-   concepts); the app keeps no sync engine (CLIs and Alembic keep theirs).
+8. [73] Convert everything that remains; the app keeps no sync engine.
+   Slice 1 (auth, users, sessions) merged 2026-11-12; the rest was
+   **re-scoped on 2026-11-13 into six issues**, each its own PR, after
+   a one-pass attempt proved too big to merge ([73]'s Log):
+   1. [83] public question reads (list, detail, exact match, related,
+      prerequisites) - also makes an un-awaited coroutine a test failure
+   2. [84] concepts: student search and the admin tag editor
+   3. [85] admin review workflow: review, bulk review, history,
+      translate, re-extract
+   4. [86] admin content writes: create, update, delete, import; the
+      seed and three CLIs follow ([76] recommended first)
+   5. [87] admin stats, exports and AI review runs; the nightly CLI
+   6. [88] retire the sync stack: one engine, plain names, docs,
+      connection count re-measured - closes [73]
+   [84] and [87] need only [83] and can run beside [85]/[86].
 9. [74] Latency quick wins independent of async: pgvector HNSW index,
-   pool settings for the Supabase pooler, response compression.
+   pool settings for the Supabase pooler, response compression. The
+   pool numbers are best chosen after [88], when there is one pool.
 10. [76] Batch embedding calls on import (2 requests per row -> one per
-   chunk). Independent; can run any time.
+   chunk). Independent; preferably before [86], whose import conversion
+   wants the collect-then-batch shape.
 11. [77] Question page: three requests in two waves become one wave.
     Independent; can run any time.
 
@@ -115,11 +130,12 @@ Rules for the whole track:
   end of the track rather than done per step. Known entries for that
   check so far: SSE is not buffered by Render's proxy ([71]), the
   pgvector index migration and pool settings on Supabase ([74]), and the
-  worker count against the Supabase connection limit ([75]). Migrations
+  worker count against the Supabase connection limit ([75]; [88] halves
+  the per-worker demand, so re-read the budget after it). Migrations
   are applied by the owner before the backend deploy, as usual.
 
 ## Dependencies
 
 - Independent of Track E's remaining items ([61], [65]).
-- [26]'s nightly GitHub Actions run calls `review_pending`, which [73]
+- [26]'s nightly GitHub Actions run calls `review_pending`, which [87]
   wraps with `asyncio.run`; the workflow itself does not change.

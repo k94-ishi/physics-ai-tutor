@@ -412,6 +412,21 @@ def set_text(
     return db_question
 
 
+async def async_update_status(
+    db: AsyncSession, question_id: int, status: str
+) -> Question | None:
+    """As `update_status` ([85])."""
+    db_question = await db.get(Question, question_id)
+
+    if not db_question:
+        return None
+
+    db_question.status = status
+    await db.flush()
+
+    return db_question
+
+
 def update_status(db: Session, question_id: int, status: str) -> Question | None:
     db_question = db.query(Question).filter(Question.id == question_id).first()
 

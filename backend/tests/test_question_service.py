@@ -27,7 +27,6 @@ from physics_ai_tutor.services import (
 )
 from tests.conftest import (
     async_create_user,
-    create_user,
     patch_create_embeddings,
     patch_extract_concept_names,
 )
@@ -97,12 +96,13 @@ async def test_fetch_questions_excludes_status(db, async_db):
     admin = await async_create_user(
         db, "excl-reviewer@example.com", "reviewerpass123", role="admin"
     )
-    question_review_service.review_question(
-        db,
+    await question_review_service.review_question(
+        async_db,
         rejected.id,
         action=QuestionReviewAction.REJECT,
         reviewer_id=admin.id,
     )
+    db.expire_all()
 
     result = await question_read_service.fetch_questions(
         async_db,
@@ -378,56 +378,69 @@ def test_delete_question_cascades_to_embeddings(db):
     assert _embeddings_for(db, created.id) == []
 
 
-def test_review_question_approve(db):
+@pytest.mark.anyio
+async def test_review_question_approve(db, async_db):
     created = question_write_service.create_question(
         db,
         QuestionCreate(question="レビュー対象", answer="レビュー回答"),
         status=QuestionStatus.UNREVIEWED,
         source=QuestionSource.AI_GENERATED,
     )
-    admin = create_user(db, "reviewer1@example.com", "reviewerpass123", role="admin")
+    admin = await async_create_user(
+        db, "reviewer1@example.com", "reviewerpass123", role="admin"
+    )
 
-    updated = question_review_service.review_question(
-        db,
+    updated = await question_review_service.review_question(
+        async_db,
         created.id,
         action=QuestionReviewAction.APPROVE,
         reviewer_id=admin.id,
     )
 
+    db.expire_all()
+
     assert updated.status == "APPROVED"
 
-    reviews = question_review_service.fetch_question_reviews(db, created.id)
+    reviews = await question_review_service.fetch_question_reviews(async_db, created.id)
     assert len(reviews) == 1
     assert reviews[0].action == "APPROVE"
     assert reviews[0].before_question == "レビュー対象"
     assert reviews[0].after_question == "レビュー対象"
 
 
-def test_review_question_reject(db):
+@pytest.mark.anyio
+async def test_review_question_reject(db, async_db):
     created = _create(db)
-    admin = create_user(db, "reviewer2@example.com", "reviewerpass123", role="admin")
+    admin = await async_create_user(
+        db, "reviewer2@example.com", "reviewerpass123", role="admin"
+    )
 
-    updated = question_review_service.review_question(
-        db,
+    updated = await question_review_service.review_question(
+        async_db,
         created.id,
         action=QuestionReviewAction.REJECT,
         reviewer_id=admin.id,
     )
 
+    db.expire_all()
+
     assert updated.status == "REJECTED"
 
 
-def test_review_question_edit_approve_reembeds_and_records_diff(db):
+@pytest.mark.anyio
+async def test_review_question_edit_approve_reembeds_and_records_diff(db, async_db):
     created = question_write_service.create_question(
         db,
         QuestionCreate(question="編集前", answer="編集前回答"),
         status=QuestionStatus.UNREVIEWED,
         source=QuestionSource.AI_GENERATED,
     )
-    admin = create_user(db, "reviewer3@example.com", "reviewerpass123", role="admin")
+    admin = await async_create_user(
+        db, "reviewer3@example.com", "reviewerpass123", role="admin"
+    )
 
-    updated = question_review_service.review_question(
-        db,
+    updated = await question_review_service.review_question(
+        async_db,
         created.id,
         action=QuestionReviewAction.EDIT_APPROVE,
         reviewer_id=admin.id,
@@ -435,26 +448,71 @@ def test_review_question_edit_approve_reembeds_and_records_diff(db):
         answer="編集後回答",
     )
 
+    db.expire_all()
+
     assert updated.status == "APPROVED"
     assert updated.question == "編集後"
 
     embeddings = _embeddings_for(db, created.id)
     assert len(embeddings) == 2
 
-    reviews = question_review_service.fetch_question_reviews(db, created.id)
+    reviews = await question_review_service.fetch_question_reviews(async_db, created.id)
     assert reviews[0].before_question == "編集前"
     assert reviews[0].after_question == "編集後"
 
 
-def test_review_question_not_found_returns_none(db):
-    admin = create_user(db, "reviewer4@example.com", "reviewerpass123", role="admin")
-
-    result = question_review_service.review_question(
+@pytest.mark.anyio
+async def test_edit_approve_embedding_failure_writes_nothing(db, async_db, monkeypatch):
+    """The AI phase works on a draft, so a failure leaves no trace ([85])."""
+    created = question_write_service.create_question(
         db,
+        QuestionCreate(question="元の質問", answer="元の回答"),
+        status=QuestionStatus.UNREVIEWED,
+        source=QuestionSource.AI_GENERATED,
+    )
+    admin = await async_create_user(
+        db, "edit-fail@example.com", "reviewerpass123", role="admin"
+    )
+
+    def _raise(texts):
+        raise EmbeddingGenerationError("boom")
+
+    patch_create_embeddings(monkeypatch, _raise)
+
+    with pytest.raises(EmbeddingGenerationError):
+        await question_review_service.review_question(
+            async_db,
+            created.id,
+            action=QuestionReviewAction.EDIT_APPROVE,
+            reviewer_id=admin.id,
+            question="編集後",
+            answer="編集後回答",
+            reason="PHYSICS_ERROR",
+        )
+    # The same session must still be clean for the next item of a bulk run.
+    assert not async_db.dirty
+
+    db.expire_all()
+    row = question_repository.get_question(db, created.id)
+    assert (row.question, row.status) == ("元の質問", QuestionStatus.UNREVIEWED)
+    history = await question_review_service.fetch_question_reviews(async_db, created.id)
+    assert history == []
+
+
+@pytest.mark.anyio
+async def test_review_question_not_found_returns_none(db, async_db):
+    admin = await async_create_user(
+        db, "reviewer4@example.com", "reviewerpass123", role="admin"
+    )
+
+    result = await question_review_service.review_question(
+        async_db,
         99999,
         action=QuestionReviewAction.APPROVE,
         reviewer_id=admin.id,
     )
+
+    db.expire_all()
 
     assert result is None
 
@@ -464,7 +522,7 @@ def _spy_extract_concept_names(monkeypatch, calls):
         calls.append((question, answer))
         return ["概念A", "概念B"]
 
-    monkeypatch.setattr(concept_service, "extract_concept_names", _fake)
+    patch_extract_concept_names(monkeypatch, _fake)
 
 
 def test_create_question_unreviewed_skips_concept_extraction(db, monkeypatch):
@@ -530,70 +588,85 @@ def test_import_questions_approved_extracts_concepts(db, monkeypatch):
         )
 
 
-def test_review_question_approve_extracts_concepts(db, monkeypatch):
+@pytest.mark.anyio
+async def test_review_question_approve_extracts_concepts(db, async_db, monkeypatch):
     created = question_write_service.create_question(
         db,
         QuestionCreate(question="レビュー対象", answer="レビュー回答"),
         status=QuestionStatus.UNREVIEWED,
         source=QuestionSource.AI_GENERATED,
     )
-    admin = create_user(
+    admin = await async_create_user(
         db, "extract-approve@example.com", "reviewerpass123", role="admin"
     )
 
     calls = []
     _spy_extract_concept_names(monkeypatch, calls)
 
-    question_review_service.review_question(
-        db,
+    await question_review_service.review_question(
+        async_db,
         created.id,
         action=QuestionReviewAction.APPROVE,
         reviewer_id=admin.id,
     )
 
+    db.expire_all()
+
     assert len(calls) == 1
     assert question_concept_repository.get_concepts_for_question(db, created.id) != []
 
 
-def test_review_question_reject_does_not_extract_concepts(db, monkeypatch):
+@pytest.mark.anyio
+async def test_review_question_reject_does_not_extract_concepts(
+    db, async_db, monkeypatch
+):
     created = _create(db)
-    admin = create_user(
+    admin = await async_create_user(
         db, "extract-reject@example.com", "reviewerpass123", role="admin"
     )
 
     calls = []
     _spy_extract_concept_names(monkeypatch, calls)
 
-    question_review_service.review_question(
-        db,
+    await question_review_service.review_question(
+        async_db,
         created.id,
         action=QuestionReviewAction.REJECT,
         reviewer_id=admin.id,
     )
 
+    db.expire_all()
+
     assert calls == []
 
 
-def test_review_question_edit_approve_extracts_from_updated_content(db, monkeypatch):
+@pytest.mark.anyio
+async def test_review_question_edit_approve_extracts_from_updated_content(
+    db, async_db, monkeypatch
+):
     created = question_write_service.create_question(
         db,
         QuestionCreate(question="編集前", answer="編集前回答"),
         status=QuestionStatus.UNREVIEWED,
         source=QuestionSource.AI_GENERATED,
     )
-    admin = create_user(db, "extract-edit@example.com", "reviewerpass123", role="admin")
+    admin = await async_create_user(
+        db, "extract-edit@example.com", "reviewerpass123", role="admin"
+    )
 
     calls = []
     _spy_extract_concept_names(monkeypatch, calls)
 
-    question_review_service.review_question(
-        db,
+    await question_review_service.review_question(
+        async_db,
         created.id,
         action=QuestionReviewAction.EDIT_APPROVE,
         reviewer_id=admin.id,
         question="編集後",
         answer="編集後回答",
     )
+
+    db.expire_all()
 
     assert calls == [("編集後", "編集後回答")]
 
@@ -690,7 +763,8 @@ async def test_bulk_delete_questions(db, async_db):
     ).total == 0
 
 
-def test_bulk_review_questions_approve(db):
+@pytest.mark.anyio
+async def test_bulk_review_questions_approve(db, async_db):
     q1 = question_write_service.create_question(
         db,
         QuestionCreate(question="質問1", answer="回答1"),
@@ -703,30 +777,39 @@ def test_bulk_review_questions_approve(db):
         status=QuestionStatus.UNREVIEWED,
         source=QuestionSource.AI_GENERATED,
     )
-    admin = create_user(db, "bulk-approve@example.com", "reviewerpass123", role="admin")
+    admin = await async_create_user(
+        db, "bulk-approve@example.com", "reviewerpass123", role="admin"
+    )
 
-    updated, not_found_ids = question_review_service.bulk_review_questions(
-        db,
+    updated, not_found_ids = await question_review_service.bulk_review_questions(
+        async_db,
         [q1.id, q2.id, 99999],
         action=QuestionReviewAction.APPROVE,
         reviewer_id=admin.id,
     )
+
+    db.expire_all()
 
     assert {q.status for q in updated} == {"APPROVED"}
     assert len(updated) == 2
     assert not_found_ids == [99999]
 
 
-def test_bulk_review_questions_reject(db):
+@pytest.mark.anyio
+async def test_bulk_review_questions_reject(db, async_db):
     q1 = _create(db, "質問1", "回答1")
-    admin = create_user(db, "bulk-reject@example.com", "reviewerpass123", role="admin")
+    admin = await async_create_user(
+        db, "bulk-reject@example.com", "reviewerpass123", role="admin"
+    )
 
-    updated, not_found_ids = question_review_service.bulk_review_questions(
-        db,
+    updated, not_found_ids = await question_review_service.bulk_review_questions(
+        async_db,
         [q1.id],
         action=QuestionReviewAction.REJECT,
         reviewer_id=admin.id,
     )
+
+    db.expire_all()
 
     assert updated[0].status == "REJECTED"
     assert not_found_ids == []

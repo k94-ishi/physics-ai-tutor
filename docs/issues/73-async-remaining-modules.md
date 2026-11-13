@@ -41,7 +41,7 @@ traffic first, then by which sync functions can be deleted soonest.
 | 4 | [89] | Asynchronize the admin tag editor reads: list and detail | done 2026-11-13 |
 | 5 | [90] | Asynchronize the admin tag editor writes: gloss, words, merge, split | done 2026-11-13 |
 | 6 | [91] | Asynchronize concept extraction and the re-extract route | done 2026-11-13 |
-| 7 | [85] | Asynchronize the review routes: review, bulk review, history | open |
+| 7 | [85] | Asynchronize the review routes: review, bulk review, history | done 2026-11-13 |
 | 8 | [92] | Asynchronize the fill-translations route (POST /questions/translate) | open |
 | 9 | [86] | Asynchronize delete and bulk delete | open |
 | 10 | [93] | Asynchronize create and update (prepare/apply) | open |

@@ -1,10 +1,16 @@
-"""Review use cases: approve, edit-approve, reject, history."""
+"""Review use cases: approve, edit-approve, reject, history. Async since [85].
+
+A review reads the row, does every AI call on a detached draft with no
+transaction open, then writes everything in one short transaction ([82]).
+"""
 
 import logging
+from dataclasses import dataclass, field
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from physics_ai_tutor.database.transaction import transaction
+from physics_ai_tutor.core.exceptions import ConceptExtractionError
+from physics_ai_tutor.database.transaction import async_transaction
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.repositories import (
     question_repository,
@@ -15,59 +21,151 @@ from physics_ai_tutor.schemas.question import (
     QuestionStatus,
 )
 from physics_ai_tutor.schemas.question_review import QuestionReviewAction
+from physics_ai_tutor.services import concept_service, embedding_service
 from physics_ai_tutor.services.question_presentation_service import (
-    attach_ai_reviews,
+    async_attach_ai_reviews,
+    async_prepare_for_response,
     attach_generation_meta,
-    prepare_for_response,
 )
 from physics_ai_tutor.services.question_translation_service import (
-    embed_language,
-    refresh_machine_translations,
-    translate_missing,
-)
-from physics_ai_tutor.services.question_write_service import (
-    attach_concepts_best_effort,
+    PreparedTranslation,
+    async_apply_translation,
+    async_prepare_translation,
+    async_write_embeddings,
 )
 
 logger = logging.getLogger(__name__)
 
+# Columns a draft copies; enough for text, provenance and extraction.
+_DRAFT_COLUMNS = (
+    "id",
+    "question_ja",
+    "answer_ja",
+    "ja_provenance",
+    "question_en",
+    "answer_en",
+    "en_provenance",
+    "original_language",
+)
 
-def _apply_edit(
-    db: Session, current: Question, lang: Language, question: str, answer: str
-) -> None:
-    """EDIT_APPROVE: store the teacher's text, re-embed, refresh translations."""
-    provenance = (
+
+@dataclass
+class _Prepared:
+    """Everything a review needs from the AI, computed before writing."""
+
+    edit_vectors: tuple[list[float], list[float]] | None = None
+    translations: dict[Language, PreparedTranslation] = field(default_factory=dict)
+    concept_names: list[str] | None = None
+    concept_plans: list[concept_service.PlannedSense] = field(default_factory=list)
+
+
+def _draft_of(current: Question) -> Question:
+    """A detached copy; edits to it never reach the session."""
+    return Question(**{name: getattr(current, name) for name in _DRAFT_COLUMNS})
+
+
+def _provenance_for(current: Question, lang: Language) -> str:
+    return (
         TextProvenance.ORIGINAL
         if lang == current.original_language
         else TextProvenance.HUMAN
     )
-    current.set_text(lang, question, answer, provenance)
-    db.flush()
-    embed_language(db, current, lang)
-    refresh_machine_translations(db, current, lang)
 
 
-def _set_status(db: Session, current: Question, status: QuestionStatus) -> None:
-    question_repository.update_status(db, current.id, status)
-    # Concept extraction is triggered by the status becoming APPROVED.
-    if status == QuestionStatus.APPROVED:
-        attach_concepts_best_effort(db, current)
-        translate_missing(db, current)
-
-
-def _present_for_admin(
-    db: Session, current: Question, response_language: Language | str
+async def _prepare_edit(
+    draft: Question, lang: Language, question: str, answer: str, prepared: _Prepared
 ) -> None:
-    prepare_for_response(db, [current], response_language)
+    """EDIT_APPROVE: embed the teacher's text, refresh machine counterparts."""
+    draft.set_text(lang, question, answer, _provenance_for(draft, lang))
+    # An embedding failure aborts the review, as it did before [85].
+    question_vec, answer_vec = await embedding_service.async_create_embeddings(
+        [question, answer]
+    )
+    prepared.edit_vectors = (question_vec, answer_vec)
+    for other in Language:
+        if other == lang:
+            continue
+        if draft.provenance_of(other) == TextProvenance.MACHINE or not draft.has(other):
+            await _prepare_translation(draft, other, prepared, source=lang)
+
+
+async def _prepare_translation(
+    draft: Question,
+    target: Language,
+    prepared: _Prepared,
+    source: Language | None = None,
+) -> None:
+    translation = await async_prepare_translation(draft, target, source)
+    if translation is None:
+        return
+    prepared.translations[target] = translation
+    # Later steps see the language as filled, as the sync code did.
+    draft.set_text(
+        target, translation.question, translation.answer, TextProvenance.MACHINE
+    )
+
+
+async def _prepare_approval(
+    db: AsyncSession, draft: Question, prepared: _Prepared
+) -> None:
+    """Concepts from the final text, then any language still missing."""
+    language = draft.original_language
+    try:
+        names = await concept_service.async_extract_concept_names(
+            *draft.original_text(), language=language
+        )
+    except ConceptExtractionError:
+        logger.warning(
+            "Concept extraction failed; question saved without concepts: "
+            "question_id=%d",
+            draft.id,
+        )
+    else:
+        prepared.concept_names = names
+        prepared.concept_plans = await concept_service.async_prepare_concepts(
+            db, names, language
+        )
+    for lang in Language:
+        if not draft.has(lang):
+            await _prepare_translation(draft, lang, prepared)
+
+
+async def _apply(
+    db: AsyncSession,
+    current: Question,
+    lang: Language,
+    edit: tuple[str, str] | None,
+    status: QuestionStatus,
+    prepared: _Prepared,
+) -> None:
+    """Every write of one review; the caller owns the transaction."""
+    if edit is not None and prepared.edit_vectors is not None:
+        current.set_text(lang, *edit, _provenance_for(current, lang))
+        await db.flush()
+        await async_write_embeddings(db, current.id, lang, *prepared.edit_vectors)
+    for target, translation in prepared.translations.items():
+        await async_apply_translation(db, current, target, translation)
+    await question_repository.async_update_status(db, current.id, status)
+    if prepared.concept_names is not None:
+        await concept_service.async_apply_concepts(
+            db, current.id, prepared.concept_plans
+        )
+        concept_service.apply_levels_to_question(current, prepared.concept_names)
+
+
+async def _present_for_admin(
+    db: AsyncSession, current: Question, response_language: Language | str
+) -> None:
+    await async_prepare_for_response(db, [current], response_language)
     # Reviewing is admin-only, and the queue replaces its row with this
     # response, so it must carry the same admin fields as the list and
     # detail endpoints or the AI badge vanishes from the card.
     attach_generation_meta([current])
-    attach_ai_reviews(db, [current])
+    await async_attach_ai_reviews(db, [current])
 
 
-def review_question(
-    db: Session,
+async def review_question(
+    db: AsyncSession,
     question_id: int,
     action: QuestionReviewAction,
     reviewer_id: int,
@@ -79,27 +177,34 @@ def review_question(
     response_language: Language | str = Language.JA,
 ) -> Question | None:
     """Approve, edit-approve or reject; the review row keeps before/after."""
-    with transaction(db, "review_question"):
-        current = question_repository.get_question(db, question_id)
-        if current is None:
-            return None
+    async with async_transaction(db, "review_read"):
+        current = await question_repository.async_get_question(db, question_id)
+    if current is None:
+        return None
 
-        lang = Language(language) if language else Language(current.original_language)
-        before = current.text(lang) or current.original_text()
+    lang = Language(language) if language else Language(current.original_language)
+    before = current.text(lang) or current.original_text()
+    status = (
+        QuestionStatus.REJECTED
+        if action == QuestionReviewAction.REJECT
+        else QuestionStatus.APPROVED
+    )
 
-        if action == QuestionReviewAction.EDIT_APPROVE:
-            assert question is not None and answer is not None
-            _apply_edit(db, current, lang, question, answer)
-        _set_status(
-            db,
-            current,
-            QuestionStatus.REJECTED
-            if action == QuestionReviewAction.REJECT
-            else QuestionStatus.APPROVED,
-        )
+    # The AI phase: no transaction is open here ([82]).
+    draft = _draft_of(current)
+    prepared = _Prepared()
+    edit = None
+    if action == QuestionReviewAction.EDIT_APPROVE:
+        assert question is not None and answer is not None
+        edit = (question, answer)
+        await _prepare_edit(draft, lang, question, answer, prepared)
+    if status == QuestionStatus.APPROVED:
+        await _prepare_approval(db, draft, prepared)
 
+    async with async_transaction(db, "review_question"):
+        await _apply(db, current, lang, edit, status, prepared)
         after = current.text(lang) or current.original_text()
-        question_review_repository.create(
+        await question_review_repository.create(
             db,
             question_id=question_id,
             action=action,
@@ -112,7 +217,7 @@ def review_question(
             after_answer=after[1],
             comment=comment,
         )
-        _present_for_admin(db, current, response_language)
+        await _present_for_admin(db, current, response_language)
 
     logger.info(
         "Question reviewed: id=%d action=%s reviewer_id=%d language=%s",
@@ -124,12 +229,12 @@ def review_question(
     return current
 
 
-def fetch_question_reviews(db: Session, question_id: int):
-    return question_review_repository.list_for_question(db, question_id)
+async def fetch_question_reviews(db: AsyncSession, question_id: int):
+    return await question_review_repository.list_for_question(db, question_id)
 
 
-def bulk_review_questions(
-    db: Session,
+async def bulk_review_questions(
+    db: AsyncSession,
     question_ids: list[int],
     action: QuestionReviewAction,
     reviewer_id: int,
@@ -141,7 +246,7 @@ def bulk_review_questions(
     not_found_ids: list[int] = []
 
     for question_id in question_ids:
-        result = review_question(
+        result = await review_question(
             db,
             question_id,
             action=action,

@@ -7,7 +7,6 @@ from sqlalchemy.orm import sessionmaker
 
 from physics_ai_tutor.cli import backfill_levels as backfill_cli
 from physics_ai_tutor.models import Question
-from physics_ai_tutor.services import concept_service
 from tests.conftest import (
     async_engine,
     engine,
@@ -27,10 +26,8 @@ RATED = [
 
 @pytest.fixture
 def _rated_extraction(monkeypatch):
-    monkeypatch.setattr(
-        concept_service,
-        "extract_concept_names",
-        lambda question, answer, language="ja": RATED,
+    patch_extract_concept_names(
+        monkeypatch, lambda question, answer, language="ja": RATED
     )
 
 

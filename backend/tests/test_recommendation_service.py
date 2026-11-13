@@ -53,18 +53,20 @@ async def test_get_related_questions_excludes_rejected(db, async_db):
     vector = [0.1] * 1536
     source = _create_question_with_embedding(db, "元質問", "元回答", vector)
     other = _create_question_with_embedding(db, "他の質問", "他の回答", vector)
+    # The review runs in its own session and only sees committed rows.
+    db.commit()
 
     admin = await async_create_user(
         db, "rec-reviewer@example.com", "reviewerpass123", role="admin"
     )
-    question_review_service.review_question(
-        db,
+    await question_review_service.review_question(
+        async_db,
         other.id,
         action=QuestionReviewAction.REJECT,
         reviewer_id=admin.id,
     )
+    db.expire_all()
 
-    db.commit()
     result = (
         await recommendation_service.get_related_questions(async_db, source.id, limit=5)
     ).items

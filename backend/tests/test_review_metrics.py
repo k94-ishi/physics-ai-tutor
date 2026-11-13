@@ -184,7 +184,10 @@ def test_human_review_before_any_ai_review_is_excluded(
 ):
     question_id = _ask(client, monkeypatch, "先に人が見た質問です")
     _human_review(admin_client, question_id, "APPROVE")
-    # The AI verdict arrives afterwards (e.g. a later backfill).
+    # The AI verdict arrives afterwards (e.g. a later backfill). End the
+    # test session's open transaction first: now() is the transaction's
+    # start time, so a stale one would stamp the verdict too early.
+    db.commit()
     _ai_review(db, question_id, AiReviewVerdict.APPROVE)
 
     assert review_metrics_repository.list_pairs(db, None) == []

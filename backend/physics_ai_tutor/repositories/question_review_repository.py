@@ -1,12 +1,14 @@
 from datetime import datetime
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.models import Question, QuestionReview
 
 
-def create(
-    db: Session,
+async def create(
+    db: AsyncSession,
     question_id: int,
     action: str,
     reviewer_id: int,
@@ -32,18 +34,18 @@ def create(
     )
 
     db.add(review)
-    db.flush()
+    await db.flush()
 
     return review
 
 
-def list_for_question(db: Session, question_id: int) -> list[QuestionReview]:
-    return (
-        db.query(QuestionReview)
-        .filter(QuestionReview.question_id == question_id)
+async def list_for_question(db: AsyncSession, question_id: int) -> list[QuestionReview]:
+    query = (
+        select(QuestionReview)
+        .where(QuestionReview.question_id == question_id)
         .order_by(QuestionReview.created_at.desc())
-        .all()
     )
+    return list((await db.scalars(query)).all())
 
 
 def list_with_questions_since(

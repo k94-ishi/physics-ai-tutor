@@ -64,12 +64,12 @@ router = APIRouter(prefix="/questions", tags=["questions"])
     "/{question_id}/reviews",
     response_model=list[QuestionReviewResponse],
 )
-def get_question_reviews(
+async def get_question_reviews(
     question_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     _: JWTPayload = Depends(require_admin),
 ):
-    return question_review_service.fetch_question_reviews(db, question_id)
+    return await question_review_service.fetch_question_reviews(db, question_id)
 
 
 @router.post(
@@ -126,13 +126,16 @@ def bulk_delete_questions(
     "/bulk-review",
     response_model=BulkReviewResponse,
 )
-def bulk_review_questions(
+async def bulk_review_questions(
     data: BulkReviewRequest,
     lang: Language = Query(default=Language.JA),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
-    updated_questions, not_found_ids = question_review_service.bulk_review_questions(
+    (
+        updated_questions,
+        not_found_ids,
+    ) = await question_review_service.bulk_review_questions(
         db,
         data.question_ids,
         action=data.action,
@@ -283,14 +286,14 @@ def import_questions(
     "/{question_id}/review",
     response_model=QuestionResponse,
 )
-def review_question(
+async def review_question(
     question_id: int,
     data: QuestionReviewCreate,
     lang: Language = Query(default=Language.JA),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
-    result = question_review_service.review_question(
+    result = await question_review_service.review_question(
         db,
         question_id,
         action=data.action,

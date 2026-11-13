@@ -105,7 +105,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 82 | closed | 82-no-connection-held-across-an-llm-call.md | Never hold a database connection across an LLM call: split the translate/embed transaction | — (file-era issue) |
 | 83 | closed | 83-async-public-question-reads.md | Asynchronize the public question reads: list, detail, exact match, related, prerequisites | — (file-era issue) |
 | 84 | closed | 84-async-concepts.md | Asynchronize the public tag search (GET /concepts) | — (file-era issue) |
-| 85 | open | 85-async-admin-review-workflow.md | Asynchronize the review routes: review, bulk review, history | — (file-era issue) |
+| 85 | closed | 85-async-admin-review-workflow.md | Asynchronize the review routes: review, bulk review, history | — (file-era issue) |
 | 86 | open | 86-async-admin-content-writes.md | Asynchronize delete and bulk delete | — (file-era issue) |
 | 87 | open | 87-async-admin-stats-exports-and-ai-review-runs.md | Asynchronize the usage dashboard and the agreement report | — (file-era issue) |
 | 88 | open | 88-retire-the-sync-stack.md | Delete the sync engine, sync LLM clients and remaining sync twins | — (file-era issue) |
@@ -120,6 +120,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 97 | open | 97-async-ai-review-runs.md | Asynchronize AI review runs; one ai_review_service | — (file-era issue) |
 | 98 | open | 98-async-rename-pass.md | Rename pass: drop the async_ prefixes | — (file-era issue) |
 | 99 | open | 99-async-end-state-and-docs.md | Async end state: architecture test, docs, connection budget (closes [73]) | — (file-era issue) |
+| 100 | open | 100-reuse-sense-embeddings.md | Reuse sense embeddings instead of re-embedding every candidate on each extraction | — (file-era issue) |
 
 ## Notes on the archive column
 

@@ -20,6 +20,7 @@ from physics_ai_tutor.services import (
     concept_service,
     deepseek_service,
     embedding_service,
+    question_review_service,
     question_translation_service,
     question_write_service,
     translation_service,
@@ -220,3 +221,49 @@ async def test_concept_reextraction_holds_no_transaction_during_llm_calls(
     assert results[0].success is True
     assert results[0].concepts == ["新しい概念"]
     assert in_transaction == {"extract": False, "embed": False}
+
+
+async def test_edit_approve_holds_no_transaction_during_llm_calls(
+    async_db, monkeypatch
+):
+    """Embedding, translation and extraction all wait with no transaction ([85])."""
+    from physics_ai_tutor.models import User
+    from physics_ai_tutor.schemas.question_review import QuestionReviewAction
+
+    seen = []
+
+    async def _embed(texts):
+        seen.append(("embed", async_db.in_transaction()))
+        return [[0.1] * 1536 for _ in texts]
+
+    async def _translate(question, answer, source, target):
+        seen.append(("translate", async_db.in_transaction()))
+        return f"[{target}] {question}", f"[{target}] {answer}"
+
+    async def _extract(question, answer, language="ja"):
+        seen.append(("extract", async_db.in_transaction()))
+        return ["概念A | concept A"]
+
+    monkeypatch.setattr(embedding_service, "async_create_embeddings", _embed)
+    monkeypatch.setattr(translation_service, "async_translate_qa", _translate)
+    monkeypatch.setattr(concept_service, "async_extract_concept_names", _extract)
+
+    async_db.add(_question())
+    async_db.add(User(email="probe@example.com", hashed_password="x", role="admin"))
+    await async_db.commit()
+    question_id = (await async_db.scalars(select(Question.id))).first()
+    reviewer_id = (await async_db.scalars(select(User.id))).first()
+
+    reviewed = await question_review_service.review_question(
+        async_db,
+        question_id,
+        action=QuestionReviewAction.EDIT_APPROVE,
+        reviewer_id=reviewer_id,
+        question="編集後の質問",
+        answer="編集後の回答",
+        reason="PHYSICS_ERROR",
+    )
+
+    assert reviewed is not None and reviewed.status == QuestionStatus.APPROVED
+    assert {kind for kind, _ in seen} == {"embed", "translate", "extract"}
+    assert all(open_ is False for _, open_ in seen), seen

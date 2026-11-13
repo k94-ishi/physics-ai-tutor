@@ -25,7 +25,11 @@ from physics_ai_tutor.services import (
     question_review_service,
     question_write_service,
 )
-from tests.conftest import create_user, patch_create_embeddings
+from tests.conftest import (
+    async_create_user,
+    create_user,
+    patch_create_embeddings,
+)
 
 
 def _create(db, question: str = "テスト質問", answer: str = "テスト回答"):
@@ -47,22 +51,24 @@ def _embeddings_for(db, question_id: int, language: str = "ja"):
     )
 
 
-def test_fetch_questions(db):
+@pytest.mark.anyio
+async def test_fetch_questions(db, async_db):
     _create(db, "質問A", "回答A")
 
-    result = question_read_service.fetch_questions(db, page=1, size=20)
+    result = await question_read_service.fetch_questions(async_db, page=1, size=20)
 
     assert result.total == 1
     assert len(result.items) == 1
     assert result.items[0].question == "質問A"
 
 
-def test_fetch_questions_paginates(db):
+@pytest.mark.anyio
+async def test_fetch_questions_paginates(db, async_db):
     _create(db, "質問A", "回答A")
     _create(db, "質問B", "回答B")
     _create(db, "質問C", "回答C")
 
-    result = question_read_service.fetch_questions(db, page=2, size=2)
+    result = await question_read_service.fetch_questions(async_db, page=2, size=2)
 
     assert result.total == 3
     assert result.page == 2
@@ -70,22 +76,24 @@ def test_fetch_questions_paginates(db):
     assert len(result.items) == 1
 
 
-def test_fetch_questions_filters_by_keyword(db):
+@pytest.mark.anyio
+async def test_fetch_questions_filters_by_keyword(db, async_db):
     matching = _create(db, "運動量保存則とは何ですか", "運動量は保存されます")
     _create(db, "エネルギー保存則とは何ですか", "エネルギーは保存されます")
 
-    result = question_read_service.fetch_questions(
-        db, page=1, size=20, filters=QuestionFilters(keyword="運動量")
+    result = await question_read_service.fetch_questions(
+        async_db, page=1, size=20, filters=QuestionFilters(keyword="運動量")
     )
 
     assert result.total == 1
     assert [q.id for q in result.items] == [matching.id]
 
 
-def test_fetch_questions_excludes_status(db):
+@pytest.mark.anyio
+async def test_fetch_questions_excludes_status(db, async_db):
     _create(db, "質問A", "回答A")
     rejected = _create(db, "質問B", "回答B")
-    admin = create_user(
+    admin = await async_create_user(
         db, "excl-reviewer@example.com", "reviewerpass123", role="admin"
     )
     question_review_service.review_question(
@@ -95,8 +103,8 @@ def test_fetch_questions_excludes_status(db):
         reviewer_id=admin.id,
     )
 
-    result = question_read_service.fetch_questions(
-        db,
+    result = await question_read_service.fetch_questions(
+        async_db,
         page=1,
         size=20,
         filters=QuestionFilters(exclude_statuses=[QuestionStatus.REJECTED]),
@@ -106,17 +114,19 @@ def test_fetch_questions_excludes_status(db):
     assert rejected.id not in remaining_ids
 
 
-def test_fetch_question_found(db):
+@pytest.mark.anyio
+async def test_fetch_question_found(db, async_db):
     created = _create(db)
 
-    found = question_read_service.fetch_question(db, created.id)[0]
+    found = (await question_read_service.fetch_question(async_db, created.id))[0]
 
     assert found is not None
     assert found.id == created.id
 
 
-def test_fetch_question_not_found(db):
-    found = question_read_service.fetch_question(db, 99999)[0]
+@pytest.mark.anyio
+async def test_fetch_question_not_found(db, async_db):
+    found = (await question_read_service.fetch_question(async_db, 99999))[0]
 
     assert found is None
 
@@ -136,13 +146,14 @@ def test_create_question_defaults_to_approved_and_manual(db):
     assert created.source == "MANUAL"
 
 
-def test_create_question_duplicate_rejected(db):
+@pytest.mark.anyio
+async def test_create_question_duplicate_rejected(db, async_db):
     _create(db, "重複質問", "重複回答1")
 
     with pytest.raises(DuplicateQuestionError):
         _create(db, "重複質問", "重複回答2")
 
-    result = question_read_service.fetch_questions(db, page=1, size=20)
+    result = await question_read_service.fetch_questions(async_db, page=1, size=20)
     assert result.total == 1
 
 
@@ -183,7 +194,8 @@ def test_import_questions_from_jsonl(db):
     assert created[0].source == "AI_GENERATED"
 
 
-def test_import_questions_duplicate_within_batch_rejected(db):
+@pytest.mark.anyio
+async def test_import_questions_duplicate_within_batch_rejected(db, async_db):
     with pytest.raises(DuplicateQuestionError):
         question_write_service.import_questions_from_jsonl(
             db,
@@ -195,10 +207,13 @@ def test_import_questions_duplicate_within_batch_rejected(db):
             source=QuestionSource.AI_GENERATED,
         )
 
-    assert question_read_service.fetch_questions(db, page=1, size=20).items == []
+    assert (
+        await question_read_service.fetch_questions(async_db, page=1, size=20)
+    ).items == []
 
 
-def test_import_questions_duplicate_against_existing_rejected(db):
+@pytest.mark.anyio
+async def test_import_questions_duplicate_against_existing_rejected(db, async_db):
     _create(db, "既存質問", "既存回答")
 
     with pytest.raises(DuplicateQuestionError):
@@ -209,17 +224,18 @@ def test_import_questions_duplicate_against_existing_rejected(db):
             source=QuestionSource.AI_GENERATED,
         )
 
-    result = question_read_service.fetch_questions(db, page=1, size=20)
+    result = await question_read_service.fetch_questions(async_db, page=1, size=20)
     assert result.total == 1
 
 
-def test_delete_question_existing_returns_true(db):
+@pytest.mark.anyio
+async def test_delete_question_existing_returns_true(db, async_db):
     created = _create(db)
 
     result = question_write_service.delete_question(db, created.id)
 
     assert result is True
-    assert question_read_service.fetch_question(db, created.id)[0] is None
+    assert (await question_read_service.fetch_question(async_db, created.id))[0] is None
 
 
 def test_delete_question_not_found_returns_false(db):
@@ -251,7 +267,10 @@ def test_update_question_not_found_returns_none(db):
     assert updated is None
 
 
-def test_create_question_rolls_back_on_embedding_failure(db, monkeypatch):
+@pytest.mark.anyio
+async def test_create_question_rolls_back_on_embedding_failure(
+    db, async_db, monkeypatch
+):
     def _raise(texts):
         raise EmbeddingGenerationError("boom")
 
@@ -260,7 +279,9 @@ def test_create_question_rolls_back_on_embedding_failure(db, monkeypatch):
     with pytest.raises(EmbeddingGenerationError):
         _create(db)
 
-    assert question_read_service.fetch_questions(db, page=1, size=20).items == []
+    assert (
+        await question_read_service.fetch_questions(async_db, page=1, size=20)
+    ).items == []
 
 
 def test_create_question_creates_question_and_answer_embeddings(db):
@@ -286,7 +307,10 @@ def test_update_question_replaces_embeddings(db):
     assert {e.type for e in embeddings} == {"question", "answer"}
 
 
-def test_update_question_rolls_back_on_embedding_failure(db, monkeypatch):
+@pytest.mark.anyio
+async def test_update_question_rolls_back_on_embedding_failure(
+    db, async_db, monkeypatch
+):
     created = _create(db, "更新前質問", "更新前回答")
 
     def _raise(texts):
@@ -301,7 +325,7 @@ def test_update_question_rolls_back_on_embedding_failure(db, monkeypatch):
             QuestionUpdate(question="更新後質問", answer="更新後回答"),
         )
 
-    reloaded = question_read_service.fetch_question(db, created.id)[0]
+    reloaded = (await question_read_service.fetch_question(async_db, created.id))[0]
 
     assert reloaded.question == "更新前質問"
     assert reloaded.answer == "更新前回答"
@@ -323,7 +347,10 @@ def test_import_questions_creates_embeddings_for_each_question(db):
         assert {e.type for e in embeddings} == {"question", "answer"}
 
 
-def test_import_questions_rolls_back_on_embedding_failure(db, monkeypatch):
+@pytest.mark.anyio
+async def test_import_questions_rolls_back_on_embedding_failure(
+    db, async_db, monkeypatch
+):
     def _raise(texts):
         raise EmbeddingGenerationError("boom")
 
@@ -337,7 +364,9 @@ def test_import_questions_rolls_back_on_embedding_failure(db, monkeypatch):
             source=QuestionSource.AI_GENERATED,
         )
 
-    assert question_read_service.fetch_questions(db, page=1, size=20).items == []
+    assert (
+        await question_read_service.fetch_questions(async_db, page=1, size=20)
+    ).items == []
 
 
 def test_delete_question_cascades_to_embeddings(db):
@@ -568,19 +597,21 @@ def test_review_question_edit_approve_extracts_from_updated_content(db, monkeypa
     assert calls == [("編集後", "編集後回答")]
 
 
-def test_fetch_questions_includes_concepts(db):
+@pytest.mark.anyio
+async def test_fetch_questions_includes_concepts(db, async_db):
     created = _create(db)
 
-    result = question_read_service.fetch_questions(db, page=1, size=20)
+    result = await question_read_service.fetch_questions(async_db, page=1, size=20)
 
     assert result.items[0].concepts == ["概念A", "概念B"]
     assert created.id == result.items[0].id
 
 
-def test_fetch_question_includes_concepts(db):
+@pytest.mark.anyio
+async def test_fetch_question_includes_concepts(db, async_db):
     created = _create(db)
 
-    found = question_read_service.fetch_question(db, created.id)[0]
+    found = (await question_read_service.fetch_question(async_db, created.id))[0]
 
     assert found.concepts == ["概念A", "概念B"]
 
@@ -637,10 +668,13 @@ async def test_save_ai_question_embedding_failure_returns_none(
     )
 
     assert saved is None
-    assert question_read_service.fetch_questions(db, page=1, size=20).items == []
+    assert (
+        await question_read_service.fetch_questions(async_db, page=1, size=20)
+    ).items == []
 
 
-def test_bulk_delete_questions(db):
+@pytest.mark.anyio
+async def test_bulk_delete_questions(db, async_db):
     q1 = _create(db, "質問1", "回答1")
     q2 = _create(db, "質問2", "回答2")
 
@@ -650,7 +684,9 @@ def test_bulk_delete_questions(db):
 
     assert deleted_count == 2
     assert not_found_ids == [99999]
-    assert question_read_service.fetch_questions(db, page=1, size=20).total == 0
+    assert (
+        await question_read_service.fetch_questions(async_db, page=1, size=20)
+    ).total == 0
 
 
 def test_bulk_review_questions_approve(db):

@@ -48,6 +48,8 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# A coroutine that is never awaited passes vacuously; make it fail ([83]).
+filterwarnings = ["error::RuntimeWarning"]
 
 [tool.coverage.run]
 source = ["physics_ai_tutor"]

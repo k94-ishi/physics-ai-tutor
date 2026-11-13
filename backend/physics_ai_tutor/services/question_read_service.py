@@ -1,12 +1,11 @@
-"""Read use cases: list, detail, exact match, ask cache."""
+"""Read use cases: list, detail, exact match, ask cache. Async since [83]."""
 
 import logging
 from dataclasses import replace
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
-from physics_ai_tutor.database.transaction import transaction
+from physics_ai_tutor.database.transaction import async_transaction
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.repositories import (
     question_repository,
@@ -18,13 +17,13 @@ from physics_ai_tutor.schemas.question import (
     QuestionStatus,
 )
 from physics_ai_tutor.services.question_presentation_service import (
-    attach_ai_reviews,
+    async_attach_ai_reviews,
+    async_prepare_for_response,
     attach_generation_meta,
-    prepare_for_response,
 )
 from physics_ai_tutor.services.question_translation_service import (
-    apply_translation,
-    prepare_translation,
+    async_apply_translation,
+    async_prepare_translation,
 )
 from physics_ai_tutor.services.response_language import (
     ResponseLanguage,
@@ -34,8 +33,8 @@ from physics_ai_tutor.services.response_language import (
 logger = logging.getLogger(__name__)
 
 
-def fetch_questions(
-    db: Session,
+async def fetch_questions(
+    db: AsyncSession,
     page: int,
     size: int,
     filters: QuestionFilters | None = None,
@@ -49,16 +48,16 @@ def fetch_questions(
     if response.strict:
         filters = replace(filters, language=response.language)
 
-    questions = question_repository.get_questions(
+    questions = await question_repository.get_questions(
         db, offset=(page - 1) * size, limit=size, filters=filters, sort=sort
     )
-    total = question_repository.count_questions(db, filters)
-    prepare_for_response(db, questions, response)
+    total = await question_repository.count_questions(db, filters)
+    await async_prepare_for_response(db, questions, response)
 
     # Admin-only fields; attach them while the ORM objects are still in hand.
     if include_admin_fields:
         attach_generation_meta(questions)
-        attach_ai_reviews(db, questions)
+        await async_attach_ai_reviews(db, questions)
 
     logger.info(
         "Questions fetched: page=%d size=%d keyword_present=%s results=%d total=%d",
@@ -71,8 +70,8 @@ def fetch_questions(
     return QuestionListResponse(items=questions, total=total, page=page, size=size)
 
 
-def fetch_question(
-    db: Session,
+async def fetch_question(
+    db: AsyncSession,
     question_id: int,
     exclude_statuses: list[str] | None = None,
     language: Language | str | ResponseLanguage = Language.JA,
@@ -80,8 +79,8 @@ def fetch_question(
     """One question; a strict reader gets a missing language translated now."""
     response = ResponseLanguage.of(language)
     # Committed so the connection is free during a lazy translation ([82]).
-    with transaction(db, "fetch_question_read"):
-        question = question_repository.get_question(
+    async with async_transaction(db, "fetch_question_read"):
+        question = await question_repository.async_get_question(
             db, question_id, exclude_statuses=exclude_statuses
         )
     if question is None:
@@ -91,50 +90,38 @@ def fetch_question(
     # waits for the LLM either way ([53]); the pool no longer waits with
     # them.
     if response.strict and not question.has(response.language):
-        prepared = prepare_translation(question, response.language)
+        prepared = await async_prepare_translation(question, response.language)
         if prepared is not None:
-            with transaction(db, "lazy_translate"):
-                apply_translation(db, question, response.language, prepared)
+            async with async_transaction(db, "lazy_translate"):
+                await async_apply_translation(db, question, response.language, prepared)
 
-    return question, prepare_for_response(db, [question], response)
+    return question, await async_prepare_for_response(db, [question], response)
 
 
-def fetch_question_by_exact_text(
-    db: Session,
+async def fetch_question_by_exact_text(
+    db: AsyncSession,
     question_text: str,
     exclude_statuses: list[str] | None = None,
     language: Language | str | ResponseLanguage = Language.JA,
 ) -> Question | None:
     response = ResponseLanguage.of(language)
-    question = question_repository.get_by_exact_text(
+    question = await question_repository.async_get_by_exact_text(
         db,
         question_text,
         language=response.language,
         exclude_statuses=exclude_statuses,
     )
     if question is not None:
-        prepare_for_response(db, [question], response)
+        await async_prepare_for_response(db, [question], response)
     return question
-
-
-def find_cached_answer(
-    db: Session, question_text: str, language: Language | str
-) -> Question | None:
-    """Cache lookup for the ask flow: any non-rejected row with this exact
-    question text in `language`, including unreviewed AI answers.
-    """
-    return question_repository.get_by_exact_text(
-        db,
-        question_text,
-        language=language,
-        exclude_statuses=[QuestionStatus.REJECTED],
-    )
 
 
 async def async_find_cached_answer(
     db: AsyncSession, question_text: str, language: Language | str
 ) -> Question | None:
-    """As `find_cached_answer`, on the event loop ([70])."""
+    """Cache lookup for the ask flow: any non-rejected row with this exact
+    question text in `language`, including unreviewed AI answers ([70]).
+    """
     return await question_repository.async_get_by_exact_text(
         db,
         question_text,

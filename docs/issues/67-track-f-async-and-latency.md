@@ -90,8 +90,9 @@ wait for the slowest endpoint from "whole answer" to "first words".
    Slice 1 (auth, users, sessions) merged 2026-11-12; the rest was
    **re-scoped on 2026-11-13 into six issues**, each its own PR, after
    a one-pass attempt proved too big to merge ([73]'s Log):
-   1. [83] public question reads (list, detail, exact match, related,
-      prerequisites) - also makes an un-awaited coroutine a test failure
+   1. ~~[83] public question reads (list, detail, exact match, related,
+      prerequisites) - also makes an un-awaited coroutine a test failure~~
+      done 2026-11-13 (601 tests; no regression at concurrency 8)
    2. [84] concepts: student search and the admin tag editor
    3. [85] admin review workflow: review, bulk review, history,
       translate, re-extract

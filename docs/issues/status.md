@@ -103,7 +103,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 80 | open | 80-tuning-constants-stay-in-code.md | Tuning constants: collect and document them, but keep them out of the environment | — (file-era issue) |
 | 81 | open | 81-track-g-configuration.md | Track G: configuration - what belongs in the environment and what belongs in code | — (file-era issue) |
 | 82 | closed | 82-no-connection-held-across-an-llm-call.md | Never hold a database connection across an LLM call: split the translate/embed transaction | — (file-era issue) |
-| 83 | open | 83-async-public-question-reads.md | Asynchronize the public question reads: list, detail, exact match, related, prerequisites | — (file-era issue) |
+| 83 | closed | 83-async-public-question-reads.md | Asynchronize the public question reads: list, detail, exact match, related, prerequisites | — (file-era issue) |
 | 84 | open | 84-async-concepts.md | Asynchronize concepts: student tag search and the admin tag editor | — (file-era issue) |
 | 85 | open | 85-async-admin-review-workflow.md | Asynchronize the admin review workflow: review, bulk review, history, translate, re-extract | — (file-era issue) |
 | 86 | open | 86-async-admin-content-writes.md | Asynchronize admin content writes: create, update, delete, import; the seed and backfill CLIs follow | — (file-era issue) |

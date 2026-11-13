@@ -116,6 +116,19 @@ def create_user(db, email: str, password: str, role: str = "user"):
     return db.get(User, user_id)
 
 
+async def async_create_user(db, email: str, password: str, role: str = "user"):
+    """`create_user` for a test that already runs on the event loop ([83]).
+
+    `asyncio.run` cannot nest, so an async test awaits this one instead;
+    the row is still returned loaded into the sync `db` session.
+    """
+    async with AsyncSession(async_engine, expire_on_commit=False) as session:
+        created = await user_service.create_user(session, email, password, role=role)
+        user_id = created.id
+
+    return db.get(User, user_id)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _migrate_test_database():
     _create_database_if_missing()

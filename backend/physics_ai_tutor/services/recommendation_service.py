@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.repositories import (
@@ -13,7 +13,7 @@ from physics_ai_tutor.repositories import (
 from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.question import QuestionResponse
 from physics_ai_tutor.services.question_presentation_service import (
-    prepare_for_response,
+    async_prepare_for_response,
 )
 from physics_ai_tutor.services.response_language import (
     ResponseLanguage,
@@ -38,8 +38,8 @@ CONCEPT_SIMILARITY_WEIGHT = 0.3
 CANDIDATE_POOL_SIZE = 50
 
 
-def _embedding_neighbours(
-    db: Session, question_id: int, lang: Language, exclude_statuses: list[str]
+async def _embedding_neighbours(
+    db: AsyncSession, question_id: int, lang: Language, exclude_statuses: list[str]
 ) -> tuple[dict[int, float], dict[int, Question]]:
     """Nearest questions by question embedding, within one language."""
     similarity: dict[int, float] = {}
@@ -48,20 +48,20 @@ def _embedding_neighbours(
     # Compare within one language; fall back to the row's original language
     # for rows that were never embedded in `lang`.
     search_language = lang.value
-    source_embedding = embedding_repository.get_embedding(
+    source_embedding = await embedding_repository.get_embedding(
         db, question_id, "question", language=search_language
     )
     if source_embedding is None:
-        source_question = question_repository.get_question(db, question_id)
+        source_question = await question_repository.async_get_question(db, question_id)
         if source_question is not None:
             search_language = source_question.original_language
-            source_embedding = embedding_repository.get_embedding(
+            source_embedding = await embedding_repository.get_embedding(
                 db, question_id, "question", language=search_language
             )
     if source_embedding is None:
         return similarity, questions_by_id
 
-    rows = embedding_repository.search_similar_embeddings(
+    rows = await embedding_repository.async_search_similar_embeddings(
         db,
         embedding=source_embedding,
         embedding_type="question",
@@ -76,28 +76,31 @@ def _embedding_neighbours(
     return similarity, questions_by_id
 
 
-def _concept_neighbours(db: Session, question_id: int) -> tuple[list[int], set[int]]:
+async def _concept_neighbours(
+    db: AsyncSession, question_id: int
+) -> tuple[list[int], set[int]]:
     """The source's concept ids and the questions sharing them.
 
     A RAG answer also brings the concepts of the QAs it was grounded in
     (`retrieved_question_ids`), with no extra search or LLM call.
     """
-    source_question = question_repository.get_question(db, question_id)
+    source_question = await question_repository.async_get_question(db, question_id)
     reference_ids = source_question.retrieved_question_ids if source_question else []
 
-    concept_ids = {
-        concept.id
-        for concept in question_concept_repository.get_concepts_for_question(
+    concept_ids = set(
+        await question_concept_repository.async_get_concept_ids_for_question(
             db, question_id
         )
-    }
+    )
     for reference_id in reference_ids:
         concept_ids.update(
-            question_concept_repository.get_concept_ids_for_question(db, reference_id)
+            await question_concept_repository.async_get_concept_ids_for_question(
+                db, reference_id
+            )
         )
 
     sharing = set(
-        question_concept_repository.get_questions_sharing_concepts(
+        await question_concept_repository.get_questions_sharing_concepts(
             db,
             question_id=question_id,
             exclude_ids=[question_id],
@@ -106,7 +109,7 @@ def _concept_neighbours(db: Session, question_id: int) -> tuple[list[int], set[i
     )
     for reference_id in reference_ids:
         sharing.update(
-            question_concept_repository.get_questions_sharing_concepts(
+            await question_concept_repository.get_questions_sharing_concepts(
                 db,
                 question_id=reference_id,
                 exclude_ids=[question_id, *reference_ids],
@@ -116,8 +119,8 @@ def _concept_neighbours(db: Session, question_id: int) -> tuple[list[int], set[i
     return list(concept_ids), sharing
 
 
-def _load_missing(
-    db: Session,
+async def _load_missing(
+    db: AsyncSession,
     candidate_ids: set[int],
     questions_by_id: dict[int, Question],
     exclude_statuses: list[str],
@@ -126,7 +129,7 @@ def _load_missing(
     for candidate_id in candidate_ids:
         if candidate_id in questions_by_id:
             continue
-        candidate = question_repository.get_question(db, candidate_id)
+        candidate = await question_repository.async_get_question(db, candidate_id)
         if candidate is not None and candidate.status not in exclude_statuses:
             questions_by_id[candidate_id] = candidate
 
@@ -151,8 +154,8 @@ def _score(
     return scored
 
 
-def get_related_questions(
-    db: Session,
+async def get_related_questions(
+    db: AsyncSession,
     question_id: int,
     limit: int = 5,
     exclude_statuses: list[str] | None = None,
@@ -164,13 +167,13 @@ def get_related_questions(
     response = ResponseLanguage.of(language)
     lang = response.language
 
-    question_similarity, questions_by_id = _embedding_neighbours(
+    question_similarity, questions_by_id = await _embedding_neighbours(
         db, question_id, lang, exclude_statuses
     )
-    source_concept_ids, sharing = _concept_neighbours(db, question_id)
+    source_concept_ids, sharing = await _concept_neighbours(db, question_id)
     candidate_ids = set(question_similarity) | sharing
-    _load_missing(db, candidate_ids, questions_by_id, exclude_statuses)
-    concept_similarity = concept_repository.average_concept_similarity(
+    await _load_missing(db, candidate_ids, questions_by_id, exclude_statuses)
+    concept_similarity = await concept_repository.average_concept_similarity(
         db,
         source_concept_ids=source_concept_ids,
         candidate_question_ids=list(candidate_ids),
@@ -182,7 +185,7 @@ def get_related_questions(
     # Filter before slicing, so a student still gets `limit` readable rows.
     ranked, missing = response.readable([candidate for _, candidate in scored])
     top_questions = ranked[:limit]
-    needs = prepare_for_response(db, top_questions, response)
+    needs = await async_prepare_for_response(db, top_questions, response)
 
     logger.info(
         "Related questions computed: question_id=%d candidates=%d returned=%d",

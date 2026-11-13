@@ -1,3 +1,4 @@
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -58,23 +59,40 @@ def list_for_question(db: Session, question_id: int) -> list[AiReview]:
     )
 
 
-def latest_for_questions(db: Session, ids: list[int]) -> dict[int, AiReview]:
-    """question_id -> newest AiReview, for the ids that have one."""
-    if not ids:
-        return {}
-
-    rows = (
-        db.query(AiReview)
-        .filter(AiReview.question_id.in_(ids))
+def _latest_for_questions_select(ids: list[int]):
+    return (
+        select(AiReview)
+        .where(AiReview.question_id.in_(ids))
         .order_by(AiReview.question_id, AiReview.id.desc())
-        .all()
     )
 
+
+def _newest_per_question(rows) -> dict[int, AiReview]:
     latest: dict[int, AiReview] = {}
     for row in rows:
         latest.setdefault(row.question_id, row)
 
     return latest
+
+
+def latest_for_questions(db: Session, ids: list[int]) -> dict[int, AiReview]:
+    """question_id -> newest AiReview, for the ids that have one."""
+    if not ids:
+        return {}
+
+    return _newest_per_question(db.scalars(_latest_for_questions_select(ids)).all())
+
+
+async def async_latest_for_questions(
+    db: AsyncSession, ids: list[int]
+) -> dict[int, AiReview]:
+    """As `latest_for_questions` ([83]); the sync one serves the review flow."""
+    if not ids:
+        return {}
+
+    rows = (await db.scalars(_latest_for_questions_select(ids))).all()
+
+    return _newest_per_question(rows)
 
 
 # A verdict the parser could not read leaves a NULL-verdict row. Such a

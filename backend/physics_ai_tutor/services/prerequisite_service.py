@@ -10,19 +10,21 @@ or embedding calls: concepts and levels are already on the rows.
 import logging
 from dataclasses import dataclass
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.models.concept import Concept
 from physics_ai_tutor.models.question import Question
-from physics_ai_tutor.models.question_concept import QuestionConcept
+from physics_ai_tutor.repositories import (
+    question_concept_repository,
+    question_repository,
+)
 from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.question import (
     PrerequisitesResponse,
     QuestionResponse,
-    QuestionStatus,
 )
 from physics_ai_tutor.services.question_presentation_service import (
-    prepare_for_response,
+    async_prepare_for_response,
 )
 from physics_ai_tutor.services.response_language import (
     ResponseLanguage,
@@ -97,26 +99,6 @@ def _rank(question: Question) -> tuple[int, int]:
 Link = tuple[Concept, Question]
 
 
-def _definer_candidates(db: Session, question_id: int) -> list[Link]:
-    """Every APPROVED QA sharing a concept with this one, per shared concept."""
-    rows = (
-        db.query(Concept, Question)
-        .join(QuestionConcept, QuestionConcept.concept_id == Concept.id)
-        .join(Question, Question.id == QuestionConcept.question_id)
-        .filter(
-            Concept.id.in_(
-                db.query(QuestionConcept.concept_id)
-                .filter(QuestionConcept.question_id == question_id)
-                .scalar_subquery()
-            ),
-            Question.id != question_id,
-            Question.status == QuestionStatus.APPROVED,
-        )
-        .all()
-    )
-    return [(concept, question) for concept, question in rows]
-
-
 def _readable_only(
     links: list[Link], response: ResponseLanguage
 ) -> tuple[list[Link], list[int]]:
@@ -142,8 +124,8 @@ def _best_definers(links: list[Link], current: Question) -> dict[int, Link]:
     return best_by_concept
 
 
-def _gaps(
-    db: Session,
+async def _gaps(
+    db: AsyncSession,
     question_id: int,
     covered: dict[int, Link],
     lang: Language,
@@ -151,10 +133,9 @@ def _gaps(
 ) -> list[str]:
     """Names of this QA's concepts that ended up with no usable definer."""
     current_concepts = (
-        db.query(Concept)
-        .join(QuestionConcept, QuestionConcept.concept_id == Concept.id)
-        .filter(QuestionConcept.question_id == question_id)
-        .all()
+        await question_concept_repository.async_get_concepts_for_question(
+            db, question_id
+        )
     )
     return [
         name
@@ -184,8 +165,8 @@ def _hardest_first(
     )[:limit]
 
 
-def get_prerequisites(
-    db: Session,
+async def get_prerequisites(
+    db: AsyncSession,
     question_id: int,
     limit: int = 5,
     language: Language | str | ResponseLanguage = Language.JA,
@@ -193,15 +174,18 @@ def get_prerequisites(
     """Defining QAs for this QA's concepts, plus the concepts with none ([38])."""
     response = ResponseLanguage.of(language)
     lang = response.language
-    current = db.get(Question, question_id)
+    current = await question_repository.async_get_question(db, question_id)
     if current is None:
         return None
 
-    links, missing = _readable_only(_definer_candidates(db, question_id), response)
+    links = await question_concept_repository.approved_links_sharing_concepts(
+        db, question_id
+    )
+    links, missing = _readable_only(links, response)
     best_by_concept = _best_definers(links, current)
-    gaps = _gaps(db, question_id, best_by_concept, lang, response.strict)
+    gaps = await _gaps(db, question_id, best_by_concept, lang, response.strict)
     ordered = _hardest_first(best_by_concept, current, limit)
-    needs = prepare_for_response(db, ordered, response)
+    needs = await async_prepare_for_response(db, ordered, response)
     if response.strict:
         # The current QA's own concepts are the gap chips.
         needs.concept_question_ids.insert(0, question_id)

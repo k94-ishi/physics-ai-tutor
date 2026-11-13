@@ -218,6 +218,15 @@ Conventions:
   and the `async_` function. Patching only one of them leaves the other
   pointing at the real API, which fails with an authentication error
   rather than an obvious one.
+- A test that calls converted (async) code is `async def`, marked
+  `pytest.mark.anyio`, and takes `async_db`. Arrange rows through the
+  sync `db` and `db.commit()` them - the async session is another
+  connection and only sees committed rows. Inside an async test use
+  `async_create_user`, not `create_user`: the sync bridge runs its own
+  event loop and cannot nest ([83]).
+- A coroutine that is never awaited fails the suite: `pyproject.toml`
+  turns `RuntimeWarning` into an error ([83]). Twice before, a test
+  passed vacuously because an `await` was missing ([72]).
 - Admin-only endpoints need a test for `admin_client` (success),
   `user_client` (403) and `client` (401).
 - Any endpoint that returns question content needs a test proving
@@ -344,7 +353,7 @@ one from the app. Both use the same psycopg driver and the same
 
 | | Sync (not yet converted) | Async (converted) |
 | --- | --- | --- |
-| Request session | `Depends(get_db)` | `Depends(get_async_db)` |
+| Request session | `Depends(get_db)` (admin and concept routes) | `Depends(get_async_db)` (health, auth, users, ai, public question reads) |
 | Background session | `with background_session()` | `async with async_background_session()` |
 | Writes | `with transaction(db, "op")` | `async with async_transaction(db, "op")` |
 | Test fixture | `db` | `async_db` |

@@ -1,9 +1,16 @@
-"""Response shaping: language, concept names, references, admin extras."""
+"""Response shaping: language, concept names, references, admin extras.
+
+Each database-touching step has a sync and an async variant until [86]
+retires the admin writers' sync path; the shaping rule itself lives in
+the pure `_set_*` helpers so the two cannot drift ([83]).
+"""
 
 import logging
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from physics_ai_tutor.models.ai_review import AiReview
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.repositories import (
     ai_review_repository,
@@ -31,6 +38,13 @@ def resolve_language(questions: list[Question], language: Language | str) -> Non
         question.resolve(language)
 
 
+def _set_concept_names(
+    questions: list[Question], concepts_by_id: dict[int, list[str]]
+) -> None:
+    for question in questions:
+        question.concepts = concepts_by_id.get(question.id, [])
+
+
 def attach_concept_names(
     db: Session,
     questions: list[Question],
@@ -47,33 +61,43 @@ def attach_concept_names(
         language=Language(language).value,
         strict=strict,
     )
-
-    for question in questions:
-        question.concepts = concepts_by_id.get(question.id, [])
+    _set_concept_names(questions, concepts_by_id)
 
 
-def attach_retrieved_questions(
-    db: Session,
+async def async_attach_concept_names(
+    db: AsyncSession,
     questions: list[Question],
     language: Language | str = Language.JA,
     strict: bool = False,
 ) -> None:
-    """Resolve `retrieved_question_ids` to {id, question} summaries."""
+    """As `attach_concept_names` ([83])."""
     if not questions:
         return
 
-    all_ids = {
+    concepts_by_id = await question_concept_repository.async_get_concepts_for_questions(
+        db,
+        [q.id for q in questions],
+        language=Language(language).value,
+        strict=strict,
+    )
+    _set_concept_names(questions, concepts_by_id)
+
+
+def _referenced_ids(questions: list[Question]) -> set[int]:
+    return {
         question_id
         for question in questions
         for question_id in question.retrieved_question_ids
     }
 
-    if not all_ids:
-        for question in questions:
-            question.retrieved_questions = []
-        return
 
-    referenced = question_repository.get_questions_by_ids(db, list(all_ids))
+def _set_retrieved_questions(
+    questions: list[Question],
+    referenced: list[Question],
+    language: Language | str,
+    strict: bool,
+) -> None:
+    """Map `retrieved_question_ids` to {id, question} summaries in `language`."""
     if strict:
         referenced, _ = ResponseLanguage(Language(language), strict=True).readable(
             referenced
@@ -87,6 +111,50 @@ def attach_retrieved_questions(
             for ref_id in question.retrieved_question_ids
             if ref_id in referenced_by_id
         ]
+
+
+def attach_retrieved_questions(
+    db: Session,
+    questions: list[Question],
+    language: Language | str = Language.JA,
+    strict: bool = False,
+) -> None:
+    """Resolve `retrieved_question_ids` to {id, question} summaries."""
+    if not questions:
+        return
+
+    all_ids = _referenced_ids(questions)
+    referenced = (
+        question_repository.get_questions_by_ids(db, list(all_ids)) if all_ids else []
+    )
+    _set_retrieved_questions(questions, referenced, language, strict)
+
+
+async def async_attach_retrieved_questions(
+    db: AsyncSession,
+    questions: list[Question],
+    language: Language | str = Language.JA,
+    strict: bool = False,
+) -> None:
+    """As `attach_retrieved_questions` ([83])."""
+    if not questions:
+        return
+
+    all_ids = _referenced_ids(questions)
+    referenced = (
+        await question_repository.async_get_questions_by_ids(db, list(all_ids))
+        if all_ids
+        else []
+    )
+    _set_retrieved_questions(questions, referenced, language, strict)
+
+
+def _needs_for(
+    questions: list[Question], response: ResponseLanguage
+) -> TranslationNeeds:
+    if not response.strict:
+        return TranslationNeeds()
+    return TranslationNeeds(concept_question_ids=[q.id for q in questions])
 
 
 def prepare_for_response(
@@ -105,9 +173,30 @@ def prepare_for_response(
     resolve_language(questions, response.language)
     attach_concept_names(db, questions, response.language, response.strict)
     attach_retrieved_questions(db, questions, response.language, response.strict)
-    if not response.strict:
-        return TranslationNeeds()
-    return TranslationNeeds(concept_question_ids=[q.id for q in questions])
+    return _needs_for(questions, response)
+
+
+async def async_prepare_for_response(
+    db: AsyncSession,
+    questions: list[Question],
+    language: Language | str | ResponseLanguage = Language.JA,
+) -> TranslationNeeds:
+    """As `prepare_for_response` ([83]); the sync one serves the admin writers."""
+    response = ResponseLanguage.of(language)
+    resolve_language(questions, response.language)
+    await async_attach_concept_names(db, questions, response.language, response.strict)
+    await async_attach_retrieved_questions(
+        db, questions, response.language, response.strict
+    )
+    return _needs_for(questions, response)
+
+
+def _set_ai_reviews(questions: list[Question], latest: dict[int, AiReview]) -> None:
+    for question in questions:
+        row = latest.get(question.id)
+        question.ai_review = (
+            AiReviewSummary.model_validate(row) if row is not None else None
+        )
 
 
 def attach_ai_reviews(db: Session, questions: list[Question]) -> None:
@@ -115,11 +204,15 @@ def attach_ai_reviews(db: Session, questions: list[Question]) -> None:
     latest = ai_review_repository.latest_for_questions(
         db, [question.id for question in questions]
     )
-    for question in questions:
-        row = latest.get(question.id)
-        question.ai_review = (
-            AiReviewSummary.model_validate(row) if row is not None else None
-        )
+    _set_ai_reviews(questions, latest)
+
+
+async def async_attach_ai_reviews(db: AsyncSession, questions: list[Question]) -> None:
+    """As `attach_ai_reviews` ([83])."""
+    latest = await ai_review_repository.async_latest_for_questions(
+        db, [question.id for question in questions]
+    )
+    _set_ai_reviews(questions, latest)
 
 
 def attach_generation_meta(questions: list[Question]) -> None:

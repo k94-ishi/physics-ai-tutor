@@ -8,13 +8,12 @@ from fastapi import (
     Query,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from physics_ai_tutor.api.dependencies import (
     get_current_user_optional,
     is_admin,
 )
-from physics_ai_tutor.database.dependency import get_async_db, get_db
+from physics_ai_tutor.database.dependency import get_async_db
 from physics_ai_tutor.schemas.embedding import (
     SimilarQuestionRequest,
     SimilarQuestionResponse,
@@ -96,9 +95,9 @@ def _response_language(
     return ResponseLanguage.for_caller(lang, admin=is_admin(current_user))
 
 
-def _queue_translations(
+async def _queue_translations(
     background_tasks: BackgroundTasks,
-    db: Session,
+    db: AsyncSession,
     needs: TranslationNeeds,
     language: Language,
 ) -> None:
@@ -114,7 +113,7 @@ def _queue_translations(
         )
     if not needs.concept_question_ids:
         return
-    missing = concept_sense_service.concept_ids_missing_name(
+    missing = await concept_sense_service.concept_ids_missing_name(
         db, needs.concept_question_ids, language.value
     )
     if missing:
@@ -127,7 +126,7 @@ def _queue_translations(
     "",
     response_model=QuestionListResponse,
 )
-def get_questions(
+async def get_questions(
     page: int = Query(default=1, ge=1),
     size: int = Query(default=30, ge=1, le=120),
     keyword: str | None = Query(default=None, min_length=1, max_length=200),
@@ -151,7 +150,7 @@ def get_questions(
     concept_id: int | None = Query(
         default=None, ge=1, description="Questions linked to exactly this sense."
     ),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
     # AI-verdict sorting and filtering and the id list are admin tools.
@@ -167,7 +166,7 @@ def get_questions(
         concept=concept,
         concept_id=concept_id,
     )
-    return question_read_service.fetch_questions(
+    return await question_read_service.fetch_questions(
         db,
         page,
         size,
@@ -182,13 +181,13 @@ def get_questions(
     "/exact-match",
     response_model=QuestionResponse,
 )
-def get_exact_match_question(
+async def get_exact_match_question(
     question: str = Query(..., min_length=1, max_length=200),
     lang: Language = Query(default=Language.JA),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
-    result = question_read_service.fetch_question_by_exact_text(
+    result = await question_read_service.fetch_question_by_exact_text(
         db,
         question,
         exclude_statuses=_hidden_statuses_for(current_user),
@@ -208,15 +207,15 @@ def get_exact_match_question(
     "/{question_id}",
     response_model=QuestionResponse,
 )
-def get_question(
+async def get_question(
     background_tasks: BackgroundTasks,
     question_id: int,
     lang: Language = Query(default=Language.JA),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
     # Rows approved before translation existed are filled on first view.
-    question, needs = question_read_service.fetch_question(
+    question, needs = await question_read_service.fetch_question(
         db,
         question_id,
         exclude_statuses=_hidden_statuses_for(current_user),
@@ -231,8 +230,8 @@ def get_question(
 
     if is_admin(current_user):
         question_presentation_service.attach_generation_meta([question])
-        question_presentation_service.attach_ai_reviews(db, [question])
-    _queue_translations(background_tasks, db, needs, lang)
+        await question_presentation_service.async_attach_ai_reviews(db, [question])
+    await _queue_translations(background_tasks, db, needs, lang)
 
     return question
 
@@ -241,15 +240,15 @@ def get_question(
     "/{question_id}/related",
     response_model=list[QuestionResponse],
 )
-def get_related_questions(
+async def get_related_questions(
     background_tasks: BackgroundTasks,
     question_id: int,
     limit: int = Query(default=5, ge=1, le=20),
     lang: Language = Query(default=Language.JA),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
-    related = recommendation_service.get_related_questions(
+    related = await recommendation_service.get_related_questions(
         db,
         question_id,
         limit=limit,
@@ -260,7 +259,7 @@ def get_related_questions(
         ),
         language=_response_language(lang, current_user),
     )
-    _queue_translations(background_tasks, db, related.needs, lang)
+    await _queue_translations(background_tasks, db, related.needs, lang)
     return related.items
 
 
@@ -268,12 +267,12 @@ def get_related_questions(
     "/{question_id}/prerequisites",
     response_model=PrerequisitesResponse,
 )
-def get_prerequisites(
+async def get_prerequisites(
     background_tasks: BackgroundTasks,
     question_id: int,
     limit: int = Query(default=5, ge=1, le=20),
     lang: Language = Query(default=Language.JA),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
     """Defining QAs for the concepts this QA leans on ([38]).
@@ -281,7 +280,7 @@ def get_prerequisites(
     Students climb down, so only APPROVED rows ever appear, for admins
     too; concepts with no usable definer come back as gaps.
     """
-    result = prerequisite_service.get_prerequisites(
+    result = await prerequisite_service.get_prerequisites(
         db,
         question_id,
         limit=limit,
@@ -289,7 +288,7 @@ def get_prerequisites(
     )
     if result is None:
         raise HTTPException(status_code=404, detail="Question not found")
-    _queue_translations(background_tasks, db, result.needs, lang)
+    await _queue_translations(background_tasks, db, result.needs, lang)
     return result.response
 
 

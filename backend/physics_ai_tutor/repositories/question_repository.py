@@ -1,6 +1,6 @@
 from sqlalchemy import func, nullslast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Query, Session
+from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core.text import normalize_key
 from physics_ai_tutor.models import (
@@ -19,9 +19,7 @@ from physics_ai_tutor.schemas.question import (
 )
 
 
-def _filter_by_concept(
-    query: Query, db: Session, concept: str | None, concept_id: int | None = None
-) -> Query:
+def _filter_by_concept(query, concept: str | None, concept_id: int | None = None):
     """Keep questions linked to a concept sense ([55]).
 
     `concept_id` names one sense exactly. A `concept` word matches every
@@ -29,29 +27,29 @@ def _filter_by_concept(
     finds QAs whatever language their concept was first named in.
     """
     if concept_id is not None:
-        senses = db.query(Concept.id).filter(Concept.id == concept_id)
+        senses = select(Concept.id).where(Concept.id == concept_id)
     elif concept:
-        senses = db.query(ConceptTerm.concept_id).filter(
+        senses = select(ConceptTerm.concept_id).where(
             ConceptTerm.normalized == normalize_key(concept)
         )
     else:
         return query
 
     linked = (
-        db.query(QuestionConcept.question_id)
-        .filter(QuestionConcept.concept_id.in_(senses.scalar_subquery()))
+        select(QuestionConcept.question_id)
+        .where(QuestionConcept.concept_id.in_(senses.scalar_subquery()))
         .scalar_subquery()
     )
 
-    return query.filter(Question.id.in_(linked))
+    return query.where(Question.id.in_(linked))
 
 
 def _filter_by_keyword(
-    query: Query,
+    query,
     keyword: str | None,
     search_question: bool = True,
     search_answer: bool = True,
-) -> Query:
+):
     if not keyword:
         return query
 
@@ -68,17 +66,17 @@ def _filter_by_keyword(
             conditions.append(Question.answer_en.ilike(pattern))
 
         if conditions:
-            query = query.filter(or_(*conditions))
+            query = query.where(or_(*conditions))
 
     return query
 
 
 def _status_conditions(status: str | None, exclude_statuses: list[str] | None) -> list:
-    """The status predicate, shared by the sync and async readers.
+    """The status predicate, shared by every reader.
 
     Security-relevant: `exclude_statuses` is what keeps unapproved rows
-    away from students and REJECTED answers out of the ask cache, so both
-    variants must build it from here rather than each spelling it out.
+    away from students and REJECTED answers out of the ask cache, so every
+    statement must build it from here rather than spelling it out.
     """
     conditions = []
 
@@ -92,27 +90,27 @@ def _status_conditions(status: str | None, exclude_statuses: list[str] | None) -
 
 
 def _filter_by_status(
-    query: Query,
+    query,
     status: str | None,
     exclude_statuses: list[str] | None,
-) -> Query:
+):
     for condition in _status_conditions(status, exclude_statuses):
-        query = query.filter(condition)
+        query = query.where(condition)
 
     return query
 
 
-def _filter_by_language(query: Query, language: Language | str | None) -> Query:
+def _filter_by_language(query, language: Language | str | None):
     if language is None:
         return query
 
-    return query.filter(getattr(Question, f"question_{Language(language)}").isnot(None))
+    return query.where(getattr(Question, f"question_{Language(language)}").isnot(None))
 
 
-def _with_latest_ai_review(db: Session, query):
+def _with_latest_ai_review(query):
     """Outer-join each question's newest ai_reviews row (one per question)."""
     latest = (
-        db.query(AiReview.question_id, func.max(AiReview.id).label("latest_id"))
+        select(AiReview.question_id, func.max(AiReview.id).label("latest_id"))
         .group_by(AiReview.question_id)
         .subquery()
     )
@@ -126,12 +124,12 @@ def _filter_by_ai_verdict(query, ai_verdict: str | None):
     if ai_verdict is None:
         return query
     if ai_verdict == "NONE":
-        return query.filter(AiReview.id.is_(None))
+        return query.where(AiReview.id.is_(None))
 
-    return query.filter(AiReview.verdict == ai_verdict)
+    return query.where(AiReview.verdict == ai_verdict)
 
 
-def _apply_sort(db: Session, query, sort: str | None):
+def _apply_sort(query, sort: str | None):
     if sort == "oldest":
         return query.order_by(Question.created_at.asc(), Question.id.asc())
 
@@ -140,7 +138,7 @@ def _apply_sort(db: Session, query, sort: str | None):
 
     if sort == "asked_count":
         asks = (
-            db.query(
+            select(
                 QuestionAsk.question_id,
                 func.count(QuestionAsk.id).label("asked"),
             )
@@ -154,16 +152,17 @@ def _apply_sort(db: Session, query, sort: str | None):
     return query.order_by(Question.id)
 
 
-def _list_query(db: Session, filters: QuestionFilters, join_ai_review: bool):
-    query = db.query(Question)
+def _list_select(filters: QuestionFilters, join_ai_review: bool):
+    """The list statement; one builder so no filter can differ by caller."""
+    query = select(Question)
 
     if join_ai_review or filters.ai_verdict is not None:
-        query = _with_latest_ai_review(db, query)
+        query = _with_latest_ai_review(query)
 
     if filters.ids is not None:
-        query = query.filter(Question.id.in_(filters.ids))
+        query = query.where(Question.id.in_(filters.ids))
 
-    query = _filter_by_concept(query, db, filters.concept, filters.concept_id)
+    query = _filter_by_concept(query, filters.concept, filters.concept_id)
     query = _filter_by_keyword(
         query, filters.keyword, filters.search_question, filters.search_answer
     )
@@ -173,21 +172,34 @@ def _list_query(db: Session, filters: QuestionFilters, join_ai_review: bool):
     return _filter_by_ai_verdict(query, filters.ai_verdict)
 
 
-def get_questions(
-    db: Session,
+async def get_questions(
+    db: AsyncSession,
     offset: int,
     limit: int,
     filters: QuestionFilters | None = None,
     sort: str | None = None,
 ) -> list[Question]:
-    query = _list_query(
-        db, filters or QuestionFilters(), join_ai_review=sort == "ai_confidence"
+    query = _list_select(
+        filters or QuestionFilters(), join_ai_review=sort == "ai_confidence"
     )
-    return _apply_sort(db, query, sort).offset(offset).limit(limit).all()
+    page = _apply_sort(query, sort).offset(offset).limit(limit)
+
+    return list((await db.scalars(page)).all())
 
 
-def count_questions(db: Session, filters: QuestionFilters | None = None) -> int:
-    return _list_query(db, filters or QuestionFilters(), join_ai_review=False).count()
+async def count_questions(
+    db: AsyncSession, filters: QuestionFilters | None = None
+) -> int:
+    query = _list_select(filters or QuestionFilters(), join_ai_review=False)
+    total = await db.scalar(select(func.count()).select_from(query.subquery()))
+
+    return total or 0
+
+
+def _question_select(question_id: int, exclude_statuses: list[str] | None):
+    query = select(Question).where(Question.id == question_id)
+
+    return _filter_by_status(query, None, exclude_statuses)
 
 
 def get_question(
@@ -195,10 +207,16 @@ def get_question(
     question_id: int,
     exclude_statuses: list[str] | None = None,
 ) -> Question | None:
-    query = db.query(Question).filter(Question.id == question_id)
-    query = _filter_by_status(query, None, exclude_statuses)
+    return db.scalars(_question_select(question_id, exclude_statuses)).first()
 
-    return query.first()
+
+async def async_get_question(
+    db: AsyncSession,
+    question_id: int,
+    exclude_statuses: list[str] | None = None,
+) -> Question | None:
+    """As `get_question` ([83]); the sync one serves the admin writers."""
+    return (await db.scalars(_question_select(question_id, exclude_statuses))).first()
 
 
 def get_questions_by_ids(db: Session, ids: list[int]) -> list[Question]:

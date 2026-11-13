@@ -1,3 +1,5 @@
+import pytest
+
 from physics_ai_tutor.repositories import (
     concept_repository,
     embedding_repository,
@@ -6,7 +8,7 @@ from physics_ai_tutor.repositories import (
 )
 from physics_ai_tutor.schemas.question_review import QuestionReviewAction
 from physics_ai_tutor.services import question_review_service, recommendation_service
-from tests.conftest import create_user
+from tests.conftest import async_create_user
 
 
 def _create_question_with_embedding(db, question, answer, vector):
@@ -33,21 +35,28 @@ def _create_concept(db, name, vector):
     )
 
 
-def test_get_related_questions_excludes_self(db):
+@pytest.mark.anyio
+async def test_get_related_questions_excludes_self(db, async_db):
     vector = [0.1] * 1536
     source = _create_question_with_embedding(db, "元質問", "元回答", vector)
 
-    result = recommendation_service.get_related_questions(db, source.id, limit=5).items
+    db.commit()
+    result = (
+        await recommendation_service.get_related_questions(async_db, source.id, limit=5)
+    ).items
 
     assert source.id not in [q.id for q in result]
 
 
-def test_get_related_questions_excludes_rejected(db):
+@pytest.mark.anyio
+async def test_get_related_questions_excludes_rejected(db, async_db):
     vector = [0.1] * 1536
     source = _create_question_with_embedding(db, "元質問", "元回答", vector)
     other = _create_question_with_embedding(db, "他の質問", "他の回答", vector)
 
-    admin = create_user(db, "rec-reviewer@example.com", "reviewerpass123", role="admin")
+    admin = await async_create_user(
+        db, "rec-reviewer@example.com", "reviewerpass123", role="admin"
+    )
     question_review_service.review_question(
         db,
         other.id,
@@ -55,38 +64,50 @@ def test_get_related_questions_excludes_rejected(db):
         reviewer_id=admin.id,
     )
 
-    result = recommendation_service.get_related_questions(db, source.id, limit=5).items
-
-    assert other.id not in [q.id for q in result]
-
-
-def test_get_related_questions_excludes_unreviewed_by_default(db):
-    vector = [0.1] * 1536
-    source = _create_question_with_embedding(db, "元質問", "元回答", vector)
-    other = _create_question_with_embedding(db, "他の質問", "他の回答", vector)
-    question_repository.update_content_and_status(db, other.id, status="UNREVIEWED")
-
-    result = recommendation_service.get_related_questions(
-        db, source.id, limit=5, exclude_statuses=["REJECTED", "UNREVIEWED"]
+    db.commit()
+    result = (
+        await recommendation_service.get_related_questions(async_db, source.id, limit=5)
     ).items
 
     assert other.id not in [q.id for q in result]
 
 
-def test_get_related_questions_includes_unreviewed_when_allowed(db):
+@pytest.mark.anyio
+async def test_get_related_questions_excludes_unreviewed_by_default(db, async_db):
     vector = [0.1] * 1536
     source = _create_question_with_embedding(db, "元質問", "元回答", vector)
     other = _create_question_with_embedding(db, "他の質問", "他の回答", vector)
     question_repository.update_content_and_status(db, other.id, status="UNREVIEWED")
 
-    result = recommendation_service.get_related_questions(
-        db, source.id, limit=5, exclude_statuses=["REJECTED"]
+    db.commit()
+    result = (
+        await recommendation_service.get_related_questions(
+            async_db, source.id, limit=5, exclude_statuses=["REJECTED", "UNREVIEWED"]
+        )
+    ).items
+
+    assert other.id not in [q.id for q in result]
+
+
+@pytest.mark.anyio
+async def test_get_related_questions_includes_unreviewed_when_allowed(db, async_db):
+    vector = [0.1] * 1536
+    source = _create_question_with_embedding(db, "元質問", "元回答", vector)
+    other = _create_question_with_embedding(db, "他の質問", "他の回答", vector)
+    question_repository.update_content_and_status(db, other.id, status="UNREVIEWED")
+
+    db.commit()
+    result = (
+        await recommendation_service.get_related_questions(
+            async_db, source.id, limit=5, exclude_statuses=["REJECTED"]
+        )
     ).items
 
     assert other.id in [q.id for q in result]
 
 
-def test_get_related_questions_ranks_by_weighted_score(db):
+@pytest.mark.anyio
+async def test_get_related_questions_ranks_by_weighted_score(db, async_db):
     close_vector = [0.1] * 1536
     far_vector = [0.9] * 1536
 
@@ -98,14 +119,18 @@ def test_get_related_questions_ranks_by_weighted_score(db):
         db, "似ていない質問", "似ていない回答", far_vector
     )
 
-    result = recommendation_service.get_related_questions(db, source.id, limit=5).items
+    db.commit()
+    result = (
+        await recommendation_service.get_related_questions(async_db, source.id, limit=5)
+    ).items
 
     result_ids = [q.id for q in result]
     assert similar.id in result_ids
     assert result_ids.index(similar.id) < result_ids.index(dissimilar.id)
 
 
-def test_get_related_questions_includes_concept_sharing_candidate(db):
+@pytest.mark.anyio
+async def test_get_related_questions_includes_concept_sharing_candidate(db, async_db):
     vector = [0.1] * 1536
     other_vector = [-0.1] * 1536
 
@@ -120,21 +145,31 @@ def test_get_related_questions_includes_concept_sharing_candidate(db):
         db, question_id=concept_sharing.id, concept_id=concept.id
     )
 
-    result = recommendation_service.get_related_questions(db, source.id, limit=5).items
+    db.commit()
+    result = (
+        await recommendation_service.get_related_questions(async_db, source.id, limit=5)
+    ).items
 
     assert concept_sharing.id in [q.id for q in result]
 
 
-def test_get_related_questions_returns_empty_when_no_embedding(db):
+@pytest.mark.anyio
+async def test_get_related_questions_returns_empty_when_no_embedding(db, async_db):
     q = question_repository.create_question(db, question="埋め込みなし", answer="回答")
     db.flush()
 
-    result = recommendation_service.get_related_questions(db, q.id, limit=5).items
+    db.commit()
+    result = (
+        await recommendation_service.get_related_questions(async_db, q.id, limit=5)
+    ).items
 
     assert result == []
 
 
-def test_get_related_questions_includes_candidate_via_rag_reference_concepts(db):
+@pytest.mark.anyio
+async def test_get_related_questions_includes_candidate_via_rag_reference_concepts(
+    db, async_db
+):
     close_vector = [0.1] * 1536
     dissimilar_vector = [-0.5] * 1536
 
@@ -163,8 +198,11 @@ def test_get_related_questions_includes_candidate_via_rag_reference_concepts(db)
         db, question_id=candidate.id, concept_id=concept.id
     )
 
-    result = recommendation_service.get_related_questions(
-        db, rag_question.id, limit=5, exclude_statuses=["REJECTED"]
+    db.commit()
+    result = (
+        await recommendation_service.get_related_questions(
+            async_db, rag_question.id, limit=5, exclude_statuses=["REJECTED"]
+        )
     ).items
 
     assert candidate.id in [q.id for q in result]

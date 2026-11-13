@@ -36,7 +36,7 @@ traffic first, then by which sync functions can be deleted soonest.
 | # | Issue | What converts | Tests re-written (est.) | Status |
 | --- | --- | --- | --- | --- |
 | 1 | (this issue, 260d7c2) | Auth, users, sessions; `google_auth_service` over async HTTP | — | merged 2026-11-12 |
-| 2 | [83] | Public question reads: list, detail, exact match, related, prerequisites; read twins in the repositories; `RuntimeWarning` becomes a test failure | ~50 | open |
+| 2 | [83] | Public question reads: list, detail, exact match, related, prerequisites; read twins in the repositories; `RuntimeWarning` becomes a test failure | 35 moved, 3 new | done 2026-11-13 |
 | 3 | [84] | Concepts: student search and the admin tag editor | ~25 | open |
 | 4 | [85] | Admin review workflow: review, bulk review, history, translate, re-extract; extraction out of the transaction | ~40 | open |
 | 5 | [86] | Admin content writes: create, update, delete, import; the seed and three CLIs; sync translation half deleted | ~60 | open |

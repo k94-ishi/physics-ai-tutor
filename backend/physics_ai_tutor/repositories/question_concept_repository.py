@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.models import Concept, Question, QuestionConcept
+from physics_ai_tutor.schemas.question import QuestionStatus
 
 
 def link(db: Session, question_id: int, concept_id: int) -> None:
@@ -22,13 +23,23 @@ def link(db: Session, question_id: int, concept_id: int) -> None:
     db.flush()
 
 
-def get_concepts_for_question(db: Session, question_id: int) -> list[Concept]:
+def _concepts_for_question_select(question_id: int):
     return (
-        db.query(Concept)
+        select(Concept)
         .join(QuestionConcept, QuestionConcept.concept_id == Concept.id)
-        .filter(QuestionConcept.question_id == question_id)
-        .all()
+        .where(QuestionConcept.question_id == question_id)
     )
+
+
+def get_concepts_for_question(db: Session, question_id: int) -> list[Concept]:
+    return list(db.scalars(_concepts_for_question_select(question_id)).all())
+
+
+async def async_get_concepts_for_question(
+    db: AsyncSession, question_id: int
+) -> list[Concept]:
+    """As `get_concepts_for_question` ([83])."""
+    return list((await db.scalars(_concepts_for_question_select(question_id))).all())
 
 
 def get_concepts_for_questions(
@@ -86,41 +97,59 @@ def _names_by_question(
     return result
 
 
-def get_concept_ids_for_question(db: Session, question_id: int) -> list[int]:
-    rows = (
-        db.query(QuestionConcept.concept_id)
-        .filter(QuestionConcept.question_id == question_id)
-        .all()
+def _concept_ids_select(question_id: int):
+    return select(QuestionConcept.concept_id).where(
+        QuestionConcept.question_id == question_id
     )
 
-    return [concept_id for (concept_id,) in rows]
+
+def get_concept_ids_for_question(db: Session, question_id: int) -> list[int]:
+    return list(db.scalars(_concept_ids_select(question_id)).all())
 
 
-def get_questions_sharing_concepts(
-    db: Session,
+async def async_get_concept_ids_for_question(
+    db: AsyncSession, question_id: int
+) -> list[int]:
+    """As `get_concept_ids_for_question` ([83]); the sync one serves `link_many`."""
+    return list((await db.scalars(_concept_ids_select(question_id))).all())
+
+
+async def get_questions_sharing_concepts(
+    db: AsyncSession,
     question_id: int,
     exclude_ids: list[int],
     limit: int,
 ) -> list[int]:
-    concept_ids_subquery = (
-        db.query(QuestionConcept.concept_id)
-        .filter(QuestionConcept.question_id == question_id)
-        .scalar_subquery()
-    )
-
     query = (
-        db.query(QuestionConcept.question_id)
-        .filter(QuestionConcept.concept_id.in_(concept_ids_subquery))
-        .filter(QuestionConcept.question_id != question_id)
+        select(QuestionConcept.question_id)
+        .where(QuestionConcept.concept_id.in_(_concept_ids_select(question_id)))
+        .where(QuestionConcept.question_id != question_id)
         .distinct()
     )
 
     if exclude_ids:
-        query = query.filter(QuestionConcept.question_id.notin_(exclude_ids))
+        query = query.where(QuestionConcept.question_id.notin_(exclude_ids))
 
-    rows = query.limit(limit).all()
+    return list((await db.scalars(query.limit(limit))).all())
 
-    return [related_id for (related_id,) in rows]
+
+async def approved_links_sharing_concepts(
+    db: AsyncSession, question_id: int
+) -> list[tuple[Concept, Question]]:
+    """Every APPROVED QA sharing a concept with this one, per shared concept ([38])."""
+    query = (
+        select(Concept, Question)
+        .join(QuestionConcept, QuestionConcept.concept_id == Concept.id)
+        .join(Question, Question.id == QuestionConcept.question_id)
+        .where(
+            Concept.id.in_(_concept_ids_select(question_id)),
+            Question.id != question_id,
+            Question.status == QuestionStatus.APPROVED,
+        )
+    )
+    rows = (await db.execute(query)).all()
+
+    return [(concept, question) for concept, question in rows]
 
 
 def delete_by_question_id(db: Session, question_id: int) -> None:

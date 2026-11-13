@@ -1,4 +1,5 @@
-from sqlalchemy import func
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, aliased
 
 from physics_ai_tutor.core.text import normalize_key
@@ -55,8 +56,8 @@ def list_all(db: Session) -> list[Concept]:
     return db.query(Concept).all()
 
 
-def average_concept_similarity(
-    db: Session,
+async def average_concept_similarity(
+    db: AsyncSession,
     source_concept_ids: list[int],
     candidate_question_ids: list[int],
 ) -> dict[int, float]:
@@ -76,31 +77,32 @@ def average_concept_similarity(
         source_concept.embedding
     )
 
-    rows = (
-        db.query(
+    query = (
+        select(
             QuestionConcept.question_id,
             func.avg(similarity).label("avg_similarity"),
         )
         .join(candidate_concept, candidate_concept.id == QuestionConcept.concept_id)
         .join(source_concept, source_concept.id.in_(source_concept_ids))
-        .filter(QuestionConcept.question_id.in_(candidate_question_ids))
+        .where(QuestionConcept.question_id.in_(candidate_question_ids))
         .group_by(QuestionConcept.question_id)
-        .all()
     )
+    rows = (await db.execute(query)).all()
 
     return {question_id: float(avg_similarity) for question_id, avg_similarity in rows}
 
 
-def ids_missing_name(db: Session, question_ids: list[int], language: str) -> list[int]:
+async def ids_missing_name(
+    db: AsyncSession, question_ids: list[int], language: str
+) -> list[int]:
     """Concepts of these questions that have no name in `language`."""
     if not question_ids:
         return []
     column = Concept.name_ja if language == "ja" else Concept.name_en
-    rows = (
-        db.query(Concept.id)
+    query = (
+        select(Concept.id)
         .join(QuestionConcept, QuestionConcept.concept_id == Concept.id)
-        .filter(QuestionConcept.question_id.in_(question_ids), column.is_(None))
+        .where(QuestionConcept.question_id.in_(question_ids), column.is_(None))
         .distinct()
-        .all()
     )
-    return [concept_id for (concept_id,) in rows]
+    return list((await db.scalars(query)).all())

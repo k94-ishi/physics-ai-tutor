@@ -61,13 +61,13 @@ slices ([85], [86]) will reuse.
 
 ## Acceptance criteria
 
-- [ ] No route in `api/v1/questions.py` resolves `get_db`; all six are
+- [x] No route in `api/v1/questions.py` resolves `get_db`; all six are
       `async def`.
-- [ ] The strict-language tests ([53], `test_language_strict.py`) and
+- [x] The strict-language tests ([53], `test_language_strict.py`) and
       the admin-fallback tests pass unchanged; `PUBLIC_HIDDEN_STATUSES`
       is applied through one shared predicate, not a copy.
-- [ ] An un-awaited coroutine anywhere in the suite fails the run.
-- [ ] Measured with `scripts/latency_probe.py` before and after:
+- [x] An un-awaited coroutine anywhere in the suite fails the run.
+- [x] Measured with `scripts/latency_probe.py` before and after:
       `/questions?size=50` and `/questions/{id}` at concurrency 32 show
       no regression (a small gain is expected, not required).
 
@@ -103,7 +103,74 @@ roll back ([70] lesson).
 
 ## Definition of done
 
-- [ ] Backend: `pytest`, `ruff check`, `mypy` pass
-- [ ] Frontend untouched; CI green
-- [ ] Before/after numbers in this issue's Log
-- [ ] No doc change expected; the dual-stack notes go in [88]
+- [x] Backend: `pytest`, `ruff check`, `mypy` pass
+- [x] Frontend untouched; CI green
+- [x] Before/after numbers in this issue's Log
+- [x] `docs/development.md`: async test conventions and the warning guard
+
+## Log
+
+### 2026-11-13 — done
+
+601 tests pass (was 598); ruff and mypy clean; frontend untouched.
+
+**What changed.** The five public read routes, `question_read_service`,
+`question_presentation_service`, `recommendation_service` and
+`prerequisite_service` run on `AsyncSession`. The repositories build
+each statement once with `select()` and both variants run the same
+object (`_list_select`, `_question_select`, `_concepts_for_question_select`,
+`_latest_for_questions_select`), so the status and language filters
+cannot differ between the student path and the admin path.
+
+Where the sync version lost its last caller it is gone rather than kept
+as a twin: `question_repository.get_questions` / `count_questions`,
+`question_concept_repository.get_questions_sharing_concepts`,
+`concept_repository.average_concept_similarity` / `ids_missing_name`,
+`embedding_repository.get_embedding`, the dead sync
+`question_read_service.find_cached_answer`, and
+`concept_sense_service.concept_ids_missing_name` (its only caller was
+the router, so [84] has nothing to collapse there). Twins were added
+only where an admin writer still calls the sync one: `get_question`,
+`get_concepts_for_question`, `get_concept_ids_for_question` (used by
+`link_many`), `latest_for_questions`, and the presentation steps
+`prepare_for_response` / `attach_ai_reviews` with their helpers. The
+prerequisite service's inline `db.query` moved into
+`question_concept_repository.approved_links_sharing_concepts`, so the
+service no longer queries the database itself.
+
+**Tests.** 35 tests moved to `async_db` (list and count repository
+tests, concept sharing, all eight recommendation tests, the read calls
+inside the question-service tests); three new tests cover the detail
+twin's status filter, the approved-links query and the concept readers.
+`conftest.async_create_user` was added because the sync `create_user`
+bridge calls `asyncio.run`, which cannot nest inside an async test.
+`pyproject.toml` now turns `RuntimeWarning` into an error, which caught
+exactly the bug it is for during this work: `await f(...).items` binds
+the attribute before the await and left ten coroutines un-awaited.
+
+**Measured** on the local dev database (578 questions), both servers on
+the same database, three interleaved rounds each, 200 requests at
+concurrency 8:
+
+| Route | before p50 / p95 | after p50 / p95 |
+| --- | --- | --- |
+| `GET /questions?size=50` | 940-961 / 1260-1550 ms | 894-1002 / 1044-1491 ms |
+| `GET /questions/1` | 33-34 / 41-53 ms | 31 / 37-49 ms |
+
+No regression; the small gain is within noise, as the issue expected.
+Two notes on the numbers:
+
+1. A first attempt at the [75] load (800 requests, concurrency 32) was
+   unusable: another session on this machine was running its own probe
+   at the same time and the Docker VM sat at 100 % CPU, so both servers
+   hit the 30 s pool timeout (18 and 277 times). The numbers above were
+   taken after that load ended, at a concurrency below the pool size.
+   Compare like with like only: these are not comparable to the [75]
+   table (200 rows, a quiet machine).
+2. The list route costs about a second at `size=50` on this dataset
+   whether sync or async: it is CPU, not waiting - 50 items each
+   carrying both languages' full text in `texts`. That is a [74]/[77]
+   item (smaller list payload, or compression), not an async one.
+
+**Trap recorded.** In zsh, a shell loop variable named `path` is the
+`PATH` array; the first measurement script silently lost every command.

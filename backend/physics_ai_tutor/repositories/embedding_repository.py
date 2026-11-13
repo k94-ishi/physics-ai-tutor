@@ -159,23 +159,19 @@ async def async_search_similar_embeddings(
     return [(e, question, d) for e, question, d in (await db.execute(query)).all()]
 
 
-def get_embedding(
-    db: Session,
+async def get_embedding(
+    db: AsyncSession,
     question_id: int,
     embedding_type: str,
     language: str = "ja",
 ) -> list[float] | None:
-    row = (
-        db.query(QuestionEmbedding.embedding)
-        .filter(
-            QuestionEmbedding.question_id == question_id,
-            QuestionEmbedding.type == embedding_type,
-            QuestionEmbedding.language == language,
-        )
-        .first()
+    query = select(QuestionEmbedding.embedding).where(
+        QuestionEmbedding.question_id == question_id,
+        QuestionEmbedding.type == embedding_type,
+        QuestionEmbedding.language == language,
     )
 
-    return row[0] if row is not None else None
+    return (await db.scalars(query)).first()
 
 
 def _delete_by_question_id_statement(question_id: int, language: str | None):

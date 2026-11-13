@@ -474,8 +474,8 @@ def split_by_id(
         return new.id
 
 
-def concept_ids_missing_name(
-    db: Session, question_ids: list[int], language: str
+async def concept_ids_missing_name(
+    db: AsyncSession, question_ids: list[int], language: str
 ) -> list[int]:
     """Concepts of these questions without a word in `language` ([53])."""
-    return concept_repository.ids_missing_name(db, question_ids, language)
+    return await concept_repository.ids_missing_name(db, question_ids, language)

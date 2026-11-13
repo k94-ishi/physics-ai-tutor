@@ -1,3 +1,5 @@
+import pytest
+
 from physics_ai_tutor.repositories import (
     concept_repository,
     question_concept_repository,
@@ -76,7 +78,8 @@ def test_get_concepts_for_questions_empty_ids_returns_empty_dict(db):
     assert question_concept_repository.get_concepts_for_questions(db, []) == {}
 
 
-def test_get_questions_sharing_concepts(db):
+@pytest.mark.anyio
+async def test_get_questions_sharing_concepts(db, async_db):
     q1 = _create_question(db, "質問1", "回答1")
     q2 = _create_question(db, "質問2", "回答2")
     q3 = _create_question(db, "質問3", "回答3")
@@ -91,27 +94,71 @@ def test_get_questions_sharing_concepts(db):
         db, question_id=q2.id, concept_id=shared_concept.id
     )
     question_concept_repository.link(db, question_id=q3.id, concept_id=other_concept.id)
+    db.commit()
 
-    result = question_concept_repository.get_questions_sharing_concepts(
-        db, question_id=q1.id, exclude_ids=[], limit=10
+    result = await question_concept_repository.get_questions_sharing_concepts(
+        async_db, question_id=q1.id, exclude_ids=[], limit=10
     )
 
     assert result == [q2.id]
 
 
-def test_get_questions_sharing_concepts_respects_exclude_ids(db):
+@pytest.mark.anyio
+async def test_get_questions_sharing_concepts_respects_exclude_ids(db, async_db):
     q1 = _create_question(db, "質問1", "回答1")
     q2 = _create_question(db, "質問2", "回答2")
 
     concept = _create_concept(db)
     question_concept_repository.link(db, question_id=q1.id, concept_id=concept.id)
     question_concept_repository.link(db, question_id=q2.id, concept_id=concept.id)
+    db.commit()
 
-    result = question_concept_repository.get_questions_sharing_concepts(
-        db, question_id=q1.id, exclude_ids=[q2.id], limit=10
+    result = await question_concept_repository.get_questions_sharing_concepts(
+        async_db, question_id=q1.id, exclude_ids=[q2.id], limit=10
     )
 
     assert result == []
+
+
+@pytest.mark.anyio
+async def test_approved_links_sharing_concepts_skips_self_and_unapproved(db, async_db):
+    current = _create_question(db, "現在の質問", "回答")
+    approved = _create_question(db, "承認済み", "回答")
+    hidden = _create_question(db, "未レビュー", "回答")
+    question_repository.update_status(db, hidden.id, "UNREVIEWED")
+    concept = _create_concept(db, "共有概念")
+    for question in (current, approved, hidden):
+        question_concept_repository.link(
+            db, question_id=question.id, concept_id=concept.id
+        )
+    db.commit()
+
+    links = await question_concept_repository.approved_links_sharing_concepts(
+        async_db, current.id
+    )
+
+    assert [(c.id, q.id) for c, q in links] == [(concept.id, approved.id)]
+
+
+@pytest.mark.anyio
+async def test_async_concept_readers_match_the_sync_ones(db, async_db):
+    question = _create_question(db)
+    concept = _create_concept(db, "概念A")
+    question_concept_repository.link(db, question_id=question.id, concept_id=concept.id)
+    db.commit()
+
+    concepts = await question_concept_repository.async_get_concepts_for_question(
+        async_db, question.id
+    )
+    ids = await question_concept_repository.async_get_concept_ids_for_question(
+        async_db, question.id
+    )
+
+    assert [c.id for c in concepts] == [concept.id]
+    assert ids == [concept.id]
+    assert ids == question_concept_repository.get_concept_ids_for_question(
+        db, question.id
+    )
 
 
 def test_delete_by_question_id_removes_all_links(db):

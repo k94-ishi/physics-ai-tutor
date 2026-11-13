@@ -20,7 +20,7 @@ One small slice of [73]: admin tag list and detail. No behaviour change.
 
 ## Acceptance criteria
 
-- [ ] `test_admin_list_filters_shared_words` and the admin-auth test green; `review`/`shared` filters return the same rows.
+- [x] `test_admin_list_filters_shared_words` and the admin-auth test green; `review`/`shared` filters return the same rows.
 
 ## Dependencies
 
@@ -38,5 +38,23 @@ One small slice of [73]: admin tag list and detail. No behaviour change.
 
 ## Definition of done
 
-- [ ] Backend: `pytest`, `ruff check`, `mypy` pass
-- [ ] Log entry in this file; `status.md`, [67] and [73] updated
+- [x] Backend: `pytest`, `ruff check`, `mypy` pass
+- [x] Log entry in this file; `status.md`, [67] and [73] updated
+
+## Log
+
+### 2026-11-13 — done
+
+602 tests pass (601 + 1 new); ruff and mypy clean; frontend untouched.
+
+- `GET /admin/concepts` and `GET /admin/concepts/{id}` are async.
+- `list_for_admin` and `admin_concept_ids` had only the list route as a
+  caller, so they are async outright.
+- `detail_for_admin`, `shared_word_partners` and `linked_questions` got
+  async twins, because the six editor write routes ([90]) still return
+  the sync detail. Each pair runs one shared statement
+  (`_partners_select`, `_linked_questions_select`), and the pure
+  `_admin_item` lost its unused `db` argument.
+- New test: the detail lists linked questions, word-sharing partners and
+  the count, and an unknown id is a 404 (the detail had no direct test
+  before; the split test only touched it in passing).

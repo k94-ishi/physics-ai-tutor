@@ -94,7 +94,7 @@ wait for the slowest endpoint from "whole answer" to "first words".
       prerequisites) - also makes an un-awaited coroutine a test failure~~
       done 2026-11-13 (601 tests; no regression at concurrency 8)
    2. ~~[84] Asynchronize the public tag search (GET /concepts)~~ done 2026-11-13
-   3. [89] Asynchronize the admin tag editor reads: list and detail
+   3. ~~[89] Asynchronize the admin tag editor reads: list and detail~~ done 2026-11-13
    4. [90] Asynchronize the admin tag editor writes: gloss, words, merge, split
    5. [91] Asynchronize concept extraction and the re-extract route
    6. [85] Asynchronize the review routes: review, bulk review, history

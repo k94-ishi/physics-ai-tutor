@@ -109,7 +109,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 86 | open | 86-async-admin-content-writes.md | Asynchronize delete and bulk delete | — (file-era issue) |
 | 87 | open | 87-async-admin-stats-exports-and-ai-review-runs.md | Asynchronize the usage dashboard and the agreement report | — (file-era issue) |
 | 88 | open | 88-retire-the-sync-stack.md | Delete the sync engine, sync LLM clients and remaining sync twins | — (file-era issue) |
-| 89 | open | 89-async-admin-concept-reads.md | Asynchronize the admin tag editor reads: list and detail | — (file-era issue) |
+| 89 | closed | 89-async-admin-concept-reads.md | Asynchronize the admin tag editor reads: list and detail | — (file-era issue) |
 | 90 | open | 90-async-admin-concept-writes.md | Asynchronize the admin tag editor writes: gloss, words, merge, split | — (file-era issue) |
 | 91 | open | 91-async-concept-extraction.md | Asynchronize concept extraction and the re-extract route | — (file-era issue) |
 | 92 | open | 92-async-translate-route.md | Asynchronize the fill-translations route (POST /questions/translate) | — (file-era issue) |

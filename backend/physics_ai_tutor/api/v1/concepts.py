@@ -77,26 +77,37 @@ def _detail(db: Session, concept_id: int, lang: Language) -> AdminConceptRespons
     return item
 
 
+async def _async_detail(
+    db: AsyncSession, concept_id: int, lang: Language
+) -> AdminConceptResponse:
+    item = await concept_sense_service.async_detail_for_admin(
+        db, concept_id, lang.value
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Concept not found")
+    return item
+
+
 @admin_router.get("", response_model=AdminConceptListResponse)
-def list_concepts(
+async def list_concepts(
     q: str = Query(default="", max_length=100),
     review_filter: str = Query(default="all", pattern="^(all|review|shared)$"),
     page: int = Query(default=1, ge=1),
     size: int = Query(default=30, ge=1, le=100),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     _: JWTPayload = Depends(require_admin),
 ):
-    return concept_sense_service.list_for_admin(db, q, review_filter, page, size)
+    return await concept_sense_service.list_for_admin(db, q, review_filter, page, size)
 
 
 @admin_router.get("/{concept_id}", response_model=AdminConceptResponse)
-def get_concept(
+async def get_concept(
     concept_id: int,
     lang: Language = Query(default=Language.JA),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     _: JWTPayload = Depends(require_admin),
 ):
-    return _detail(db, concept_id, lang)
+    return await _async_detail(db, concept_id, lang)
 
 
 @admin_router.patch("/{concept_id}", response_model=AdminConceptResponse)

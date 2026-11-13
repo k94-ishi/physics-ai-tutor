@@ -197,6 +197,19 @@ def test_admin_list_filters_shared_words(admin_client, db):
     assert by_id[wave.id]["shares_word_with"] == [matter.id]
 
 
+def test_admin_detail_lists_questions_and_partners_and_404s(admin_client, db):
+    question = _question(db, "波の位相とは？")
+    wave = _tag(db, question, "位相 | phase")[0]
+    matter = _tag(db, _question(db, "気相とは？"), "相 | phase")[0]
+
+    body = admin_client.get(f"{ADMIN}/{wave.id}").json()
+
+    assert [ref["id"] for ref in body["questions"]] == [question.id]
+    assert body["shares_word_with"] == [matter.id]
+    assert body["question_count"] == 1
+    assert admin_client.get(f"{ADMIN}/999999").status_code == 404
+
+
 def test_admin_adds_alias_and_changes_the_label(admin_client, db):
     concept = _tag(db, _question(db, "速度とは？"), "速度 | velocity")[0]
 

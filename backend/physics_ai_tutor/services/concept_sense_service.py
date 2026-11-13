@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core.text import normalize_key
 from physics_ai_tutor.database.transaction import transaction
-from physics_ai_tutor.models import Concept, ConceptTerm, QuestionConcept
+from physics_ai_tutor.models import Concept, ConceptTerm, Question, QuestionConcept
 from physics_ai_tutor.repositories import concept_repository, concept_term_repository
 from physics_ai_tutor.schemas.concept import (
     AdminConceptListResponse,
@@ -307,7 +307,7 @@ async def search(
 
 
 def _admin_item(
-    db: Session, concept: Concept, count: int, shares: list[int]
+    concept: Concept, count: int, shares: list[int]
 ) -> AdminConceptResponse:
     return AdminConceptResponse(
         id=concept.id,
@@ -324,19 +324,21 @@ def _admin_item(
     )
 
 
-def list_for_admin(
-    db: Session, query: str, review_filter: str, page: int, size: int
+async def list_for_admin(
+    db: AsyncSession, query: str, review_filter: str, page: int, size: int
 ) -> AdminConceptListResponse:
-    ids = concept_term_repository.admin_concept_ids(
+    ids = await concept_term_repository.admin_concept_ids(
         db, normalize_key(query) if query else "", review_filter
     )
     total = len(ids)
     page_ids = ids[(page - 1) * size : page * size]
-    counts = concept_term_repository.question_counts(db, page_ids, None)
-    shares = concept_term_repository.shared_word_partners(db, page_ids)
-    concepts = {c.id: c for c in concept_term_repository.get_many(db, page_ids)}
+    counts = await concept_term_repository.async_question_counts(db, page_ids, None)
+    shares = await concept_term_repository.async_shared_word_partners(db, page_ids)
+    concepts = {
+        c.id: c for c in await concept_term_repository.async_get_many(db, page_ids)
+    }
     items = [
-        _admin_item(db, concepts[cid], counts.get(cid, 0), shares.get(cid, []))
+        _admin_item(concepts[cid], counts.get(cid, 0), shares.get(cid, []))
         for cid in page_ids
         if cid in concepts
     ]
@@ -351,14 +353,34 @@ def detail_for_admin(
         return None
     counts = concept_term_repository.question_counts(db, [concept_id], None)
     shares = concept_term_repository.shared_word_partners(db, [concept_id])
-    item = _admin_item(
-        db, concept, counts.get(concept_id, 0), shares.get(concept_id, [])
+    item = _admin_item(concept, counts.get(concept_id, 0), shares.get(concept_id, []))
+    item.questions = _question_refs(
+        concept_term_repository.linked_questions(db, concept_id, language)
     )
-    item.questions = [
-        ConceptQuestionRef(id=q.id, question=q.question, status=q.status)
-        for q in concept_term_repository.linked_questions(db, concept_id, language)
-    ]
     return item
+
+
+async def async_detail_for_admin(
+    db: AsyncSession, concept_id: int, language: str
+) -> AdminConceptResponse | None:
+    """As `detail_for_admin` ([89]); the editor writes still return the sync one."""
+    concept = await db.get(Concept, concept_id)
+    if concept is None:
+        return None
+    counts = await concept_term_repository.async_question_counts(db, [concept_id], None)
+    shares = await concept_term_repository.async_shared_word_partners(db, [concept_id])
+    item = _admin_item(concept, counts.get(concept_id, 0), shares.get(concept_id, []))
+    item.questions = _question_refs(
+        await concept_term_repository.async_linked_questions(db, concept_id, language)
+    )
+    return item
+
+
+def _question_refs(questions: list[Question]) -> list[ConceptQuestionRef]:
+    return [
+        ConceptQuestionRef(id=q.id, question=q.question, status=q.status)
+        for q in questions
+    ]
 
 
 class DuplicateTermError(Exception):

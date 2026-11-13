@@ -92,65 +92,62 @@ async def most_linked(
     return [concept_id for concept_id, _ in (await db.execute(query)).all()]
 
 
-def _shared_words_subquery(db: Session):
+def _shared_words_subquery():
     # (language, normalized) pairs used by more than one sense.
     return (
-        db.query(ConceptTerm.language, ConceptTerm.normalized)
+        select(ConceptTerm.language, ConceptTerm.normalized)
         .group_by(ConceptTerm.language, ConceptTerm.normalized)
         .having(func.count(func.distinct(ConceptTerm.concept_id)) > 1)
         .subquery()
     )
 
 
-def admin_concept_ids(db: Session, needle: str, review_filter: str) -> list[int]:
+async def admin_concept_ids(
+    db: AsyncSession, needle: str, review_filter: str
+) -> list[int]:
     """Sense ids for the admin editor, newest first.
 
     review_filter: "all", "review" (machine words or a language without a
     word), or "shared" (a word also used by another sense).
     """
-    query = db.query(Concept.id)
+    query = select(Concept.id)
     if needle:
-        query = query.filter(
+        query = query.where(
             Concept.id.in_(
-                db.query(ConceptTerm.concept_id).filter(
+                select(ConceptTerm.concept_id).where(
                     ConceptTerm.normalized.contains(needle, autoescape=True)
                 )
             )
         )
     if review_filter == "review":
-        machine = db.query(ConceptTerm.concept_id).filter(
-            ConceptTerm.source == "MACHINE"
-        )
-        query = query.filter(
+        machine = select(ConceptTerm.concept_id).where(ConceptTerm.source == "MACHINE")
+        query = query.where(
             Concept.id.in_(machine)
             | Concept.name_ja.is_(None)
             | Concept.name_en.is_(None)
         )
     elif review_filter == "shared":
-        shared = _shared_words_subquery(db)
-        query = query.filter(
+        shared = _shared_words_subquery()
+        query = query.where(
             Concept.id.in_(
-                db.query(ConceptTerm.concept_id).join(
+                select(ConceptTerm.concept_id).join(
                     shared,
                     (shared.c.language == ConceptTerm.language)
                     & (shared.c.normalized == ConceptTerm.normalized),
                 )
             )
         )
-    return [cid for (cid,) in query.order_by(Concept.id.desc()).all()]
+    return list((await db.scalars(query.order_by(Concept.id.desc()))).all())
 
 
-def shared_word_partners(db: Session, concept_ids: list[int]) -> dict[int, list[int]]:
-    """For each sense, the other senses that share one of its words."""
-    if not concept_ids:
-        return {}
+def _partners_select(concept_ids: list[int]):
     mine = (
-        db.query(ConceptTerm.language, ConceptTerm.normalized, ConceptTerm.concept_id)
-        .filter(ConceptTerm.concept_id.in_(concept_ids))
+        select(ConceptTerm.language, ConceptTerm.normalized, ConceptTerm.concept_id)
+        .where(ConceptTerm.concept_id.in_(concept_ids))
         .subquery()
     )
-    rows = (
-        db.query(mine.c.concept_id, ConceptTerm.concept_id)
+    return (
+        select(mine.c.concept_id, ConceptTerm.concept_id)
         .join(
             ConceptTerm,
             (ConceptTerm.language == mine.c.language)
@@ -158,25 +155,59 @@ def shared_word_partners(db: Session, concept_ids: list[int]) -> dict[int, list[
             & (ConceptTerm.concept_id != mine.c.concept_id),
         )
         .distinct()
-        .all()
     )
+
+
+def _partners_by_sense(rows) -> dict[int, list[int]]:
     result: dict[int, list[int]] = {}
     for own, other in rows:
         result.setdefault(own, []).append(other)
     return {key: sorted(value) for key, value in result.items()}
 
 
-def linked_questions(db: Session, concept_id: int, language: str) -> list[Question]:
-    questions = (
-        db.query(Question)
+def shared_word_partners(db: Session, concept_ids: list[int]) -> dict[int, list[int]]:
+    """For each sense, the other senses that share one of its words."""
+    if not concept_ids:
+        return {}
+    return _partners_by_sense(db.execute(_partners_select(concept_ids)).all())
+
+
+async def async_shared_word_partners(
+    db: AsyncSession, concept_ids: list[int]
+) -> dict[int, list[int]]:
+    """As `shared_word_partners` ([89]); the editor writes still use the sync one."""
+    if not concept_ids:
+        return {}
+    rows = (await db.execute(_partners_select(concept_ids))).all()
+    return _partners_by_sense(rows)
+
+
+def _linked_questions_select(concept_id: int):
+    return (
+        select(Question)
         .join(QuestionConcept, QuestionConcept.question_id == Question.id)
-        .filter(QuestionConcept.concept_id == concept_id)
+        .where(QuestionConcept.concept_id == concept_id)
         .order_by(Question.id)
-        .all()
     )
+
+
+def _resolved(questions: list[Question], language: str) -> list[Question]:
     for question in questions:
         question.resolve(language)
     return questions
+
+
+def linked_questions(db: Session, concept_id: int, language: str) -> list[Question]:
+    questions = list(db.scalars(_linked_questions_select(concept_id)).all())
+    return _resolved(questions, language)
+
+
+async def async_linked_questions(
+    db: AsyncSession, concept_id: int, language: str
+) -> list[Question]:
+    """As `linked_questions` ([89])."""
+    rows = await db.scalars(_linked_questions_select(concept_id))
+    return _resolved(list(rows.all()), language)
 
 
 WordKey = tuple[str, str]

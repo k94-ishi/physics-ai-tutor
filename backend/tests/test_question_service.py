@@ -29,6 +29,7 @@ from tests.conftest import (
     async_create_user,
     create_user,
     patch_create_embeddings,
+    patch_extract_concept_names,
 )
 
 
@@ -731,33 +732,43 @@ def test_bulk_review_questions_reject(db):
     assert not_found_ids == []
 
 
-def test_reextract_concepts_for_questions_replaces_existing_links(db, monkeypatch):
+@pytest.mark.anyio
+async def test_reextract_concepts_for_questions_replaces_existing_links(
+    db, async_db, monkeypatch
+):
     created = _create(db)
     assert question_concept_repository.get_concepts_for_question(db, created.id) != []
 
-    monkeypatch.setattr(
-        concept_service,
-        "extract_concept_names",
-        lambda question, answer, language="ja": ["新概念"],
+    patch_extract_concept_names(
+        monkeypatch, lambda question, answer, language="ja": ["新概念"]
     )
 
-    results = question_write_service.reextract_concepts_for_questions(db, [created.id])
+    results = await question_write_service.reextract_concepts_for_questions(
+        async_db, [created.id]
+    )
 
     assert results[0].success is True
     assert results[0].concepts == ["新概念"]
+    db.expire_all()
     concepts = question_concept_repository.get_concepts_for_question(db, created.id)
     assert [c.name for c in concepts] == ["新概念"]
 
 
-def test_reextract_concepts_for_questions_not_found(db):
-    results = question_write_service.reextract_concepts_for_questions(db, [99999])
+@pytest.mark.anyio
+async def test_reextract_concepts_for_questions_not_found(async_db):
+    results = await question_write_service.reextract_concepts_for_questions(
+        async_db, [99999]
+    )
 
     assert len(results) == 1
     assert results[0].question_id == 99999
     assert results[0].success is False
 
 
-def test_reextract_concepts_for_questions_partial_failure_continues(db, monkeypatch):
+@pytest.mark.anyio
+async def test_reextract_concepts_for_questions_partial_failure_continues(
+    db, async_db, monkeypatch
+):
     q1 = _create(db, "質問1", "回答1")
     q2 = _create(db, "質問2", "回答2")
 
@@ -766,10 +777,10 @@ def test_reextract_concepts_for_questions_partial_failure_continues(db, monkeypa
             raise ConceptExtractionError("boom")
         return ["概念X"]
 
-    monkeypatch.setattr(concept_service, "extract_concept_names", _fake)
+    patch_extract_concept_names(monkeypatch, _fake)
 
-    results = question_write_service.reextract_concepts_for_questions(
-        db, [q1.id, q2.id]
+    results = await question_write_service.reextract_concepts_for_questions(
+        async_db, [q1.id, q2.id]
     )
 
     results_by_id = {r.question_id: r for r in results}

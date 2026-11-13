@@ -16,12 +16,13 @@ from fastapi import (
     Response,
     UploadFile,
 )
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.api.dependencies import (
     require_admin,
 )
-from physics_ai_tutor.database.dependency import get_db
+from physics_ai_tutor.database.dependency import get_async_db, get_db
 from physics_ai_tutor.schemas.bulk import (
     BulkDeleteRequest,
     BulkDeleteResponse,
@@ -157,12 +158,12 @@ def bulk_review_questions(
     "/concepts/extract",
     response_model=ConceptExtractionBatchResponse,
 )
-def extract_concepts(
+async def extract_concepts(
     data: ConceptExtractionRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
-    results = question_write_service.reextract_concepts_for_questions(
+    results = await question_write_service.reextract_concepts_for_questions(
         db, data.question_ids
     )
 

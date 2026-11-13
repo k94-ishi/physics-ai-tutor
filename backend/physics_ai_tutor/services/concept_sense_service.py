@@ -112,6 +112,14 @@ def add_term(
     return new
 
 
+def add_unsaved_term(concept: Concept, language: str, term: str, source: str) -> None:
+    """`add_term` for a sense not saved yet: no flush, nothing to load ([91])."""
+    new = _build_term(concept, language, term, source, None)
+    if new is not None:
+        concept.terms.append(new)
+        sync_mirror(concept)
+
+
 async def async_add_term(
     db: AsyncSession,
     concept: Concept,

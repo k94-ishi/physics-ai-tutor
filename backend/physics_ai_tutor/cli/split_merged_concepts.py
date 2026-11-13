@@ -13,6 +13,7 @@ question, off-peak window like backfill_levels unless --force.
 """
 
 import argparse
+import asyncio
 import sys
 from dataclasses import dataclass
 
@@ -27,8 +28,9 @@ from physics_ai_tutor.cli.review_pending import (
 )
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.text import normalize_key
-from physics_ai_tutor.database.database import SessionLocal
+from physics_ai_tutor.database.database import AsyncSessionLocal, SessionLocal
 from physics_ai_tutor.models import Concept, Question, QuestionConcept
+from physics_ai_tutor.schemas.concept import ConceptExtractionResult
 from physics_ai_tutor.services import question_write_service
 
 
@@ -91,6 +93,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+async def _reextract(question_ids: list[int]) -> list[ConceptExtractionResult]:
+    """Re-extraction is async since [91]; the CLI drives it with its own session."""
+    async with AsyncSessionLocal() as session:
+        return await question_write_service.reextract_concepts_for_questions(
+            session, question_ids
+        )
+
+
 def main(dry_run: bool = False, limit: int = 50, force: bool = False) -> int:
     db = SessionLocal()
     try:
@@ -115,9 +125,7 @@ def main(dry_run: bool = False, limit: int = 50, force: bool = False) -> int:
             )
             return EXIT_OUTSIDE_WINDOW
 
-        results = question_write_service.reextract_concepts_for_questions(
-            db, question_ids[:limit]
-        )
+        results = asyncio.run(_reextract(question_ids[:limit]))
         failed = sum(1 for result in results if not result.success)
         remaining = len(question_ids) - len(results)
         print(

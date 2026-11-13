@@ -9,6 +9,7 @@ like review_pending ([26]) unless --force.
 """
 
 import argparse
+import asyncio
 import sys
 
 from physics_ai_tutor.cli.review_pending import (
@@ -19,8 +20,9 @@ from physics_ai_tutor.cli.review_pending import (
     within_offpeak,
 )
 from physics_ai_tutor.core.config import settings
-from physics_ai_tutor.database.database import SessionLocal
+from physics_ai_tutor.database.database import AsyncSessionLocal, SessionLocal
 from physics_ai_tutor.models import Question
+from physics_ai_tutor.schemas.concept import ConceptExtractionResult
 from physics_ai_tutor.services import question_write_service
 
 
@@ -59,6 +61,14 @@ def unrated_question_ids(db, limit: int) -> list[int]:
     return [question_id for (question_id,) in rows]
 
 
+async def _reextract(question_ids: list[int]) -> list[ConceptExtractionResult]:
+    """Re-extraction is async since [91]; the CLI drives it with its own session."""
+    async with AsyncSessionLocal() as session:
+        return await question_write_service.reextract_concepts_for_questions(
+            session, question_ids
+        )
+
+
 def main(limit: int = 50, force: bool = False) -> int:
     if not force and not within_offpeak(
         _now(), settings.ai_review_offpeak_start, settings.ai_review_offpeak_end
@@ -80,7 +90,7 @@ def main(limit: int = 50, force: bool = False) -> int:
             print("Every APPROVED question already has levels")
             return EXIT_OK
 
-        results = question_write_service.reextract_concepts_for_questions(db, ids)
+        results = asyncio.run(_reextract(ids))
         succeeded = sum(1 for result in results if result.success)
         failed = len(results) - succeeded
         remaining = len(unrated_question_ids(db, limit=1))

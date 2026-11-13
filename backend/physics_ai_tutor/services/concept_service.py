@@ -122,13 +122,10 @@ def parse_concept_line(line: str, language: str = "ja") -> ConceptName | None:
     )
 
 
-def extract_concept_names(
-    question: str, answer: str, language: str = "ja"
-) -> list[str]:
-    """Return raw '<ja> | <en>' lines from the model (parsed later)."""
+def _user_prompt(question: str, answer: str, language: str) -> str:
     # The worked example matches the row's language: few-shot examples
     # steer the model more than the instruction text does.
-    user_prompt = _USER_PROMPT_TEMPLATE.format(
+    return _USER_PROMPT_TEMPLATE.format(
         example=_LIBRARY.get("concept_extraction", "example", language),
         language_name=prompts.LANGUAGE_NAMES[Language(language)],
         glossary=prompts.glossary_block(),
@@ -136,8 +133,28 @@ def extract_concept_names(
         answer=answer,
     )
 
-    content = deepseek_service.chat_completion(_SYSTEM_PROMPT, user_prompt)
 
+def extract_concept_names(
+    question: str, answer: str, language: str = "ja"
+) -> list[str]:
+    """Return raw '<ja> | <en>' lines from the model (parsed later)."""
+    content = deepseek_service.chat_completion(
+        _SYSTEM_PROMPT, _user_prompt(question, answer, language)
+    )
+    return _extracted_lines(content)
+
+
+async def async_extract_concept_names(
+    question: str, answer: str, language: str = "ja"
+) -> list[str]:
+    """As `extract_concept_names`, on the event loop ([91])."""
+    content = await deepseek_service.async_chat_completion(
+        _SYSTEM_PROMPT, _user_prompt(question, answer, language)
+    )
+    return _extracted_lines(content)
+
+
+def _extracted_lines(content: str) -> list[str]:
     lines = [line.strip() for line in content.splitlines() if line.strip()]
 
     if not lines:
@@ -168,6 +185,40 @@ def _word_keys(name: ConceptName) -> set[tuple[str, str]]:
     return {(lang, normalize_key(word)) for lang, word in _sides(name)}
 
 
+# Words planned for a sense but not written yet: (id(concept), lang, key).
+Pending = set[tuple[int, str, str]]
+
+
+def _has(concept: Concept, language: str, word: str, pending: Pending) -> bool:
+    if concept_sense_service.has_term(concept, language, word):
+        return True
+    return (id(concept), language, normalize_key(word)) in pending
+
+
+def _candidates(
+    index: SenseIndex, name: ConceptName, pending: Pending
+) -> tuple[list[Concept], list[Concept]]:
+    """(senses having both words, senses to compare); both empty = new sense.
+
+    Keyed by object identity, so a sense planned but not saved yet (no id)
+    can match a later pair of the same question ([91]).
+    """
+    candidates: dict[int, Concept] = {}
+    for key in _word_keys(name):
+        for concept in index.get(key, []):
+            candidates[id(concept)] = concept
+    full = [
+        concept
+        for concept in candidates.values()
+        if all(_has(concept, lang, w, pending) for lang, w in _sides(name))
+    ]
+    return full, full or list(candidates.values())
+
+
+def _pair_texts(name: ConceptName, pool: list[Concept]) -> list[str]:
+    return [concept_pair_text(name.ja, name.en), *(_sense_pair_text(c) for c in pool)]
+
+
 def _resolve_sense(
     index: SenseIndex, name: ConceptName
 ) -> tuple[Concept | None, list[float] | None]:
@@ -177,26 +228,35 @@ def _resolve_sense(
     word is a synonym or a homonym (速度 = velocity / speed, 位相 = phase /
     topology): decided by embedding similarity of the two pairs ([55]).
     """
-    sides = _sides(name)
-    candidates: dict[int, Concept] = {}
-    for key in _word_keys(name):
-        for concept in index.get(key, []):
-            candidates[concept.id] = concept
-    if not candidates:
+    full, pool = _candidates(index, name, set())
+    if not pool:
         return None, None
-
-    full = [
-        concept
-        for concept in candidates.values()
-        if all(concept_sense_service.has_term(concept, lang, w) for lang, w in sides)
-    ]
     if len(full) == 1:
         return full[0], None
+    vectors = embedding_service.create_embeddings(_pair_texts(name, pool))
+    return _choose(name, full, pool, vectors)
 
-    pool = full or list(candidates.values())
-    vectors = embedding_service.create_embeddings(
-        [concept_pair_text(name.ja, name.en), *(_sense_pair_text(c) for c in pool)]
-    )
+
+async def _async_resolve_sense(
+    index: SenseIndex, name: ConceptName, pending: Pending
+) -> tuple[Concept | None, list[float] | None]:
+    """As `_resolve_sense`; the embedding call runs with no session in use."""
+    full, pool = _candidates(index, name, pending)
+    if not pool:
+        return None, None
+    if len(full) == 1:
+        return full[0], None
+    vectors = await embedding_service.async_create_embeddings(_pair_texts(name, pool))
+    return _choose(name, full, pool, vectors)
+
+
+def _choose(
+    name: ConceptName,
+    full: list[Concept],
+    pool: list[Concept],
+    vectors: list[list[float]],
+) -> tuple[Concept | None, list[float]]:
+    """The closest sense by pair embedding, or None below the threshold."""
     mine, others = vectors[0], vectors[1:]
     scored = sorted(
         zip((concept_sense_service.cosine(mine, v) for v in others), pool, strict=True),
@@ -245,17 +305,8 @@ def attach_concepts_to_question(
     written together, so the cost per question is a handful of queries
     rather than several per concept ([66]).
     """
-    names: list[ConceptName] = []
-    seen: set[tuple[str | None, str | None]] = set()
-    for raw in concept_names:
-        name = parse_concept_line(raw, language)
-        if name is not None and (name.ja, name.en) not in seen:
-            seen.add((name.ja, name.en))
-            names.append(name)
-
-    index = concept_term_repository.senses_by_words(
-        db, set().union(*(_word_keys(name) for name in names)) if names else set()
-    )
+    names = _parse_names(concept_names, language)
+    index = concept_term_repository.senses_by_words(db, _all_keys(names))
     concepts: list[Concept] = []
     for name in names:
         concept, embedding = _resolve_sense(index, name)
@@ -274,6 +325,120 @@ def attach_concepts_to_question(
             concepts.append(concept)
 
     question_concept_repository.link_many(
+        db, question_id, [concept.id for concept in concepts]
+    )
+    return concepts
+
+
+def _parse_names(concept_names: list[str], language: str) -> list[ConceptName]:
+    """Parsed pairs, duplicates dropped, order kept."""
+    names: list[ConceptName] = []
+    seen: set[tuple[str | None, str | None]] = set()
+    for raw in concept_names:
+        name = parse_concept_line(raw, language)
+        if name is not None and (name.ja, name.en) not in seen:
+            seen.add((name.ja, name.en))
+            names.append(name)
+    return names
+
+
+def _all_keys(names: list[ConceptName]) -> set[tuple[str, str]]:
+    return set().union(*(_word_keys(name) for name in names)) if names else set()
+
+
+@dataclass
+class PlannedSense:
+    """One sense an extraction resolved to, before anything is written."""
+
+    concept: Concept
+    new: bool
+    # Words to add to an existing sense when the plan is applied.
+    aliases: list[tuple[str, str]]
+
+
+async def async_prepare_concepts(
+    db: AsyncSession, concept_names: list[str], language: str
+) -> list[PlannedSense]:
+    """Resolve extracted pairs to senses without writing ([91]).
+
+    The index is read in its own short transaction; any embedding call
+    happens after it, so no connection waits on OpenAI ([82]).
+    """
+    names = _parse_names(concept_names, language)
+    async with async_transaction(db, "concept_index_read"):
+        index = await concept_term_repository.async_senses_by_words(
+            db, _all_keys(names)
+        )
+    return await _async_plan(index, names)
+
+
+async def _async_plan(
+    index: SenseIndex, names: list[ConceptName]
+) -> list[PlannedSense]:
+    pending: Pending = set()
+    plans: dict[int, PlannedSense] = {}
+    for name in names:
+        concept, embedding = await _async_resolve_sense(index, name, pending)
+        if concept is None:
+            concept = await _async_build_sense(name, embedding)
+            plans[id(concept)] = PlannedSense(concept, new=True, aliases=[])
+            # Later pairs of this question may share a word with it.
+            for key in _word_keys(name):
+                index.setdefault(key, []).append(concept)
+            continue
+        plan = plans.setdefault(
+            id(concept), PlannedSense(concept, new=False, aliases=[])
+        )
+        for lang, word in _sides(name):
+            if plan.new:
+                # An unsaved sense takes its alias straight away.
+                concept_sense_service.add_unsaved_term(
+                    concept, lang, word, concept_sense_service.TermSource.EXTRACTED
+                )
+            elif not _has(concept, lang, word, pending):
+                pending.add((id(concept), lang, normalize_key(word)))
+                plan.aliases.append((lang, word))
+    return list(plans.values())
+
+
+async def _async_build_sense(
+    name: ConceptName, embedding: list[float] | None
+) -> Concept:
+    if embedding is None:
+        embedding = (
+            await embedding_service.async_create_embeddings(
+                [concept_pair_text(name.ja, name.en)]
+            )
+        )[0]
+    return concept_repository.build(
+        embedding=embedding,
+        extraction_model=settings.deepseek_chat_model,
+        embedding_model=settings.embedding_model,
+        extraction_prompt_version=CONCEPT_EXTRACTION_PROMPT_VERSION,
+        name_ja=name.ja,
+        name_en=name.en,
+    )
+
+
+async def async_apply_concepts(
+    db: AsyncSession, question_id: int, plans: list[PlannedSense]
+) -> list[Concept]:
+    """Write a plan from `async_prepare_concepts`; call inside a transaction."""
+    for plan in plans:
+        if plan.new:
+            db.add(plan.concept)
+    await db.flush()
+    for plan in plans:
+        for lang, word in plan.aliases:
+            await concept_sense_service.async_add_term(
+                db,
+                plan.concept,
+                lang,
+                word,
+                concept_sense_service.TermSource.EXTRACTED,
+            )
+    concepts = [plan.concept for plan in plans]
+    await question_concept_repository.async_link_many(
         db, question_id, [concept.id for concept in concepts]
     )
     return concepts

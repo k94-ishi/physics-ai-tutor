@@ -17,9 +17,11 @@ from physics_ai_tutor.schemas.question import QuestionSource, QuestionStatus
 from physics_ai_tutor.services import (
     ai_review_service,
     ai_service,
+    concept_service,
     deepseek_service,
     embedding_service,
     question_translation_service,
+    question_write_service,
     translation_service,
 )
 
@@ -188,3 +190,33 @@ async def test_the_ai_review_holds_no_transaction_during_grading(async_db, monke
 
     assert row is not None
     assert seen["in_transaction"] is False
+
+
+async def test_concept_reextraction_holds_no_transaction_during_llm_calls(
+    async_db, monkeypatch
+):
+    """Extraction and the new-sense embedding both run with no transaction ([91])."""
+    in_transaction = {}
+
+    async def _extract(question, answer, language="ja"):
+        in_transaction["extract"] = async_db.in_transaction()
+        return ["新しい概念 | new concept"]
+
+    async def _embed(texts):
+        in_transaction["embed"] = async_db.in_transaction()
+        return [[0.1] * 1536 for _ in texts]
+
+    monkeypatch.setattr(concept_service, "async_extract_concept_names", _extract)
+    monkeypatch.setattr(embedding_service, "async_create_embeddings", _embed)
+
+    async_db.add(_question(status=QuestionStatus.APPROVED))
+    await async_db.commit()
+    question_id = (await async_db.scalars(select(Question.id))).first()
+
+    results = await question_write_service.reextract_concepts_for_questions(
+        async_db, [question_id]
+    )
+
+    assert results[0].success is True
+    assert results[0].concepts == ["新しい概念"]
+    assert in_transaction == {"extract": False, "embed": False}

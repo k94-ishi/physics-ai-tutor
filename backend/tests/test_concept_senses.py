@@ -7,7 +7,12 @@ from physics_ai_tutor.models import Concept, ConceptTerm, Question, QuestionConc
 from physics_ai_tutor.services import (
     concept_service,
 )
-from tests.conftest import engine, patch_create_embeddings
+from tests.conftest import (
+    async_engine,
+    engine,
+    patch_create_embeddings,
+    patch_extract_concept_names,
+)
 
 CONCEPTS = "/api/v1/concepts"
 ADMIN = "/api/v1/admin/concepts"
@@ -309,23 +314,27 @@ def test_existing_terms_table_is_used_for_preferred_mirror(db):
 def test_split_cli_reattaches_glued_questions_to_their_own_sense(
     db, monkeypatch, capsys
 ):
+    from sqlalchemy.ext.asyncio import async_sessionmaker
     from sqlalchemy.orm import sessionmaker
 
     from physics_ai_tutor.cli import split_merged_concepts as cli
 
-    # The CLI opens its own session against the test database.
+    # The CLI opens its own sessions against the test database.
     monkeypatch.setattr(
         cli, "SessionLocal", sessionmaker(bind=engine, expire_on_commit=False)
+    )
+    monkeypatch.setattr(
+        cli,
+        "AsyncSessionLocal",
+        async_sessionmaker(bind=async_engine, expire_on_commit=False),
     )
     wave_q = _question(db, "波の位相とは？")
     matter_q = _question(db, "気相とは？")
     merged = _tag(db, wave_q, "位相 | phase")[0]
     db.add(QuestionConcept(question_id=matter_q.id, concept_id=merged.id))
     db.commit()
-    monkeypatch.setattr(
-        concept_service,
-        "extract_concept_names",
-        lambda question, answer, language="ja": ["相 | phase"],
+    patch_extract_concept_names(
+        monkeypatch, lambda question, answer, language="ja": ["相 | phase"]
     )
 
     assert cli.main(dry_run=True) == 0

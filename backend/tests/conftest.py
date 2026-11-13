@@ -258,11 +258,20 @@ def _mock_create_embeddings(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _mock_extract_concept_names(monkeypatch):
-    monkeypatch.setattr(
-        concept_service,
-        "extract_concept_names",
+    patch_extract_concept_names(
+        monkeypatch,
         lambda question, answer, language="ja": ["概念A | concept A", "概念B"],
     )
+
+
+def patch_extract_concept_names(monkeypatch, extract) -> None:
+    """As `patch_generation`, for the concept-extraction seam ([91])."""
+    monkeypatch.setattr(concept_service, "extract_concept_names", extract)
+
+    async def _async_extract(*args, **kwargs):
+        return extract(*args, **kwargs)
+
+    monkeypatch.setattr(concept_service, "async_extract_concept_names", _async_extract)
 
 
 def fake_translate(question, answer, source, target):

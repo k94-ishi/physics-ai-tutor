@@ -1,3 +1,4 @@
+from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -152,6 +153,14 @@ async def approved_links_sharing_concepts(
     return [(concept, question) for concept, question in rows]
 
 
+async def async_delete_by_question_id(db: AsyncSession, question_id: int) -> None:
+    """As `delete_by_question_id` ([91])."""
+    await db.execute(
+        sql_delete(QuestionConcept).where(QuestionConcept.question_id == question_id)
+    )
+    await db.flush()
+
+
 def delete_by_question_id(db: Session, question_id: int) -> None:
     (
         db.query(QuestionConcept)
@@ -190,3 +199,13 @@ def link_many(db: Session, question_id: int, concept_ids: list[int]) -> None:
     new = [cid for cid in dict.fromkeys(concept_ids) if cid not in existing]
     db.add_all(QuestionConcept(question_id=question_id, concept_id=cid) for cid in new)
     db.flush()
+
+
+async def async_link_many(
+    db: AsyncSession, question_id: int, concept_ids: list[int]
+) -> None:
+    """As `link_many` ([91])."""
+    existing = set(await async_get_concept_ids_for_question(db, question_id))
+    new = [cid for cid in dict.fromkeys(concept_ids) if cid not in existing]
+    db.add_all(QuestionConcept(question_id=question_id, concept_id=cid) for cid in new)
+    await db.flush()

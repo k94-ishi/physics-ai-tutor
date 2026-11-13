@@ -5,17 +5,6 @@ from sqlalchemy.orm import Session
 from physics_ai_tutor.models import Concept, ConceptTerm, Question, QuestionConcept
 
 
-def senses_with_any_term(db: Session, normalized: str) -> list[Concept]:
-    """Senses having this word in either language."""
-    return (
-        db.query(Concept)
-        .join(ConceptTerm, ConceptTerm.concept_id == Concept.id)
-        .filter(ConceptTerm.normalized == normalized)
-        .distinct()
-        .all()
-    )
-
-
 async def search_terms(db: AsyncSession, needle: str, limit: int) -> list[ConceptTerm]:
     """Terms containing the normalised needle, either language."""
     query = (
@@ -224,12 +213,29 @@ def senses_by_words(db: Session, keys: set[WordKey]) -> dict[WordKey, list[Conce
     """
     if not keys:
         return {}
-    rows = (
-        db.query(ConceptTerm.language, ConceptTerm.normalized, ConceptTerm.concept_id)
-        .filter(tuple_(ConceptTerm.language, ConceptTerm.normalized).in_(list(keys)))
-        .all()
-    )
+    rows = db.execute(_word_rows_select(keys)).all()
     concepts = {c.id: c for c in get_many(db, list({cid for _, _, cid in rows}))}
+    index: dict[WordKey, list[Concept]] = {}
+    for language, normalized, concept_id in rows:
+        index.setdefault((language, normalized), []).append(concepts[concept_id])
+    return index
+
+
+def _word_rows_select(keys: set[WordKey]):
+    return select(
+        ConceptTerm.language, ConceptTerm.normalized, ConceptTerm.concept_id
+    ).where(tuple_(ConceptTerm.language, ConceptTerm.normalized).in_(list(keys)))
+
+
+async def async_senses_by_words(
+    db: AsyncSession, keys: set[WordKey]
+) -> dict[WordKey, list[Concept]]:
+    """As `senses_by_words` ([91]); create, review and the seed use the sync one."""
+    if not keys:
+        return {}
+    rows = (await db.execute(_word_rows_select(keys))).all()
+    found = await async_get_many(db, list({cid for _, _, cid in rows}))
+    concepts = {c.id: c for c in found}
     index: dict[WordKey, list[Concept]] = {}
     for language, normalized, concept_id in rows:
         index.setdefault((language, normalized), []).append(concepts[concept_id])

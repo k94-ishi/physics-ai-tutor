@@ -96,7 +96,7 @@ wait for the slowest endpoint from "whole answer" to "first words".
    2. ~~[84] Asynchronize the public tag search (GET /concepts)~~ done 2026-11-13
    3. ~~[89] Asynchronize the admin tag editor reads: list and detail~~ done 2026-11-13
    4. ~~[90] Asynchronize the admin tag editor writes: gloss, words, merge, split~~ done 2026-11-13
-   5. [91] Asynchronize concept extraction and the re-extract route
+   5. ~~[91] Asynchronize concept extraction and the re-extract route~~ done 2026-11-13
    6. [85] Asynchronize the review routes: review, bulk review, history
    7. [92] Asynchronize the fill-translations route (POST /questions/translate)
    8. [86] Asynchronize delete and bulk delete

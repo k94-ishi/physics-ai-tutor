@@ -11,21 +11,15 @@ def get_by_name(db: Session, name: str, language: str = "ja") -> Concept | None:
     return db.query(Concept).filter(column == name).first()
 
 
-def create(
-    db: Session,
+def build(
     embedding: list[float],
     extraction_model: str,
     embedding_model: str,
     extraction_prompt_version: str,
     name_ja: str | None = None,
     name_en: str | None = None,
-    name: str | None = None,
 ) -> Concept:
-    """A new sense; given names become its preferred terms ([55])."""
-    # Legacy single-name form means Japanese.
-    if name is not None:
-        name_ja = name
-
+    """A new, unsaved sense; given names become its preferred terms ([55])."""
     concept = Concept(
         name_ja=name_ja,
         name_en=name_en,
@@ -45,7 +39,32 @@ def create(
                     source="EXTRACTED",
                 )
             )
+    return concept
 
+
+def create(
+    db: Session,
+    embedding: list[float],
+    extraction_model: str,
+    embedding_model: str,
+    extraction_prompt_version: str,
+    name_ja: str | None = None,
+    name_en: str | None = None,
+    name: str | None = None,
+) -> Concept:
+    """A new sense, saved; see `build`."""
+    # Legacy single-name form means Japanese.
+    if name is not None:
+        name_ja = name
+
+    concept = build(
+        embedding,
+        extraction_model,
+        embedding_model,
+        extraction_prompt_version,
+        name_ja=name_ja,
+        name_en=name_en,
+    )
     db.add(concept)
     db.flush()
 

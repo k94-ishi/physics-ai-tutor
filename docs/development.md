@@ -213,8 +213,8 @@ Conventions:
   markers so tests can assert on translations).
 - Patch LLM seams through the `conftest` helpers, never with a bare
   `monkeypatch.setattr` ([70]): `patch_generation`,
-  `patch_chat_completion`, `patch_create_embeddings` and
-  `patch_rag_answer` each install one plain sync stub on *both* the sync
+  `patch_chat_completion`, `patch_create_embeddings`,
+  `patch_extract_concept_names` and `patch_rag_answer` each install one plain sync stub on *both* the sync
   and the `async_` function. Patching only one of them leaves the other
   pointing at the real API, which fails with an authentication error
   rather than an obvious one.

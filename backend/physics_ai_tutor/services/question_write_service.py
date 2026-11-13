@@ -208,52 +208,46 @@ def update_question(
     return question
 
 
-def reextract_concepts_for_questions(
-    db: Session, question_ids: list[int]
+async def reextract_concepts_for_questions(
+    db: AsyncSession, question_ids: list[int]
 ) -> list[ConceptExtractionResult]:
     """Re-run concept extraction; each question commits independently."""
-    results = []
+    return [await _reextract_one(db, question_id) for question_id in question_ids]
 
-    for question_id in question_ids:
-        question = question_repository.get_question(db, question_id)
 
-        if question is None:
-            results.append(
-                ConceptExtractionResult(question_id=question_id, success=False)
-            )
-            continue
+async def _reextract_one(db: AsyncSession, question_id: int) -> ConceptExtractionResult:
+    """Read, extract with no connection held, then one short write ([82], [91])."""
+    async with async_transaction(db, "reextract_read"):
+        question = await question_repository.async_get_question(db, question_id)
+    if question is None:
+        return ConceptExtractionResult(question_id=question_id, success=False)
 
-        try:
-            with transaction(db, "reextract_concepts"):
-                question_concept_repository.delete_by_question_id(db, question_id)
-                names = concept_service.extract_concept_names(
-                    *question.original_text(), language=question.original_language
-                )
-                concepts = concept_service.attach_concepts_to_question(
-                    db, question_id, names, language=question.original_language
-                )
-                concept_service.apply_levels_to_question(question, names)
-        except Exception:
-            logger.warning(
-                "Concept re-extraction failed: question_id=%d",
-                question_id,
-                exc_info=True,
-            )
-            results.append(
-                ConceptExtractionResult(question_id=question_id, success=False)
-            )
-            continue
-
-        results.append(
-            ConceptExtractionResult(
-                question_id=question_id,
-                success=True,
-                concepts=[c.display_name(question.original_language) for c in concepts],
-            )
+    language = question.original_language
+    try:
+        names = await concept_service.async_extract_concept_names(
+            *question.original_text(), language=language
         )
-        logger.info("Concepts re-extracted: question_id=%d", question_id)
+        plans = await concept_service.async_prepare_concepts(db, names, language)
+        async with async_transaction(db, "reextract_concepts"):
+            await question_concept_repository.async_delete_by_question_id(
+                db, question_id
+            )
+            concepts = await concept_service.async_apply_concepts(
+                db, question_id, plans
+            )
+            concept_service.apply_levels_to_question(question, names)
+    except Exception:
+        logger.warning(
+            "Concept re-extraction failed: question_id=%d", question_id, exc_info=True
+        )
+        return ConceptExtractionResult(question_id=question_id, success=False)
 
-    return results
+    logger.info("Concepts re-extracted: question_id=%d", question_id)
+    return ConceptExtractionResult(
+        question_id=question_id,
+        success=True,
+        concepts=[c.display_name(language) for c in concepts],
+    )
 
 
 def bulk_delete_questions(

@@ -1,4 +1,4 @@
-from sqlalchemy import func, select, tuple_
+from sqlalchemy import func, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -37,28 +37,45 @@ def _question_counts_select(concept_ids: list[int], statuses: list[str] | None):
     return query.group_by(QuestionConcept.concept_id)
 
 
-def question_counts(
-    db: Session, concept_ids: list[int], statuses: list[str] | None
-) -> dict[int, int]:
-    """Linked questions per sense, optionally limited to some statuses."""
-    if not concept_ids:
-        return {}
-    rows = db.execute(_question_counts_select(concept_ids, statuses)).all()
-    return {concept_id: count for concept_id, count in rows}
-
-
-async def async_question_counts(
+async def question_counts(
     db: AsyncSession, concept_ids: list[int], statuses: list[str] | None
 ) -> dict[int, int]:
-    """As `question_counts` ([84]); the sync one serves the admin editor."""
+    """Linked questions per sense, optionally limited to some statuses."""
     if not concept_ids:
         return {}
     rows = (await db.execute(_question_counts_select(concept_ids, statuses))).all()
     return {concept_id: count for concept_id, count in rows}
 
 
-def get_term(db: Session, term_id: int) -> ConceptTerm | None:
-    return db.get(ConceptTerm, term_id)
+async def get_term(db: AsyncSession, term_id: int) -> ConceptTerm | None:
+    return await db.get(ConceptTerm, term_id)
+
+
+async def linked_question_ids(db: AsyncSession, concept_id: int) -> list[int]:
+    query = select(QuestionConcept.question_id).where(
+        QuestionConcept.concept_id == concept_id
+    )
+    return list((await db.scalars(query)).all())
+
+
+async def links_of(db: AsyncSession, concept_id: int) -> list[QuestionConcept]:
+    query = select(QuestionConcept).where(QuestionConcept.concept_id == concept_id)
+    return list((await db.scalars(query)).all())
+
+
+async def move_links(
+    db: AsyncSession, from_id: int, to_id: int, question_ids: list[int]
+) -> None:
+    """Point these questions' links at another sense ([55] split)."""
+    await db.execute(
+        update(QuestionConcept)
+        .where(
+            QuestionConcept.concept_id == from_id,
+            QuestionConcept.question_id.in_(question_ids),
+        )
+        .values(concept_id=to_id)
+        .execution_options(synchronize_session=False)
+    )
 
 
 def get_many(db: Session, concept_ids: list[int]) -> list[Concept]:
@@ -165,17 +182,10 @@ def _partners_by_sense(rows) -> dict[int, list[int]]:
     return {key: sorted(value) for key, value in result.items()}
 
 
-def shared_word_partners(db: Session, concept_ids: list[int]) -> dict[int, list[int]]:
-    """For each sense, the other senses that share one of its words."""
-    if not concept_ids:
-        return {}
-    return _partners_by_sense(db.execute(_partners_select(concept_ids)).all())
-
-
-async def async_shared_word_partners(
+async def shared_word_partners(
     db: AsyncSession, concept_ids: list[int]
 ) -> dict[int, list[int]]:
-    """As `shared_word_partners` ([89]); the editor writes still use the sync one."""
+    """For each sense, the other senses that share one of its words."""
     if not concept_ids:
         return {}
     rows = (await db.execute(_partners_select(concept_ids))).all()
@@ -197,15 +207,9 @@ def _resolved(questions: list[Question], language: str) -> list[Question]:
     return questions
 
 
-def linked_questions(db: Session, concept_id: int, language: str) -> list[Question]:
-    questions = list(db.scalars(_linked_questions_select(concept_id)).all())
-    return _resolved(questions, language)
-
-
-async def async_linked_questions(
+async def linked_questions(
     db: AsyncSession, concept_id: int, language: str
 ) -> list[Question]:
-    """As `linked_questions` ([89])."""
     rows = await db.scalars(_linked_questions_select(concept_id))
     return _resolved(list(rows.all()), language)
 

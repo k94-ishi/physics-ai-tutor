@@ -250,13 +250,17 @@ def test_deleting_the_label_promotes_the_next_word(admin_client, db):
 def test_merge_moves_questions_and_words(admin_client, db):
     a = _tag(db, _question(db, "速さとは？"), "速さ | speed")[0]
     b = _tag(db, _question(db, "速度とは？"), "速度 | velocity")[0]
+    # Read before the request: the route deletes the row in its own session.
+    source_id = a.id
 
-    body = admin_client.post(f"{ADMIN}/{a.id}/merge", json={"into_id": b.id}).json()
+    body = admin_client.post(
+        f"{ADMIN}/{source_id}/merge", json={"into_id": b.id}
+    ).json()
 
     assert body["question_count"] == 2
     assert {t["term"] for t in body["terms"]} == {"速さ", "speed", "速度", "velocity"}
     db.expire_all()
-    assert db.get(Concept, a.id) is None
+    assert db.get(Concept, source_id) is None
 
 
 def test_split_moves_the_chosen_questions_to_a_new_sense(admin_client, db):

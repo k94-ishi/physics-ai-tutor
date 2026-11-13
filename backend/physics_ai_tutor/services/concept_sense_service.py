@@ -14,8 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core.text import normalize_key
-from physics_ai_tutor.database.transaction import transaction
-from physics_ai_tutor.models import Concept, ConceptTerm, Question, QuestionConcept
+from physics_ai_tutor.database.transaction import async_transaction
+from physics_ai_tutor.models import Concept, ConceptTerm, Question
 from physics_ai_tutor.repositories import concept_repository, concept_term_repository
 from physics_ai_tutor.schemas.concept import (
     AdminConceptListResponse,
@@ -136,54 +136,51 @@ def _clear_preferred(concept: Concept, language: str) -> None:
         existing.is_preferred = False
 
 
-def set_preferred(db: Session, term: ConceptTerm) -> None:
-    concept = db.get(Concept, term.concept_id)
+async def set_preferred(db: AsyncSession, term: ConceptTerm) -> None:
+    concept = await db.get(Concept, term.concept_id)
     assert concept is not None
     _clear_preferred(concept, term.language)
-    db.flush()
+    await db.flush()
     term.is_preferred = True
-    db.flush()
+    await db.flush()
     sync_mirror(concept)
 
 
-def delete_term(db: Session, term: ConceptTerm) -> None:
+async def delete_term(db: AsyncSession, term: ConceptTerm) -> None:
     """Remove a word; the oldest remaining word of that language takes over."""
-    concept = db.get(Concept, term.concept_id)
+    concept = await db.get(Concept, term.concept_id)
     assert concept is not None
     was_preferred = term.is_preferred
     concept.terms.remove(term)
-    db.flush()
+    await db.flush()
     if was_preferred:
         remaining = sorted(concept.terms_in(term.language), key=lambda t: t.id)
         if remaining:
             remaining[0].is_preferred = True
     sync_mirror(concept)
-    db.flush()
+    await db.flush()
 
 
-def merge(db: Session, source: Concept, target: Concept) -> None:
+async def merge(db: AsyncSession, source: Concept, target: Concept) -> None:
     """Fold `source` into `target`: links and words move, source is deleted."""
-    target_questions = {
-        qid
-        for (qid,) in db.query(QuestionConcept.question_id).filter(
-            QuestionConcept.concept_id == target.id
-        )
-    }
-    for link in db.query(QuestionConcept).filter(
-        QuestionConcept.concept_id == source.id
-    ):
+    target_questions = set(
+        await concept_term_repository.linked_question_ids(db, target.id)
+    )
+    for link in await concept_term_repository.links_of(db, source.id):
         if link.question_id in target_questions:
-            db.delete(link)
+            await db.delete(link)
         else:
             link.concept_id = target.id
-    db.flush()
+    await db.flush()
     for term in list(source.terms):
-        add_term(db, target, term.language, term.term, term.source, preferred=False)
+        await async_add_term(
+            db, target, term.language, term.term, term.source, preferred=False
+        )
     for language in LANGUAGES:
         if not target.gloss_in(language) and source.gloss_in(language):
             setattr(target, f"gloss_{language}", source.gloss_in(language))
-    db.delete(source)
-    db.flush()
+    await db.delete(source)
+    await db.flush()
     logger.info("Concepts merged: source=%d target=%d", source.id, target.id)
 
 
@@ -193,8 +190,8 @@ class NewTerm:
     term: str
 
 
-def split(
-    db: Session,
+async def split(
+    db: AsyncSession,
     concept: Concept,
     question_ids: list[int],
     terms: list[NewTerm],
@@ -214,16 +211,15 @@ def split(
         extraction_prompt_version=concept.extraction_prompt_version,
         gloss_ja=gloss_ja,
         gloss_en=gloss_en,
+        # Present, so `has_term` never lazy-loads it on an AsyncSession.
+        terms=[],
     )
     db.add(new)
-    db.flush()
+    await db.flush()
     for item in terms:
-        add_term(db, new, item.language, item.term, source)
-    db.query(QuestionConcept).filter(
-        QuestionConcept.concept_id == concept.id,
-        QuestionConcept.question_id.in_(question_ids),
-    ).update({QuestionConcept.concept_id: new.id}, synchronize_session=False)
-    db.flush()
+        await async_add_term(db, new, item.language, item.term, source)
+    await concept_term_repository.move_links(db, concept.id, new.id, question_ids)
+    await db.flush()
     logger.info(
         "Concept split: source=%d new=%d questions=%d",
         concept.id,
@@ -276,9 +272,7 @@ async def search(
         best = {}
         concept_ids = await concept_term_repository.most_linked(db, statuses, limit * 2)
 
-    counts = await concept_term_repository.async_question_counts(
-        db, concept_ids, statuses
-    )
+    counts = await concept_term_repository.question_counts(db, concept_ids, statuses)
     items = []
     for concept in await concept_term_repository.async_get_many(db, concept_ids):
         count = counts.get(concept.id, 0)
@@ -332,8 +326,8 @@ async def list_for_admin(
     )
     total = len(ids)
     page_ids = ids[(page - 1) * size : page * size]
-    counts = await concept_term_repository.async_question_counts(db, page_ids, None)
-    shares = await concept_term_repository.async_shared_word_partners(db, page_ids)
+    counts = await concept_term_repository.question_counts(db, page_ids, None)
+    shares = await concept_term_repository.shared_word_partners(db, page_ids)
     concepts = {
         c.id: c for c in await concept_term_repository.async_get_many(db, page_ids)
     }
@@ -345,33 +339,17 @@ async def list_for_admin(
     return AdminConceptListResponse(items=items, total=total, page=page, size=size)
 
 
-def detail_for_admin(
-    db: Session, concept_id: int, language: str
-) -> AdminConceptResponse | None:
-    concept = db.get(Concept, concept_id)
-    if concept is None:
-        return None
-    counts = concept_term_repository.question_counts(db, [concept_id], None)
-    shares = concept_term_repository.shared_word_partners(db, [concept_id])
-    item = _admin_item(concept, counts.get(concept_id, 0), shares.get(concept_id, []))
-    item.questions = _question_refs(
-        concept_term_repository.linked_questions(db, concept_id, language)
-    )
-    return item
-
-
-async def async_detail_for_admin(
+async def detail_for_admin(
     db: AsyncSession, concept_id: int, language: str
 ) -> AdminConceptResponse | None:
-    """As `detail_for_admin` ([89]); the editor writes still return the sync one."""
     concept = await db.get(Concept, concept_id)
     if concept is None:
         return None
-    counts = await concept_term_repository.async_question_counts(db, [concept_id], None)
-    shares = await concept_term_repository.async_shared_word_partners(db, [concept_id])
+    counts = await concept_term_repository.question_counts(db, [concept_id], None)
+    shares = await concept_term_repository.shared_word_partners(db, [concept_id])
     item = _admin_item(concept, counts.get(concept_id, 0), shares.get(concept_id, []))
     item.questions = _question_refs(
-        await concept_term_repository.async_linked_questions(db, concept_id, language)
+        await concept_term_repository.linked_questions(db, concept_id, language)
     )
     return item
 
@@ -387,11 +365,11 @@ class DuplicateTermError(Exception):
     """The sense already has this word in this language."""
 
 
-def edit_term(
-    db: Session, term: ConceptTerm, new_text: str | None, preferred: bool | None
+async def edit_term(
+    db: AsyncSession, term: ConceptTerm, new_text: str | None, preferred: bool | None
 ) -> None:
     """A teacher edit; the word counts as reviewed afterwards."""
-    concept = db.get(Concept, term.concept_id)
+    concept = await db.get(Concept, term.concept_id)
     assert concept is not None
     if new_text is not None and normalize_key(new_text) != term.normalized:
         if has_term(concept, term.language, new_text):
@@ -399,11 +377,11 @@ def edit_term(
         term.term = new_text
         term.normalized = normalize_key(new_text)
     term.source = TermSource.TEACHER
-    db.flush()
+    await db.flush()
     if preferred:
-        set_preferred(db, term)
+        await set_preferred(db, term)
     sync_mirror(concept)
-    db.flush()
+    await db.flush()
 
 
 # --- editor use cases: one transaction each, called by the router ([59]) -------
@@ -417,35 +395,37 @@ class TermNotFoundError(Exception):
     """No concept term with this id."""
 
 
-def _concept(db: Session, concept_id: int) -> Concept:
-    concept = db.get(Concept, concept_id)
+async def _concept(db: AsyncSession, concept_id: int) -> Concept:
+    concept = await db.get(Concept, concept_id)
     if concept is None:
         raise ConceptNotFoundError(concept_id)
     return concept
 
 
-def _term(db: Session, term_id: int) -> ConceptTerm:
-    term = concept_term_repository.get_term(db, term_id)
+async def _term(db: AsyncSession, term_id: int) -> ConceptTerm:
+    term = await concept_term_repository.get_term(db, term_id)
     if term is None:
         raise TermNotFoundError(term_id)
     return term
 
 
-def update_gloss(db: Session, concept_id: int, changes: dict[str, str | None]) -> None:
+async def update_gloss(
+    db: AsyncSession, concept_id: int, changes: dict[str, str | None]
+) -> None:
     """Set the given gloss fields; an empty string clears one."""
-    with transaction(db, "update_concept_gloss"):
-        concept = _concept(db, concept_id)
+    async with async_transaction(db, "update_concept_gloss"):
+        concept = await _concept(db, concept_id)
         for field, value in changes.items():
             setattr(concept, field, value or None)
 
 
-def add_teacher_term(
-    db: Session, concept_id: int, language: str, term: str, is_preferred: bool
+async def add_teacher_term(
+    db: AsyncSession, concept_id: int, language: str, term: str, is_preferred: bool
 ) -> None:
     """A word typed by a teacher; DuplicateTermError if the sense has it."""
-    with transaction(db, "add_concept_term"):
-        concept = _concept(db, concept_id)
-        added = add_term(
+    async with async_transaction(db, "add_concept_term"):
+        concept = await _concept(db, concept_id)
+        added = await async_add_term(
             db,
             concept,
             language,
@@ -457,28 +437,30 @@ def add_teacher_term(
             raise DuplicateTermError(term)
 
 
-def edit_term_by_id(
-    db: Session, term_id: int, new_text: str | None, preferred: bool | None
+async def edit_term_by_id(
+    db: AsyncSession, term_id: int, new_text: str | None, preferred: bool | None
 ) -> int:
     """Edit a word or make it the label; returns its concept id."""
-    with transaction(db, "edit_concept_term"):
-        term = _term(db, term_id)
-        edit_term(db, term, new_text, preferred)
-        return term.concept_id
+    async with async_transaction(db, "edit_concept_term"):
+        term = await _term(db, term_id)
+        concept_id = term.concept_id
+        await edit_term(db, term, new_text, preferred)
+    return concept_id
 
 
-def delete_term_by_id(db: Session, term_id: int) -> None:
-    with transaction(db, "delete_concept_term"):
-        delete_term(db, _term(db, term_id))
+async def delete_term_by_id(db: AsyncSession, term_id: int) -> None:
+    async with async_transaction(db, "delete_concept_term"):
+        await delete_term(db, await _term(db, term_id))
 
 
-def merge_by_id(db: Session, source_id: int, into_id: int) -> None:
-    with transaction(db, "merge_concepts"):
-        merge(db, _concept(db, source_id), _concept(db, into_id))
+async def merge_by_id(db: AsyncSession, source_id: int, into_id: int) -> None:
+    async with async_transaction(db, "merge_concepts"):
+        source = await _concept(db, source_id)
+        await merge(db, source, await _concept(db, into_id))
 
 
-def split_by_id(
-    db: Session,
+async def split_by_id(
+    db: AsyncSession,
     concept_id: int,
     question_ids: list[int],
     terms: list[NewTerm],
@@ -486,16 +468,17 @@ def split_by_id(
     gloss_en: str | None = None,
 ) -> int:
     """Move questions to a new sense; returns the new concept id."""
-    with transaction(db, "split_concept"):
-        new = split(
+    async with async_transaction(db, "split_concept"):
+        new = await split(
             db,
-            _concept(db, concept_id),
+            await _concept(db, concept_id),
             question_ids,
             terms,
             gloss_ja=gloss_ja,
             gloss_en=gloss_en,
         )
-        return new.id
+        new_id = new.id
+    return new_id
 
 
 async def concept_ids_missing_name(

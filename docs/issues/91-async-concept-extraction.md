@@ -18,6 +18,9 @@ One small slice of [73]: concept extraction seam. No behaviour change.
   `extract_concepts_best_effort`, `attach_concepts_best_effort` and the
   extraction/matching path of `concept_service` (async twins; the seed
   and create still use sync until [93]/[95]).
+- Left over from [90]: `concept_term_repository.senses_by_words`, the sync
+  `get_many`, the sync `concept_sense_service.add_term`, and the dead
+  `senses_with_any_term`.
 - Prepare (LLM call, no session) then apply (short transaction); remove
   `reextract_concepts_for_questions` from the [82] allowlist.
 

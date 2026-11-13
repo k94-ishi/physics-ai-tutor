@@ -93,7 +93,7 @@ wait for the slowest endpoint from "whole answer" to "first words".
    1. ~~[83] public question reads (list, detail, exact match, related,
       prerequisites) - also makes an un-awaited coroutine a test failure~~
       done 2026-11-13 (601 tests; no regression at concurrency 8)
-   2. [84] Asynchronize the public tag search (GET /concepts)
+   2. ~~[84] Asynchronize the public tag search (GET /concepts)~~ done 2026-11-13
    3. [89] Asynchronize the admin tag editor reads: list and detail
    4. [90] Asynchronize the admin tag editor writes: gloss, words, merge, split
    5. [91] Asynchronize concept extraction and the re-extract route

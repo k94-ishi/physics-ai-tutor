@@ -37,7 +37,7 @@ traffic first, then by which sync functions can be deleted soonest.
 | --- | --- | --- | --- |
 | 1 | (this issue, 260d7c2) | Auth, users, sessions | merged 2026-11-12 |
 | 2 | [83] | Public question reads | done 2026-11-13 |
-| 3 | [84] | Asynchronize the public tag search (GET /concepts) | open |
+| 3 | [84] | Asynchronize the public tag search (GET /concepts) | done 2026-11-13 |
 | 4 | [89] | Asynchronize the admin tag editor reads: list and detail | open |
 | 5 | [90] | Asynchronize the admin tag editor writes: gloss, words, merge, split | open |
 | 6 | [91] | Asynchronize concept extraction and the re-extract route | open |

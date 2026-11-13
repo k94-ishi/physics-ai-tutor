@@ -104,7 +104,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 81 | open | 81-track-g-configuration.md | Track G: configuration - what belongs in the environment and what belongs in code | — (file-era issue) |
 | 82 | closed | 82-no-connection-held-across-an-llm-call.md | Never hold a database connection across an LLM call: split the translate/embed transaction | — (file-era issue) |
 | 83 | closed | 83-async-public-question-reads.md | Asynchronize the public question reads: list, detail, exact match, related, prerequisites | — (file-era issue) |
-| 84 | open | 84-async-concepts.md | Asynchronize the public tag search (GET /concepts) | — (file-era issue) |
+| 84 | closed | 84-async-concepts.md | Asynchronize the public tag search (GET /concepts) | — (file-era issue) |
 | 85 | open | 85-async-admin-review-workflow.md | Asynchronize the review routes: review, bulk review, history | — (file-era issue) |
 | 86 | open | 86-async-admin-content-writes.md | Asynchronize delete and bulk delete | — (file-era issue) |
 | 87 | open | 87-async-admin-stats-exports-and-ai-review-runs.md | Asynchronize the usage dashboard and the agreement report | — (file-era issue) |

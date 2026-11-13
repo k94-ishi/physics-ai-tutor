@@ -254,8 +254,8 @@ def _rank(term: ConceptTerm, key: str) -> int:
     return 2 if term.normalized.startswith(key) else 3
 
 
-def search(
-    db: Session, query: str, language: str, public: bool, limit: int = 20
+async def search(
+    db: AsyncSession, query: str, language: str, public: bool, limit: int = 20
 ) -> list[ConceptSearchItem]:
     """Senses whose words (either language) contain `query`, best match first.
 
@@ -265,7 +265,7 @@ def search(
     statuses = PUBLIC_STATUSES if public else None
     key = normalize_key(query) if query else ""
     if key:
-        terms = concept_term_repository.search_terms(db, key, limit * 10)
+        terms = await concept_term_repository.search_terms(db, key, limit * 10)
         best: dict[int, tuple[int, ConceptTerm]] = {}
         for term in terms:
             rank = _rank(term, key)
@@ -274,11 +274,13 @@ def search(
         concept_ids = list(best)
     else:
         best = {}
-        concept_ids = concept_term_repository.most_linked(db, statuses, limit * 2)
+        concept_ids = await concept_term_repository.most_linked(db, statuses, limit * 2)
 
-    counts = concept_term_repository.question_counts(db, concept_ids, statuses)
+    counts = await concept_term_repository.async_question_counts(
+        db, concept_ids, statuses
+    )
     items = []
-    for concept in concept_term_repository.get_many(db, concept_ids):
+    for concept in await concept_term_repository.async_get_many(db, concept_ids):
         count = counts.get(concept.id, 0)
         text, fallback = label(concept, language)
         if public and (count == 0 or fallback):

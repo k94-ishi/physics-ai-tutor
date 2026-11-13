@@ -1,4 +1,5 @@
-from sqlalchemy import func, tuple_
+from sqlalchemy import func, select, tuple_
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.models import Concept, ConceptTerm, Question, QuestionConcept
@@ -15,14 +16,25 @@ def senses_with_any_term(db: Session, normalized: str) -> list[Concept]:
     )
 
 
-def search_terms(db: Session, needle: str, limit: int) -> list[ConceptTerm]:
+async def search_terms(db: AsyncSession, needle: str, limit: int) -> list[ConceptTerm]:
     """Terms containing the normalised needle, either language."""
-    return (
-        db.query(ConceptTerm)
-        .filter(ConceptTerm.normalized.contains(needle, autoescape=True))
+    query = (
+        select(ConceptTerm)
+        .where(ConceptTerm.normalized.contains(needle, autoescape=True))
         .limit(limit)
-        .all()
     )
+    return list((await db.scalars(query)).all())
+
+
+def _question_counts_select(concept_ids: list[int], statuses: list[str] | None):
+    query = select(QuestionConcept.concept_id, func.count()).where(
+        QuestionConcept.concept_id.in_(concept_ids)
+    )
+    if statuses is not None:
+        query = query.join(Question, Question.id == QuestionConcept.question_id).where(
+            Question.status.in_(statuses)
+        )
+    return query.group_by(QuestionConcept.concept_id)
 
 
 def question_counts(
@@ -31,14 +43,17 @@ def question_counts(
     """Linked questions per sense, optionally limited to some statuses."""
     if not concept_ids:
         return {}
-    query = db.query(QuestionConcept.concept_id, func.count()).filter(
-        QuestionConcept.concept_id.in_(concept_ids)
-    )
-    if statuses is not None:
-        query = query.join(Question, Question.id == QuestionConcept.question_id).filter(
-            Question.status.in_(statuses)
-        )
-    rows = query.group_by(QuestionConcept.concept_id).all()
+    rows = db.execute(_question_counts_select(concept_ids, statuses)).all()
+    return {concept_id: count for concept_id, count in rows}
+
+
+async def async_question_counts(
+    db: AsyncSession, concept_ids: list[int], statuses: list[str] | None
+) -> dict[int, int]:
+    """As `question_counts` ([84]); the sync one serves the admin editor."""
+    if not concept_ids:
+        return {}
+    rows = (await db.execute(_question_counts_select(concept_ids, statuses))).all()
     return {concept_id: count for concept_id, count in rows}
 
 
@@ -49,23 +64,32 @@ def get_term(db: Session, term_id: int) -> ConceptTerm | None:
 def get_many(db: Session, concept_ids: list[int]) -> list[Concept]:
     if not concept_ids:
         return []
-    return db.query(Concept).filter(Concept.id.in_(concept_ids)).all()
+    return list(db.scalars(select(Concept).where(Concept.id.in_(concept_ids))).all())
 
 
-def most_linked(db: Session, statuses: list[str] | None, limit: int) -> list[int]:
+async def async_get_many(db: AsyncSession, concept_ids: list[int]) -> list[Concept]:
+    """As `get_many` ([84]); `Concept.terms` loads eagerly (selectin)."""
+    if not concept_ids:
+        return []
+    query = select(Concept).where(Concept.id.in_(concept_ids))
+    return list((await db.scalars(query)).all())
+
+
+async def most_linked(
+    db: AsyncSession, statuses: list[str] | None, limit: int
+) -> list[int]:
     """Senses with the most linked questions."""
-    query = db.query(QuestionConcept.concept_id, func.count().label("n"))
+    query = select(QuestionConcept.concept_id, func.count().label("n"))
     if statuses is not None:
-        query = query.join(Question, Question.id == QuestionConcept.question_id).filter(
+        query = query.join(Question, Question.id == QuestionConcept.question_id).where(
             Question.status.in_(statuses)
         )
-    rows = (
+    query = (
         query.group_by(QuestionConcept.concept_id)
         .order_by(func.count().desc(), QuestionConcept.concept_id)
         .limit(limit)
-        .all()
     )
-    return [concept_id for concept_id, _ in rows]
+    return [concept_id for concept_id, _ in (await db.execute(query)).all()]
 
 
 def _shared_words_subquery(db: Session):

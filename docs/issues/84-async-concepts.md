@@ -20,7 +20,7 @@ One small slice of [73]: student tag search only. No behaviour change.
 
 ## Acceptance criteria
 
-- [ ] Search tests in `test_concept_senses.py` (5) stay green; strict rule kept: students see only senses with APPROVED questions and a label in `lang`.
+- [x] Search tests in `test_concept_senses.py` (5) stay green; strict rule kept: students see only senses with APPROVED questions and a label in `lang`.
 
 ## Dependencies
 
@@ -44,5 +44,21 @@ Owner found [83] (22 files, 35 tests) too big. The earlier, wider version of thi
 
 ## Definition of done
 
-- [ ] Backend: `pytest`, `ruff check`, `mypy` pass
-- [ ] Log entry in this file; `status.md`, [67] and [73] updated
+- [x] Backend: `pytest`, `ruff check`, `mypy` pass
+- [x] Log entry in this file; `status.md`, [67] and [73] updated
+
+### 2026-11-13 — done
+
+601 tests pass; ruff and mypy clean; frontend untouched. 3 production
+files, no test file changed.
+
+- `GET /concepts` and `concept_sense_service.search` are async.
+- `search_terms` and `most_linked` had no other caller, so they are
+  async only. `question_counts` and `get_many` are still used by the
+  admin editor, so they got async twins built from one shared statement
+  (`_question_counts_select`); `get_many`'s sync version moved from
+  `db.query` to `select` on the way.
+- `Concept.terms` is loaded with `selectin`, so `label()` reads no lazy
+  relationship on the async session.
+- Covered by the five search API tests in `test_concept_senses.py`
+  (ranking, both languages, the APPROVED-only rule for students).

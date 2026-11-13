@@ -3,6 +3,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.api.dependencies import (
@@ -10,7 +11,7 @@ from physics_ai_tutor.api.dependencies import (
     is_admin,
     require_admin,
 )
-from physics_ai_tutor.database.dependency import get_db
+from physics_ai_tutor.database.dependency import get_async_db, get_db
 from physics_ai_tutor.schemas.concept import (
     AdminConceptListResponse,
     AdminConceptResponse,
@@ -38,15 +39,15 @@ admin_router = APIRouter(prefix="/admin/concepts", tags=["admin"])
 
 
 @router.get("", response_model=list[ConceptSearchItem])
-def search_concepts(
+async def search_concepts(
     q: str = Query(default="", max_length=100),
     lang: Language = Query(default=Language.JA),
     limit: int = Query(default=20, ge=1, le=50),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
     """Concept senses by any of their words, in either language ([55])."""
-    return concept_sense_service.search(
+    return await concept_sense_service.search(
         db, q, lang.value, public=not is_admin(current_user), limit=limit
     )
 

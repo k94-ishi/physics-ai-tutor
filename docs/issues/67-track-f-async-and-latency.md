@@ -103,7 +103,7 @@ wait for the slowest endpoint from "whole answer" to "first words".
    9. ~~[93] Asynchronize create and update (prepare/apply)~~ done 2026-11-14
    10. ~~[94] Asynchronize JSONL import~~ done 2026-11-14 ([82] allowlist now empty)
    11. ~~[95] Seed tags step on the async services; delete the sync tag-extraction path~~ done 2026-11-14
-   11a. [102] translate_missing CLI on the async service; delete the sync translation half
+   11a. ~~[102] translate_missing CLI on the async service; delete the sync translation half~~ done 2026-11-14
    12. [87] Asynchronize the usage dashboard and the agreement report
    13. [96] Asynchronize the review dataset export
    14. [97] Asynchronize AI review runs; one ai_review_service

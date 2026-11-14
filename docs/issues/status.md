@@ -122,7 +122,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 99 | open | 99-async-end-state-and-docs.md | Async end state: architecture test, docs, connection budget (closes [73]) | — (file-era issue) |
 | 100 | open | 100-reuse-sense-embeddings.md | Reuse sense embeddings instead of re-embedding every candidate on each extraction | — (file-era issue) |
 | 101 | closed | 101-seed-as-one-jsonl-file.md | Seed data as one JSONL file; seed.json removed | — (file-era issue) |
-| 102 | open | 102-async-translate-missing-cli.md | translate_missing CLI on the async service; delete the sync translation half | — (file-era issue) |
+| 102 | closed | 102-async-translate-missing-cli.md | translate_missing CLI on the async service; delete the sync translation half | — (file-era issue) |
 
 ## Notes on the archive column
 

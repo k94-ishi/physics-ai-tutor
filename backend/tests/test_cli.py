@@ -2,25 +2,23 @@ import json
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker
-from sqlalchemy.orm import sessionmaker
 
 from physics_ai_tutor.cli import create_user as create_user_cli
 from physics_ai_tutor.cli import translate_missing as translate_cli
 from physics_ai_tutor.database import seed as seed_module
 from physics_ai_tutor.database import seed_file
 from physics_ai_tutor.models import Question, User
-from tests.conftest import async_engine, engine
+from tests.conftest import async_engine
 
 
 @pytest.fixture
 def _bind_cli_sessions(monkeypatch, db):
     # CLI entry points open their own session; bind them to the test engine.
-    factory = sessionmaker(bind=engine, expire_on_commit=False)
     async_factory = async_sessionmaker(bind=async_engine, expire_on_commit=False)
-    # create_user went async in [73] and the seed in [95].
+    # Every CLI here is async: create_user [73], seed [95], translate [102].
     monkeypatch.setattr(create_user_cli, "AsyncSessionLocal", async_factory)
     monkeypatch.setattr(seed_module, "AsyncSessionLocal", async_factory)
-    monkeypatch.setattr(translate_cli, "SessionLocal", factory)
+    monkeypatch.setattr(translate_cli, "AsyncSessionLocal", async_factory)
 
 
 def test_create_user_cli_creates_admin(db, _bind_cli_sessions, capsys):

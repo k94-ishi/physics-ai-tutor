@@ -269,17 +269,17 @@ async def async_get_by_exact_text(
     return (await db.scalars(query)).first()
 
 
-def get_missing_language(
-    db: Session, language: Language | str, limit: int | None = None
+async def get_missing_language(
+    db: AsyncSession, language: Language | str, limit: int | None = None
 ) -> list[Question]:
     """Questions that have no text in `language` (candidates for translation)."""
     column = getattr(Question, f"question_{Language(language)}")
-    query = db.query(Question).filter(column.is_(None)).order_by(Question.id)
+    query = select(Question).where(column.is_(None)).order_by(Question.id)
 
     if limit is not None:
         query = query.limit(limit)
 
-    return query.all()
+    return list((await db.scalars(query)).all())
 
 
 def build_question(

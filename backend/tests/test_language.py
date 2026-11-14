@@ -1,13 +1,25 @@
 """Behaviour of the bilingual question rows and the English mode."""
 
+import asyncio
+
 import pytest
 
 from physics_ai_tutor.models import Question, QuestionEmbedding
-from physics_ai_tutor.services import deepseek_service, translation_service
-from physics_ai_tutor.services.translation_service import (
-    translate_qa as real_translate_qa,
+from physics_ai_tutor.services import translation_service
+from tests.conftest import (
+    fake_generation,
+    patch_chat_completion,
+    patch_generation,
+    patch_translate_qa,
 )
-from tests.conftest import fake_generation, patch_generation, patch_translate_qa
+
+# Captured before conftest's autouse mock replaces the seam ([102]).
+_real_async_translate_qa = translation_service.async_translate_qa
+
+
+def real_translate_qa(*args, **kwargs):
+    return asyncio.run(_real_async_translate_qa(*args, **kwargs))
+
 
 QUESTIONS = "/api/v1/questions"
 REJECT_BODY = {"action": "REJECT", "reason": "PHYSICS_ERROR"}
@@ -421,9 +433,8 @@ def test_import_accepts_explicit_language_columns(admin_client):
 
 
 def test_translator_parses_marked_output(monkeypatch):
-    monkeypatch.setattr(
-        deepseek_service,
-        "chat_completion",
+    patch_chat_completion(
+        monkeypatch,
         lambda s, u: "noise\n=====QUESTION=====\nQ\n=====ANSWER=====\nA\n",
     )
 
@@ -431,7 +442,7 @@ def test_translator_parses_marked_output(monkeypatch):
 
 
 def test_translator_rejects_malformed_output(monkeypatch):
-    monkeypatch.setattr(deepseek_service, "chat_completion", lambda s, u: "garbage")
+    patch_chat_completion(monkeypatch, lambda s, u: "garbage")
 
     with pytest.raises(translation_service.TranslationError):
         real_translate_qa("q", "a", "ja", "en")

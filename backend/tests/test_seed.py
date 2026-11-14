@@ -39,7 +39,6 @@ def seeded():
         patch.setattr(embedding_service, "_request_embeddings", _forbidden)
         patch.setattr(embedding_service, "_async_request_embeddings", _forbidden)
         patch.setattr(concept_service, "async_extract_concept_names", _forbidden)
-        patch.setattr(translation_service, "translate_qa", _forbidden)
         patch.setattr(translation_service, "async_translate_qa", _forbidden)
         seed_module.seed()
     with Session(engine) as session:

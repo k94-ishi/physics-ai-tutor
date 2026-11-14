@@ -113,7 +113,8 @@ def test_chunks_split_by_count_and_by_total_length(monkeypatch):
     assert embedding_service._chunks([]) == []
 
 
-def test_embed_many_keeps_input_order_across_chunks(monkeypatch):
+@pytest.mark.anyio
+async def test_async_embed_many_keeps_input_order_across_chunks(monkeypatch):
     monkeypatch.setattr(embedding_service, "EMBED_BATCH_MAX_ITEMS", 2)
     calls = []
 
@@ -124,21 +125,9 @@ def test_embed_many_keeps_input_order_across_chunks(monkeypatch):
 
     patch_create_embeddings(monkeypatch, fake_create_embeddings)
 
-    vectors = embedding_service.embed_many(["a", "bb", "ccc", "dddd", "eeeee"])
+    vectors = await embedding_service.async_embed_many(
+        ["a", "bb", "ccc", "dddd", "eeeee"]
+    )
 
     assert vectors == [[1.0], [2.0], [3.0], [4.0], [5.0]]
     assert calls == [["a", "bb"], ["ccc", "dddd"], ["eeeee"]]
-
-
-@pytest.mark.anyio
-async def test_async_embed_many_matches_the_sync_one(monkeypatch):
-    monkeypatch.setattr(embedding_service, "EMBED_BATCH_MAX_ITEMS", 2)
-    patch_create_embeddings(
-        monkeypatch, lambda texts: [[float(len(text))] for text in texts]
-    )
-
-    assert await embedding_service.async_embed_many(["a", "bb", "ccc"]) == [
-        [1.0],
-        [2.0],
-        [3.0],
-    ]

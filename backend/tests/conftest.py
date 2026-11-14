@@ -302,7 +302,6 @@ async def fake_translate_async(question, answer, source, target):
 
 @pytest.fixture(autouse=True)
 def _mock_translate(monkeypatch):
-    monkeypatch.setattr(translation_service, "translate_qa", fake_translate)
     # Both seams, so a converted caller is mocked too ([70]).
     monkeypatch.setattr(translation_service, "async_translate_qa", fake_translate_async)
 
@@ -406,8 +405,7 @@ def patch_generation(monkeypatch, generate) -> None:
 
 
 def patch_translate_qa(monkeypatch, translate) -> None:
-    """As `patch_generation`, for the translation seam ([72])."""
-    monkeypatch.setattr(translation_service, "translate_qa", translate)
+    """A plain stub on the translation seam ([72]); async only since [102]."""
 
     async def _async_translate(*args, **kwargs):
         return translate(*args, **kwargs)

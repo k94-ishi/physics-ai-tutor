@@ -68,22 +68,13 @@ def _chunks(texts: list[str]) -> list[list[str]]:
     return chunks
 
 
-def embed_many(texts: list[str]) -> list[list[float]]:
+async def async_embed_many(texts: list[str]) -> list[list[float]]:
     """Embeddings for many texts, one request per chunk, in input order ([76]).
 
-    `create_embeddings` is called per chunk, so preloaded seed vectors and
-    the test seam apply unchanged. The result lines up with `texts` by
-    index; callers keep their own (row, language, kind) mapping.
+    `async_create_embeddings` is called per chunk, so preloaded seed
+    vectors and the test seam apply unchanged. The result lines up with
+    `texts` by index; callers keep their own (row, language, kind) mapping.
     """
-    vectors: list[list[float]] = []
-    for chunk in _chunks(texts):
-        vectors.extend(create_embeddings(chunk))
-    assert len(vectors) == len(texts)
-    return vectors
-
-
-async def async_embed_many(texts: list[str]) -> list[list[float]]:
-    """As `embed_many`, on the event loop."""
     vectors: list[list[float]] = []
     for chunk in _chunks(texts):
         vectors.extend(await async_create_embeddings(chunk))

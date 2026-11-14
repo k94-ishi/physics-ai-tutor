@@ -12,7 +12,6 @@ import logging
 from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core import timing
 from physics_ai_tutor.core.config import settings
@@ -20,11 +19,10 @@ from physics_ai_tutor.core.exceptions import (
     EmbeddingGenerationError,
     TranslationError,
 )
-from physics_ai_tutor.database.transaction import async_transaction, transaction
+from physics_ai_tutor.database.transaction import async_transaction
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.repositories import (
     embedding_repository,
-    question_repository,
 )
 from physics_ai_tutor.schemas.language import Language, TextProvenance
 from physics_ai_tutor.services import (
@@ -56,35 +54,6 @@ def _source_text(
     return src, text
 
 
-def prepare_translation(
-    question: Question, target: Language, source: Language | None = None
-) -> PreparedTranslation | None:
-    """The LLM phase: translate and embed, no session. None on failure."""
-    src, text = _source_text(question, source)
-
-    try:
-        with timing.stage("translate_qa", question_id=question.id, target=target.value):
-            translated_q, translated_a = translation_service.translate_qa(
-                text[0], text[1], source=src, target=target
-            )
-        with timing.stage(
-            "embed_language", question_id=question.id, target=target.value
-        ):
-            question_vec, answer_vec = embedding_service.create_embeddings(
-                [translated_q, translated_a]
-            )
-    except (TranslationError, EmbeddingGenerationError):
-        logger.warning(
-            "Translation skipped: question_id=%s target=%s",
-            question.id,
-            target,
-            exc_info=True,
-        )
-        return None
-
-    return PreparedTranslation(translated_q, translated_a, question_vec, answer_vec)
-
-
 async def async_prepare_translation(
     question: Question, target: Language, source: Language | None = None
 ) -> PreparedTranslation | None:
@@ -114,30 +83,6 @@ async def async_prepare_translation(
     return PreparedTranslation(translated_q, translated_a, question_vec, answer_vec)
 
 
-def write_embeddings(
-    db: Session,
-    question_id: int,
-    language: Language,
-    question_vector: list[float],
-    answer_vector: list[float],
-) -> None:
-    """Replace one language's embedding rows; the caller commits."""
-    embedding_repository.delete_by_question_id(db, question_id, language=language)
-
-    for embedding_type, vector in (
-        ("question", question_vector),
-        ("answer", answer_vector),
-    ):
-        embedding_repository.create_embedding(
-            db,
-            question_id=question_id,
-            embedding=vector,
-            embedding_type=embedding_type,
-            model=settings.embedding_model,
-            language=language.value,
-        )
-
-
 async def async_write_embeddings(
     db: AsyncSession,
     question_id: int,
@@ -164,21 +109,6 @@ async def async_write_embeddings(
         )
 
 
-def apply_translation(
-    db: Session, question: Question, target: Language, prepared: PreparedTranslation
-) -> None:
-    """The write phase: text and its embeddings together, never apart."""
-    question.set_text(
-        target, prepared.question, prepared.answer, TextProvenance.MACHINE
-    )
-    db.flush()
-    write_embeddings(
-        db, question.id, target, prepared.question_vector, prepared.answer_vector
-    )
-
-    logger.info("Question translated: question_id=%d target=%s", question.id, target)
-
-
 async def async_apply_translation(
     db: AsyncSession,
     question: Question,
@@ -195,35 +125,6 @@ async def async_apply_translation(
     )
 
     logger.info("Question translated: question_id=%d target=%s", question.id, target)
-
-
-def translate_missing_languages(db: Session, question_id: int) -> list[Language]:
-    """Fill every missing language of one question; commits on its own.
-
-    Used by the admin endpoint, the backfill CLI and the background
-    list-translation task. The connection is released before each LLM
-    phase and taken again only for the short write ([82]); each language
-    commits on its own, which [53] allows - its guarantee is that a
-    translated row never re-enters the queue, not that both languages
-    appear atomically.
-    """
-    with transaction(db, "translate_missing_read"):
-        question = question_repository.get_question(db, question_id)
-
-    if question is None:
-        return []
-
-    filled = []
-    for lang in Language:
-        if question.has(lang):
-            continue
-        prepared = prepare_translation(question, lang)
-        if prepared is None:
-            continue
-        with transaction(db, "translate_missing_write"):
-            apply_translation(db, question, lang, prepared)
-        filled.append(lang)
-    return filled
 
 
 async def async_translate_missing_languages(

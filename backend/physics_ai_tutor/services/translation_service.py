@@ -51,7 +51,7 @@ def _translated(content: str, source: Language, target: Language) -> tuple[str, 
     return translated
 
 
-def translate_qa(
+async def async_translate_qa(
     question: str,
     answer: str,
     source: Language,
@@ -59,26 +59,9 @@ def translate_qa(
 ) -> tuple[str, str]:
     """Translate a question/answer pair. Raises TranslationError on failure.
 
-    This is the single seam for swapping the translation backend.
+    This is the single seam for swapping the translation backend; the sync
+    twin was removed in [102].
     """
-    try:
-        content = deepseek_service.chat_completion(
-            prompts.TRANSLATE_SYSTEM_PROMPT,
-            _user_prompt(question, answer, source, target),
-        )
-    except Exception as exc:
-        raise TranslationError("Translation request failed.") from exc
-
-    return _translated(content, source, target)
-
-
-async def async_translate_qa(
-    question: str,
-    answer: str,
-    source: Language,
-    target: Language,
-) -> tuple[str, str]:
-    """As `translate_qa`, on the event loop ([70])."""
     try:
         content = await deepseek_service.async_chat_completion(
             prompts.TRANSLATE_SYSTEM_PROMPT,

@@ -28,8 +28,8 @@ with `asyncio.run`, then delete the sync translation half.
 
 ## Acceptance criteria
 
-- [ ] `test_cli.py`'s translate_missing tests pass on the async path.
-- [ ] `question_translation_service` has no sync function that touches
+- [x] `test_cli.py`'s translate_missing tests pass on the async path.
+- [x] `question_translation_service` has no sync function that touches
       a session.
 
 ## Dependencies
@@ -38,5 +38,33 @@ with `asyncio.run`, then delete the sync translation half.
 
 ## Definition of done
 
-- [ ] Backend: `pytest`, `ruff check`, `mypy` pass
-- [ ] Log entry in this file; `status.md`, [67] and [73] updated
+- [x] Backend: `pytest`, `ruff check`, `mypy` pass
+- [x] Log entry in this file; `status.md`, [67] and [73] updated
+
+## Log
+
+### 2026-11-14 — done
+
+614 tests pass (615 - 1: the sync `embed_many` test merged into the
+async one); ruff and mypy clean; frontend untouched. 5 production
+files, 6 test files.
+
+- `translate_missing` runs on `AsyncSessionLocal` through `asyncio.run`:
+  one short read lists the rows (released before any LLM call), then
+  each row goes through `async_translate_missing_languages`. Output,
+  `--dry-run` and the exit code are unchanged. The first version ended
+  the read with a bare `rollback()`; the architecture test caught it
+  (only the transaction helper may commit or roll back), so it uses
+  `async_transaction` instead.
+- `question_repository.get_missing_language` is async (the CLI was its
+  only caller).
+- **Deleted, no callers left:** `question_translation_service`'s
+  `translate_missing_languages`, `prepare_translation`,
+  `apply_translation`, `write_embeddings`; `translation_service.translate_qa`;
+  `embedding_service.embed_many`. The translation service and the
+  translator now exist once, async. The sync `create_embeddings` and
+  `chat_completion` stay: the sync RAG and AI-review paths use them
+  until [97]/[88].
+- Tests: the CLI fixture binds only async factories now; the translator
+  tests drive the real async translator; `patch_translate_qa` and the
+  autouse mock patch the async seam only.

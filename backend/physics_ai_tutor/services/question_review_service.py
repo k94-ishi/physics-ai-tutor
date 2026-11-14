@@ -30,23 +30,13 @@ from physics_ai_tutor.services.question_presentation_service import (
 from physics_ai_tutor.services.question_translation_service import (
     PreparedTranslation,
     async_apply_translation,
+    async_prepare_refresh,
     async_prepare_translation,
     async_write_embeddings,
+    draft_of,
 )
 
 logger = logging.getLogger(__name__)
-
-# Columns a draft copies; enough for text, provenance and extraction.
-_DRAFT_COLUMNS = (
-    "id",
-    "question_ja",
-    "answer_ja",
-    "ja_provenance",
-    "question_en",
-    "answer_en",
-    "en_provenance",
-    "original_language",
-)
 
 
 @dataclass
@@ -57,11 +47,6 @@ class _Prepared:
     translations: dict[Language, PreparedTranslation] = field(default_factory=dict)
     concept_names: list[str] | None = None
     concept_plans: list[concept_service.PlannedSense] = field(default_factory=list)
-
-
-def _draft_of(current: Question) -> Question:
-    """A detached copy; edits to it never reach the session."""
-    return Question(**{name: getattr(current, name) for name in _DRAFT_COLUMNS})
 
 
 def _provenance_for(current: Question, lang: Language) -> str:
@@ -82,11 +67,7 @@ async def _prepare_edit(
         [question, answer]
     )
     prepared.edit_vectors = (question_vec, answer_vec)
-    for other in Language:
-        if other == lang:
-            continue
-        if draft.provenance_of(other) == TextProvenance.MACHINE or not draft.has(other):
-            await _prepare_translation(draft, other, prepared, source=lang)
+    prepared.translations.update(await async_prepare_refresh(draft, lang))
 
 
 async def _prepare_translation(
@@ -191,7 +172,7 @@ async def review_question(
     )
 
     # The AI phase: no transaction is open here ([82]).
-    draft = _draft_of(current)
+    draft = draft_of(current)
     prepared = _Prepared()
     edit = None
     if action == QuestionReviewAction.EDIT_APPROVE:

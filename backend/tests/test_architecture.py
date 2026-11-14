@@ -225,11 +225,6 @@ KNOWN_TRANSACTION_LLM_CALLERS = {
     # The import is all-or-nothing by contract; splitting its transaction
     # is the batch-embedding rework ([76]).
     ("services/question_write_service.py", "import_questions_from_jsonl"),
-    # Admin-only writes that embed or translate inside their transaction;
-    # split when [93] converts them. Seconds-long at worst,
-    # admin-rate, and never on the student path.
-    ("services/question_write_service.py", "create_question"),
-    ("services/question_write_service.py", "update_question"),
 }
 
 

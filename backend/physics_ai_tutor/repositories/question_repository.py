@@ -282,6 +282,16 @@ def get_missing_language(
     return query.all()
 
 
+def build_question(
+    texts: dict[Language, tuple[str, str]],
+    original_language: Language | str,
+    status: str,
+    source: str,
+) -> Question:
+    """A new, unsaved row; the caller adds it inside its transaction ([93])."""
+    return _new_question(texts, original_language, status, source, None, None)
+
+
 def _new_question(
     texts: dict[Language, tuple[str, str]],
     original_language: Language | str,

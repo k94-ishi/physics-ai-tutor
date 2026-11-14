@@ -20,7 +20,7 @@ def _create(admin_client, question: str, translate: bool, monkeypatch) -> int:
             def _fail(question, answer, source, target):
                 raise translation_service.TranslationError("down")
 
-            scoped.setattr(translation_service, "translate_qa", _fail)
+            patch_translate_qa(scoped, _fail)
         created = admin_client.post(
             QUESTIONS, json={"question": question, "answer": "回答"}
         )

@@ -77,7 +77,7 @@ def prepare_translation(
             )
     except (TranslationError, EmbeddingGenerationError):
         logger.warning(
-            "Translation skipped: question_id=%d target=%s",
+            "Translation skipped: question_id=%s target=%s",
             question.id,
             target,
             exc_info=True,
@@ -106,7 +106,7 @@ async def async_prepare_translation(
             )
     except (TranslationError, EmbeddingGenerationError):
         logger.warning(
-            "Translation skipped: question_id=%d target=%s",
+            "Translation skipped: question_id=%s target=%s",
             question.id,
             target,
             exc_info=True,
@@ -304,3 +304,46 @@ async def async_translate_missing_languages(
             await async_apply_translation(db, question, lang, prepared)
         filled.append(lang)
     return filled
+
+
+# Columns a draft copies; enough for text, provenance and extraction.
+_DRAFT_COLUMNS = (
+    "id",
+    "question_ja",
+    "answer_ja",
+    "ja_provenance",
+    "question_en",
+    "answer_en",
+    "en_provenance",
+    "original_language",
+)
+
+
+def draft_of(question: Question) -> Question:
+    """A detached copy for the AI phase; edits to it never reach a session ([85])."""
+    return Question(**{name: getattr(question, name) for name in _DRAFT_COLUMNS})
+
+
+async def async_prepare_refresh(
+    draft: Question, edited: Language
+) -> dict[Language, PreparedTranslation]:
+    """After a human edit in `edited`, prepare new machine counterparts.
+
+    The async, no-session form of `refresh_machine_translations`: a
+    machine-made or missing language is retranslated from the edit. The
+    draft is updated as it goes, so later steps see those languages filled.
+    """
+    prepared: dict[Language, PreparedTranslation] = {}
+    for lang in Language:
+        if lang == edited:
+            continue
+        if draft.provenance_of(lang) != TextProvenance.MACHINE and draft.has(lang):
+            continue
+        translation = await async_prepare_translation(draft, lang, source=edited)
+        if translation is None:
+            continue
+        prepared[lang] = translation
+        draft.set_text(
+            lang, translation.question, translation.answer, TextProvenance.MACHINE
+        )
+    return prepared

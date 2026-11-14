@@ -19,6 +19,11 @@ One small slice of [73]: scripts. No behaviour change.
 - Delete the sync half of `question_translation_service` and the
   remaining sync `concept_service` functions.
 
+- `tests/test_seed.py` forbids AI calls by patching only the **sync**
+  seams (`extract_concept_names`, `translate_qa`). When the seed moves
+  to the async services, forbid the async seams too, or the "zero AI
+  calls" guarantee passes vacuously (found in [93]).
+
 ## Acceptance criteria
 
 - [ ] Offline seed still makes zero OpenAI/DeepSeek calls (`test_seed.py`); `test_cli.py` green.

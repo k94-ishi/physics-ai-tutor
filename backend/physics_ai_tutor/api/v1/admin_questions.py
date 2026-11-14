@@ -77,13 +77,13 @@ async def get_question_reviews(
     response_model=QuestionResponse,
     status_code=201,
 )
-def create_question(
+async def create_question(
     question: QuestionCreate,
     lang: Language = Query(default=Language.JA),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
-    result = question_write_service.create_question(
+    result = await question_write_service.create_question(
         db,
         question,
         status=QuestionStatus.APPROVED,
@@ -352,14 +352,14 @@ async def delete_question(
     "/{question_id}",
     response_model=QuestionResponse,
 )
-def update_question(
+async def update_question(
     question_id: int,
     question: QuestionUpdate,
     lang: Language = Query(default=Language.JA),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
-    question = question_write_service.update_question(
+    question = await question_write_service.update_question(
         db,
         question_id,
         question,

@@ -1,11 +1,14 @@
+import asyncio
+
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.core.exceptions import (
     ConceptExtractionError,
     DuplicateQuestionError,
     EmbeddingGenerationError,
 )
-from physics_ai_tutor.models import QuestionEmbedding
+from physics_ai_tutor.models import Question, QuestionEmbedding
 from physics_ai_tutor.repositories import (
     question_concept_repository,
     question_repository,
@@ -19,7 +22,6 @@ from physics_ai_tutor.schemas.question import (
 )
 from physics_ai_tutor.schemas.question_review import QuestionReviewAction
 from physics_ai_tutor.services import (
-    concept_service,
     question_presentation_service,
     question_read_service,
     question_review_service,
@@ -27,16 +29,34 @@ from physics_ai_tutor.services import (
 )
 from tests.conftest import (
     async_create_user,
+    async_engine,
     patch_create_embeddings,
     patch_extract_concept_names,
 )
 
 
+async def _created_id(data: QuestionCreate, **kwargs) -> int:
+    async with AsyncSession(async_engine, expire_on_commit=False) as session:
+        created = await question_write_service.create_question(session, data, **kwargs)
+        return created.id
+
+
+def _create_row(db, data: QuestionCreate, **kwargs) -> Question:
+    """Create through the async service from a sync test ([93])."""
+    return db.get(Question, asyncio.run(_created_id(data, **kwargs)))
+
+
+async def _acreate_row(db, data: QuestionCreate, **kwargs) -> Question:
+    """`_create_row` for a test already on the event loop."""
+    return db.get(Question, await _created_id(data, **kwargs))
+
+
 def _create(db, question: str = "テスト質問", answer: str = "テスト回答"):
-    return question_write_service.create_question(
-        db,
-        QuestionCreate(question=question, answer=answer),
-    )
+    return _create_row(db, QuestionCreate(question=question, answer=answer))
+
+
+async def _acreate(db, question: str = "テスト質問", answer: str = "テスト回答"):
+    return await _acreate_row(db, QuestionCreate(question=question, answer=answer))
 
 
 def _embeddings_for(db, question_id: int, language: str = "ja"):
@@ -53,7 +73,7 @@ def _embeddings_for(db, question_id: int, language: str = "ja"):
 
 @pytest.mark.anyio
 async def test_fetch_questions(db, async_db):
-    _create(db, "質問A", "回答A")
+    await _acreate(db, "質問A", "回答A")
 
     result = await question_read_service.fetch_questions(async_db, page=1, size=20)
 
@@ -64,9 +84,9 @@ async def test_fetch_questions(db, async_db):
 
 @pytest.mark.anyio
 async def test_fetch_questions_paginates(db, async_db):
-    _create(db, "質問A", "回答A")
-    _create(db, "質問B", "回答B")
-    _create(db, "質問C", "回答C")
+    await _acreate(db, "質問A", "回答A")
+    await _acreate(db, "質問B", "回答B")
+    await _acreate(db, "質問C", "回答C")
 
     result = await question_read_service.fetch_questions(async_db, page=2, size=2)
 
@@ -78,8 +98,8 @@ async def test_fetch_questions_paginates(db, async_db):
 
 @pytest.mark.anyio
 async def test_fetch_questions_filters_by_keyword(db, async_db):
-    matching = _create(db, "運動量保存則とは何ですか", "運動量は保存されます")
-    _create(db, "エネルギー保存則とは何ですか", "エネルギーは保存されます")
+    matching = await _acreate(db, "運動量保存則とは何ですか", "運動量は保存されます")
+    await _acreate(db, "エネルギー保存則とは何ですか", "エネルギーは保存されます")
 
     result = await question_read_service.fetch_questions(
         async_db, page=1, size=20, filters=QuestionFilters(keyword="運動量")
@@ -91,8 +111,8 @@ async def test_fetch_questions_filters_by_keyword(db, async_db):
 
 @pytest.mark.anyio
 async def test_fetch_questions_excludes_status(db, async_db):
-    _create(db, "質問A", "回答A")
-    rejected = _create(db, "質問B", "回答B")
+    await _acreate(db, "質問A", "回答A")
+    rejected = await _acreate(db, "質問B", "回答B")
     admin = await async_create_user(
         db, "excl-reviewer@example.com", "reviewerpass123", role="admin"
     )
@@ -117,7 +137,7 @@ async def test_fetch_questions_excludes_status(db, async_db):
 
 @pytest.mark.anyio
 async def test_fetch_question_found(db, async_db):
-    created = _create(db)
+    created = await _acreate(db)
 
     found = (await question_read_service.fetch_question(async_db, created.id))[0]
 
@@ -149,10 +169,10 @@ def test_create_question_defaults_to_approved_and_manual(db):
 
 @pytest.mark.anyio
 async def test_create_question_duplicate_rejected(db, async_db):
-    _create(db, "重複質問", "重複回答1")
+    await _acreate(db, "重複質問", "重複回答1")
 
     with pytest.raises(DuplicateQuestionError):
-        _create(db, "重複質問", "重複回答2")
+        await _acreate(db, "重複質問", "重複回答2")
 
     result = await question_read_service.fetch_questions(async_db, page=1, size=20)
     assert result.total == 1
@@ -170,7 +190,7 @@ def test_create_question_concept_extraction_failure_is_non_fatal(db, monkeypatch
     def _raise(question, answer, language="ja"):
         raise ConceptExtractionError("boom")
 
-    monkeypatch.setattr(concept_service, "extract_concept_names", _raise)
+    patch_extract_concept_names(monkeypatch, _raise)
 
     created = _create(db)
 
@@ -215,7 +235,7 @@ async def test_import_questions_duplicate_within_batch_rejected(db, async_db):
 
 @pytest.mark.anyio
 async def test_import_questions_duplicate_against_existing_rejected(db, async_db):
-    _create(db, "既存質問", "既存回答")
+    await _acreate(db, "既存質問", "既存回答")
 
     with pytest.raises(DuplicateQuestionError):
         question_write_service.import_questions_from_jsonl(
@@ -231,7 +251,7 @@ async def test_import_questions_duplicate_against_existing_rejected(db, async_db
 
 @pytest.mark.anyio
 async def test_delete_question_existing_returns_true(db, async_db):
-    created = _create(db)
+    created = await _acreate(db)
 
     # Read before the delete: the row is gone afterwards.
     created_id = created.id
@@ -251,25 +271,30 @@ async def test_delete_question_not_found_returns_false(db, async_db):
     assert result is False
 
 
-def test_update_question_existing(db):
-    created = _create(db, "更新前質問", "更新前回答")
+@pytest.mark.anyio
+async def test_update_question_existing(db, async_db):
+    created = await _acreate(db, "更新前質問", "更新前回答")
 
-    updated = question_write_service.update_question(
-        db,
+    updated = await question_write_service.update_question(
+        async_db,
         created.id,
         QuestionUpdate(question="更新後質問", answer="更新後回答"),
     )
+
+    db.expire_all()
 
     assert updated is not None
     assert updated.question == "更新後質問"
 
 
-def test_update_question_not_found_returns_none(db):
-    updated = question_write_service.update_question(
-        db,
+@pytest.mark.anyio
+async def test_update_question_not_found_returns_none(db, async_db):
+    updated = await question_write_service.update_question(
+        async_db,
         99999,
         QuestionUpdate(question="更新後質問", answer="更新後回答"),
     )
+    db.expire_all()
 
     assert updated is None
 
@@ -284,7 +309,7 @@ async def test_create_question_rolls_back_on_embedding_failure(
     patch_create_embeddings(monkeypatch, _raise)
 
     with pytest.raises(EmbeddingGenerationError):
-        _create(db)
+        await _acreate(db)
 
     assert (
         await question_read_service.fetch_questions(async_db, page=1, size=20)
@@ -299,14 +324,17 @@ def test_create_question_creates_question_and_answer_embeddings(db):
     assert {e.type for e in embeddings} == {"question", "answer"}
 
 
-def test_update_question_replaces_embeddings(db):
-    created = _create(db, "更新前質問", "更新前回答")
+@pytest.mark.anyio
+async def test_update_question_replaces_embeddings(db, async_db):
+    created = await _acreate(db, "更新前質問", "更新前回答")
 
-    question_write_service.update_question(
-        db,
+    await question_write_service.update_question(
+        async_db,
         created.id,
         QuestionUpdate(question="更新後質問", answer="更新後回答"),
     )
+
+    db.expire_all()
 
     embeddings = _embeddings_for(db, created.id)
 
@@ -318,7 +346,7 @@ def test_update_question_replaces_embeddings(db):
 async def test_update_question_rolls_back_on_embedding_failure(
     db, async_db, monkeypatch
 ):
-    created = _create(db, "更新前質問", "更新前回答")
+    created = await _acreate(db, "更新前質問", "更新前回答")
 
     def _raise(texts):
         raise EmbeddingGenerationError("boom")
@@ -326,8 +354,8 @@ async def test_update_question_rolls_back_on_embedding_failure(
     patch_create_embeddings(monkeypatch, _raise)
 
     with pytest.raises(EmbeddingGenerationError):
-        question_write_service.update_question(
-            db,
+        await question_write_service.update_question(
+            async_db,
             created.id,
             QuestionUpdate(question="更新後質問", answer="更新後回答"),
         )
@@ -378,7 +406,7 @@ async def test_import_questions_rolls_back_on_embedding_failure(
 
 @pytest.mark.anyio
 async def test_delete_question_cascades_to_embeddings(db, async_db):
-    created = _create(db)
+    created = await _acreate(db)
 
     # Read before the delete: the row is gone afterwards.
     created_id = created.id
@@ -391,7 +419,7 @@ async def test_delete_question_cascades_to_embeddings(db, async_db):
 
 @pytest.mark.anyio
 async def test_review_question_approve(db, async_db):
-    created = question_write_service.create_question(
+    created = await _acreate_row(
         db,
         QuestionCreate(question="レビュー対象", answer="レビュー回答"),
         status=QuestionStatus.UNREVIEWED,
@@ -421,7 +449,7 @@ async def test_review_question_approve(db, async_db):
 
 @pytest.mark.anyio
 async def test_review_question_reject(db, async_db):
-    created = _create(db)
+    created = await _acreate(db)
     admin = await async_create_user(
         db, "reviewer2@example.com", "reviewerpass123", role="admin"
     )
@@ -440,7 +468,7 @@ async def test_review_question_reject(db, async_db):
 
 @pytest.mark.anyio
 async def test_review_question_edit_approve_reembeds_and_records_diff(db, async_db):
-    created = question_write_service.create_question(
+    created = await _acreate_row(
         db,
         QuestionCreate(question="編集前", answer="編集前回答"),
         status=QuestionStatus.UNREVIEWED,
@@ -475,7 +503,7 @@ async def test_review_question_edit_approve_reembeds_and_records_diff(db, async_
 @pytest.mark.anyio
 async def test_edit_approve_embedding_failure_writes_nothing(db, async_db, monkeypatch):
     """The AI phase works on a draft, so a failure leaves no trace ([85])."""
-    created = question_write_service.create_question(
+    created = await _acreate_row(
         db,
         QuestionCreate(question="元の質問", answer="元の回答"),
         status=QuestionStatus.UNREVIEWED,
@@ -540,7 +568,7 @@ def test_create_question_unreviewed_skips_concept_extraction(db, monkeypatch):
     calls = []
     _spy_extract_concept_names(monkeypatch, calls)
 
-    created = question_write_service.create_question(
+    created = _create_row(
         db,
         QuestionCreate(question="質問", answer="回答"),
         status=QuestionStatus.UNREVIEWED,
@@ -601,7 +629,7 @@ def test_import_questions_approved_extracts_concepts(db, monkeypatch):
 
 @pytest.mark.anyio
 async def test_review_question_approve_extracts_concepts(db, async_db, monkeypatch):
-    created = question_write_service.create_question(
+    created = await _acreate_row(
         db,
         QuestionCreate(question="レビュー対象", answer="レビュー回答"),
         status=QuestionStatus.UNREVIEWED,
@@ -631,7 +659,7 @@ async def test_review_question_approve_extracts_concepts(db, async_db, monkeypat
 async def test_review_question_reject_does_not_extract_concepts(
     db, async_db, monkeypatch
 ):
-    created = _create(db)
+    created = await _acreate(db)
     admin = await async_create_user(
         db, "extract-reject@example.com", "reviewerpass123", role="admin"
     )
@@ -655,7 +683,7 @@ async def test_review_question_reject_does_not_extract_concepts(
 async def test_review_question_edit_approve_extracts_from_updated_content(
     db, async_db, monkeypatch
 ):
-    created = question_write_service.create_question(
+    created = await _acreate_row(
         db,
         QuestionCreate(question="編集前", answer="編集前回答"),
         status=QuestionStatus.UNREVIEWED,
@@ -684,7 +712,7 @@ async def test_review_question_edit_approve_extracts_from_updated_content(
 
 @pytest.mark.anyio
 async def test_fetch_questions_includes_concepts(db, async_db):
-    created = _create(db)
+    created = await _acreate(db)
 
     result = await question_read_service.fetch_questions(async_db, page=1, size=20)
 
@@ -694,7 +722,7 @@ async def test_fetch_questions_includes_concepts(db, async_db):
 
 @pytest.mark.anyio
 async def test_fetch_question_includes_concepts(db, async_db):
-    created = _create(db)
+    created = await _acreate(db)
 
     found = (await question_read_service.fetch_question(async_db, created.id))[0]
 
@@ -729,7 +757,7 @@ async def test_save_ai_question_does_not_extract_concepts(db, async_db, monkeypa
 
 @pytest.mark.anyio
 async def test_save_ai_question_duplicate_returns_none(db, async_db):
-    _create(db, "既にある質問", "既にある回答")
+    await _acreate(db, "既にある質問", "既にある回答")
     db.commit()
 
     saved = await question_write_service.async_save_ai_question(
@@ -760,8 +788,8 @@ async def test_save_ai_question_embedding_failure_returns_none(
 
 @pytest.mark.anyio
 async def test_bulk_delete_questions(db, async_db):
-    q1 = _create(db, "質問1", "回答1")
-    q2 = _create(db, "質問2", "回答2")
+    q1 = await _acreate(db, "質問1", "回答1")
+    q2 = await _acreate(db, "質問2", "回答2")
 
     deleted_count, not_found_ids = await question_write_service.bulk_delete_questions(
         async_db, [q1.id, q2.id, 99999]
@@ -778,13 +806,13 @@ async def test_bulk_delete_questions(db, async_db):
 
 @pytest.mark.anyio
 async def test_bulk_review_questions_approve(db, async_db):
-    q1 = question_write_service.create_question(
+    q1 = await _acreate_row(
         db,
         QuestionCreate(question="質問1", answer="回答1"),
         status=QuestionStatus.UNREVIEWED,
         source=QuestionSource.AI_GENERATED,
     )
-    q2 = question_write_service.create_question(
+    q2 = await _acreate_row(
         db,
         QuestionCreate(question="質問2", answer="回答2"),
         status=QuestionStatus.UNREVIEWED,
@@ -810,7 +838,7 @@ async def test_bulk_review_questions_approve(db, async_db):
 
 @pytest.mark.anyio
 async def test_bulk_review_questions_reject(db, async_db):
-    q1 = _create(db, "質問1", "回答1")
+    q1 = await _acreate(db, "質問1", "回答1")
     admin = await async_create_user(
         db, "bulk-reject@example.com", "reviewerpass123", role="admin"
     )
@@ -832,7 +860,7 @@ async def test_bulk_review_questions_reject(db, async_db):
 async def test_reextract_concepts_for_questions_replaces_existing_links(
     db, async_db, monkeypatch
 ):
-    created = _create(db)
+    created = await _acreate(db)
     assert question_concept_repository.get_concepts_for_question(db, created.id) != []
 
     patch_extract_concept_names(
@@ -865,8 +893,8 @@ async def test_reextract_concepts_for_questions_not_found(async_db):
 async def test_reextract_concepts_for_questions_partial_failure_continues(
     db, async_db, monkeypatch
 ):
-    q1 = _create(db, "質問1", "回答1")
-    q2 = _create(db, "質問2", "回答2")
+    q1 = await _acreate(db, "質問1", "回答1")
+    q2 = await _acreate(db, "質問2", "回答2")
 
     def _fake(question, answer, language="ja"):
         if question == "質問1":

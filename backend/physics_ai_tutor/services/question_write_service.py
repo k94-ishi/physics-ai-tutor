@@ -1,6 +1,7 @@
 """Write use cases: create, import, update, delete, save AI answers, concepts."""
 
 import logging
+from dataclasses import dataclass, field
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -29,12 +30,17 @@ from physics_ai_tutor.services import (
     embedding_service,
 )
 from physics_ai_tutor.services.question_presentation_service import (
+    async_prepare_for_response,
     prepare_for_response,
 )
 from physics_ai_tutor.services.question_translation_service import (
+    PreparedTranslation,
+    async_apply_translation,
+    async_prepare_refresh,
+    async_prepare_translation,
     async_write_embeddings,
+    draft_of,
     embed_language,
-    refresh_machine_translations,
     translate_missing,
 )
 
@@ -64,45 +70,99 @@ def attach_concepts_best_effort(db: Session, question: Question) -> None:
         )
 
 
-def _check_duplicates(db: Session, texts: dict[Language, tuple[str, str]]) -> None:
+async def _check_duplicates(
+    db: AsyncSession, texts: dict[Language, tuple[str, str]]
+) -> None:
     for lang, (q, _) in texts.items():
-        if question_repository.get_by_exact_text(db, q, language=lang) is not None:
+        if await question_repository.async_get_by_exact_text(db, q, language=lang):
             raise DuplicateQuestionError(
                 f"A question with identical text already exists: {q}"
             )
 
 
-def create_question(
-    db: Session,
+@dataclass
+class _PreparedCreate:
+    """The AI results for a new row, computed before anything is written."""
+
+    vectors: dict[Language, tuple[list[float], list[float]]]
+    translations: dict[Language, PreparedTranslation] = field(default_factory=dict)
+    concept_names: list[str] | None = None
+    concept_plans: list[concept_service.PlannedSense] = field(default_factory=list)
+
+
+async def _prepare_create(
+    db: AsyncSession, draft: Question, approved: bool
+) -> _PreparedCreate:
+    """Embeddings, concepts and translations, with no transaction open ([82])."""
+    vectors = {}
+    for lang in Language:
+        text = draft.text(lang)
+        if text is not None:
+            # An embedding failure aborts the create, as it always has.
+            q_vec, a_vec = await embedding_service.async_create_embeddings(list(text))
+            vectors[lang] = (q_vec, a_vec)
+    prepared = _PreparedCreate(vectors=vectors)
+    if approved:
+        await _prepare_concepts(db, draft, prepared)
+    for lang in Language:
+        if not draft.has(lang):
+            translation = await async_prepare_translation(draft, lang)
+            if translation is not None:
+                prepared.translations[lang] = translation
+    return prepared
+
+
+async def _prepare_concepts(
+    db: AsyncSession, draft: Question, prepared: _PreparedCreate
+) -> None:
+    language = draft.original_language
+    try:
+        names = await concept_service.async_extract_concept_names(
+            *draft.original_text(), language=language
+        )
+    except ConceptExtractionError:
+        logger.warning("Concept extraction failed; question saved without concepts")
+        return
+    prepared.concept_names = names
+    prepared.concept_plans = await concept_service.async_prepare_concepts(
+        db, names, language
+    )
+
+
+async def create_question(
+    db: AsyncSession,
     question: QuestionCreate,
     status: str = QuestionStatus.APPROVED,
     source: str = QuestionSource.MANUAL,
     language: Language | str = Language.JA,
 ):
+    """Read, prepare with no transaction, then one short write ([93])."""
     texts = question.texts()
-    _check_duplicates(db, texts)
+    async with async_transaction(db, "create_question_read"):
+        await _check_duplicates(db, texts)
 
-    with transaction(db, "create_question"):
-        db_question = question_repository.create_question(
-            db,
-            texts=texts,
-            original_language=question.original_language(),
-            status=status,
-            source=source,
-        )
+    draft = question_repository.build_question(
+        texts, question.original_language(), status, source
+    )
+    prepared = await _prepare_create(db, draft, status == QuestionStatus.APPROVED)
 
-        for lang in texts:
-            embed_language(db, db_question, lang)
+    async with async_transaction(db, "create_question"):
+        db.add(draft)
+        await db.flush()
+        for lang, (q_vec, a_vec) in prepared.vectors.items():
+            await async_write_embeddings(db, draft.id, lang, q_vec, a_vec)
+        for target, translation in prepared.translations.items():
+            await async_apply_translation(db, draft, target, translation)
+        if prepared.concept_names is not None:
+            await concept_service.async_apply_concepts(
+                db, draft.id, prepared.concept_plans
+            )
+            concept_service.apply_levels_to_question(draft, prepared.concept_names)
+        await async_prepare_for_response(db, [draft], language)
 
-        if status == QuestionStatus.APPROVED:
-            attach_concepts_best_effort(db, db_question)
+    logger.info("Question created: id=%d", draft.id)
 
-        translate_missing(db, db_question)
-        prepare_for_response(db, [db_question], language)
-
-    logger.info("Question created: id=%d", db_question.id)
-
-    return db_question
+    return draft
 
 
 def _find_duplicate_texts(db: Session, rows: list[QuestionCreate]) -> list[str]:
@@ -169,39 +229,51 @@ async def delete_question(db: AsyncSession, question_id: int) -> bool:
     return result
 
 
-def update_question(
-    db: Session,
+def _edit_provenance(question: Question, lang: Language) -> str:
+    return (
+        TextProvenance.ORIGINAL
+        if lang == question.original_language
+        else TextProvenance.HUMAN
+    )
+
+
+async def update_question(
+    db: AsyncSession,
     question_id: int,
     question_data: QuestionUpdate,
     language: Language | str = Language.JA,
 ):
-    with transaction(db, "update_question"):
-        question = question_repository.get_question(db, question_id)
+    """Read, prepare on a draft with no transaction, then one short write ([93])."""
+    async with async_transaction(db, "update_question_read"):
+        question = await question_repository.async_get_question(db, question_id)
+    if question is None:
+        return None
 
-        if question is None:
-            return None
+    edited = question_data.texts()
+    draft = draft_of(question)
+    vectors = {}
+    for lang, (q, a) in edited.items():
+        draft.set_text(lang, q, a, _edit_provenance(draft, lang))
+        # An embedding failure aborts the update, as it always has.
+        vectors[lang] = await embedding_service.async_create_embeddings([q, a])
+    # A single-language edit refreshes machine-made counterparts.
+    translations = (
+        await async_prepare_refresh(draft, next(iter(edited)))
+        if len(edited) == 1
+        else {}
+    )
 
+    async with async_transaction(db, "update_question"):
         # The teacher's word on difficulty beats the LLM's advisory rating.
-        for field, value in question_data.levels().items():
-            setattr(question, field, value)
-
-        edited = question_data.texts()
-
+        for field_name, value in question_data.levels().items():
+            setattr(question, field_name, value)
         for lang, (q, a) in edited.items():
-            provenance = (
-                TextProvenance.ORIGINAL
-                if lang == question.original_language
-                else TextProvenance.HUMAN
-            )
-            question.set_text(lang, q, a, provenance)
-            db.flush()
-            embed_language(db, question, lang)
-
-        # A single-language edit refreshes machine-made counterparts.
-        if len(edited) == 1:
-            refresh_machine_translations(db, question, next(iter(edited)))
-
-        prepare_for_response(db, [question], language)
+            question.set_text(lang, q, a, _edit_provenance(question, lang))
+            await db.flush()
+            await async_write_embeddings(db, question.id, lang, *vectors[lang])
+        for target, translation in translations.items():
+            await async_apply_translation(db, question, target, translation)
+        await async_prepare_for_response(db, [question], language)
 
     logger.info("Question updated: id=%d", question_id)
 

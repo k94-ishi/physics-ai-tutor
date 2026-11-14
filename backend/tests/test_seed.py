@@ -2,7 +2,7 @@
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 from physics_ai_tutor.cli import export_seed, export_seed_embeddings
 from physics_ai_tutor.core.config import settings
@@ -27,11 +27,6 @@ def seeded():
     """Seed once for the module; every test below only reads."""
     reset_database()
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(
-            seed_module,
-            "SessionLocal",
-            sessionmaker(bind=engine, expire_on_commit=False),
-        )
         # The real create_embeddings serves the stored vectors; any request
         # that would reach OpenAI, and every DeepSeek entry point, fails.
         patch.setattr(
@@ -43,7 +38,6 @@ def seeded():
         # guard on the sync side alone would pass without guarding.
         patch.setattr(embedding_service, "_request_embeddings", _forbidden)
         patch.setattr(embedding_service, "_async_request_embeddings", _forbidden)
-        patch.setattr(concept_service, "extract_concept_names", _forbidden)
         patch.setattr(concept_service, "async_extract_concept_names", _forbidden)
         patch.setattr(translation_service, "translate_qa", _forbidden)
         patch.setattr(translation_service, "async_translate_qa", _forbidden)

@@ -1,10 +1,18 @@
+import asyncio
+
 from physics_ai_tutor.core import prompts
 from physics_ai_tutor.core.prompt_library import load_library
 from physics_ai_tutor.services import concept_service
+from tests.conftest import patch_chat_completion
 
 # Captured at import time, before conftest's autouse fixture replaces the
 # module attribute with a canned mock for the API tests.
-_real_extract_concept_names = concept_service.extract_concept_names
+_real_async_extract = concept_service.async_extract_concept_names
+
+
+def _real_extract_concept_names(*args, **kwargs):
+    return asyncio.run(_real_async_extract(*args, **kwargs))
+
 
 # One entry per prompt family: (version, fingerprint of every text in the
 # family). When this test fails, some prompt text changed: bump the family's
@@ -64,9 +72,7 @@ def test_concept_extraction_example_matches_the_rows_language(monkeypatch):
         captured["user"] = user_prompt
         return "加速度 | acceleration"
 
-    monkeypatch.setattr(
-        "physics_ai_tutor.services.deepseek_service.chat_completion", _fake
-    )
+    patch_chat_completion(monkeypatch, _fake)
 
     _real_extract_concept_names("加速度って何?", "回答", language="ja")
     assert "加速度って何?" in captured["user"]

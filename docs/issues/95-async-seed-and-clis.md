@@ -1,5 +1,5 @@
 ---
-title: "[95] Seed and translation CLIs on the async services; delete the sync translation half"
+title: "[95] Seed tags step on the async services; delete the sync tag-extraction path"
 labels: [backend, async, refactor]
 milestone: M1 Student value
 priority: P2
@@ -32,7 +32,7 @@ One small slice of [73]: scripts. No behaviour change.
 
 ## Acceptance criteria
 
-- [ ] Offline seed still makes zero OpenAI/DeepSeek calls (`test_seed.py`); `test_cli.py` green.
+- [x] Offline seed still makes zero OpenAI/DeepSeek calls (`test_seed.py`); `test_cli.py` green.
 
 ## Dependencies
 
@@ -50,5 +50,39 @@ One small slice of [73]: scripts. No behaviour change.
 
 ## Definition of done
 
-- [ ] Backend: `pytest`, `ruff check`, `mypy` pass
-- [ ] Log entry in this file; `status.md`, [67] and [73] updated
+- [x] Backend: `pytest`, `ruff check`, `mypy` pass
+- [x] Log entry in this file; `status.md`, [67] and [73] updated
+
+### 2026-11-14 — narrowed and done
+
+**Split on the owner's invitation.** The remaining work was two
+independent halves of about [94]'s size each, so this issue keeps the
+seed and the tag path, and the `translate_missing` CLI with the sync
+translation half moved to [102]. The two re-extract CLIs already run
+their AI work async ([91]); their remaining sync bits are read queries
+on the CLI's own session, which go with the sync engine in [88].
+
+615 tests pass; ruff and mypy clean; frontend untouched. 4 production
+files, 6 test files; 268 lines removed, 117 added.
+
+- **Seed:** import, tag attachment and stored values run in one async
+  session (`seed._seed`): stored tags (or extracted ones for an entry
+  without) are planned with `async_prepare_concepts_many`, one index for
+  every row as in import, then written in one transaction with the
+  stored levels and provenance. The seed opens no sync session any
+  more.
+- **Deleted, no callers left:** `concept_service.extract_concept_names`,
+  `attach_concepts_to_question`, `_resolve_sense`, `_new_sense`, the
+  dead `translate_missing_name` and `_name_translation_plan`;
+  `concept_sense_service.add_term`;
+  `question_write_service.extract_concepts_best_effort` and
+  `attach_concepts_best_effort`. Concept extraction and matching now
+  exist once, async.
+- **Added:** `concept_service.async_attach_concepts` (plan, then one
+  short write) for single-question callers.
+- **Tests:** `conftest.attach_concepts` is a sync bridge for the many
+  sync tests that tag rows (as `create_user` is);
+  `patch_extract_concept_names` patches the async seam only, since the
+  sync one is gone. The prompt and extractor tests drive the real async
+  extractor with the chat seam patched. The seed test's guard on the
+  deleted sync seam is gone; the async seams stay forbidden.

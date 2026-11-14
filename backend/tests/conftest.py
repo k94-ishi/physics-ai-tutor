@@ -265,13 +265,30 @@ def _mock_extract_concept_names(monkeypatch):
 
 
 def patch_extract_concept_names(monkeypatch, extract) -> None:
-    """As `patch_generation`, for the concept-extraction seam ([91])."""
-    monkeypatch.setattr(concept_service, "extract_concept_names", extract)
+    """A plain stub on the concept-extraction seam; async only since [95]."""
 
     async def _async_extract(*args, **kwargs):
         return extract(*args, **kwargs)
 
     monkeypatch.setattr(concept_service, "async_extract_concept_names", _async_extract)
+
+
+def attach_concepts(db, question_id: int, names: list[str], language: str = "ja"):
+    """Attach concepts from a sync test through the async service ([95]).
+
+    Like `create_user`, a bridge for the many sync tests; the concepts are
+    returned loaded into the caller's session.
+    """
+    from physics_ai_tutor.models import Concept
+
+    async def _attach():
+        async with AsyncSession(async_engine, expire_on_commit=False) as session:
+            concepts = await concept_service.async_attach_concepts(
+                session, question_id, names, language
+            )
+            return [concept.id for concept in concepts]
+
+    return [db.get(Concept, concept_id) for concept_id in asyncio.run(_attach())]
 
 
 def fake_translate(question, answer, source, target):

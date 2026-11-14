@@ -11,7 +11,6 @@ import math
 from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core.text import normalize_key
 from physics_ai_tutor.database.transaction import async_transaction
@@ -88,28 +87,6 @@ def _build_term(
         is_preferred=make_preferred,
         source=source,
     )
-
-
-def add_term(
-    db: Session,
-    concept: Concept,
-    language: str,
-    term: str,
-    source: str,
-    preferred: bool | None = None,
-) -> ConceptTerm | None:
-    """Add a word to a sense; no-op when the sense already has it.
-
-    `preferred=None` makes it preferred only when the language has none yet.
-    """
-    new = _build_term(concept, language, term, source, preferred)
-    if new is None:
-        return None
-
-    concept.terms.append(new)
-    db.flush()
-    sync_mirror(concept)
-    return new
 
 
 def add_unsaved_term(concept: Concept, language: str, term: str, source: str) -> None:

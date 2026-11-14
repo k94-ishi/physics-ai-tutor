@@ -4,7 +4,6 @@ import logging
 from dataclasses import dataclass, field
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core.exceptions import (
     ConceptExtractionError,
@@ -42,29 +41,6 @@ from physics_ai_tutor.services.question_translation_service import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def extract_concepts_best_effort(db: Session, question: Question) -> None:
-    """Public entry for callers that import rows without stored tags."""
-    attach_concepts_best_effort(db, question)
-
-
-def attach_concepts_best_effort(db: Session, question: Question) -> None:
-    text = question.original_text()
-    try:
-        names = concept_service.extract_concept_names(
-            *text, language=question.original_language
-        )
-        concept_service.attach_concepts_to_question(
-            db, question.id, names, language=question.original_language
-        )
-        concept_service.apply_levels_to_question(question, names)
-    except ConceptExtractionError:
-        logger.warning(
-            "Concept extraction failed; question saved without concepts: "
-            "question_id=%d",
-            question.id,
-        )
 
 
 async def _check_duplicates(

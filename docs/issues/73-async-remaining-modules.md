@@ -46,7 +46,8 @@ traffic first, then by which sync functions can be deleted soonest.
 | 9 | [86] | Asynchronize delete and bulk delete | done 2026-11-14 |
 | 10 | [93] | Asynchronize create and update (prepare/apply) | done 2026-11-14 |
 | 11 | [94] | Asynchronize JSONL import | done 2026-11-14 |
-| 12 | [95] | Seed and translation CLIs on the async services; delete the sync translation half | open |
+| 12 | [95] | Seed tags step on the async services; delete the sync tag-extraction path | done 2026-11-14 |
+| 12a | [102] | translate_missing CLI on the async service; delete the sync translation half | open |
 | 13 | [87] | Asynchronize the usage dashboard and the agreement report | open |
 | 14 | [96] | Asynchronize the review dataset export | open |
 | 15 | [97] | Asynchronize AI review runs; one ai_review_service | open |

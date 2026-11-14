@@ -16,10 +16,11 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from physics_ai_tutor.core.config import settings
+from physics_ai_tutor.core.exceptions import ConceptExtractionError
 from physics_ai_tutor.database import seed_embeddings
 from physics_ai_tutor.database import seed_file as seed_file_module
-from physics_ai_tutor.database.database import AsyncSessionLocal, SessionLocal
-from physics_ai_tutor.database.transaction import transaction
+from physics_ai_tutor.database.database import AsyncSessionLocal
+from physics_ai_tutor.database.transaction import async_transaction
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.schemas.language import TextProvenance
 from physics_ai_tutor.schemas.question import (
@@ -65,16 +66,8 @@ def load_seed_file(
     return rows
 
 
-def apply_seed_extras(db, question: Question, extras: SeedExtras) -> None:
-    """Attach stored tags, then let stored values win over computed ones."""
-    if extras.tags is None:
-        question_write_service.extract_concepts_best_effort(db, question)
-    else:
-        concept_service.attach_concepts_to_question(
-            db, question.id, extras.tags, language=question.original_language
-        )
-
-    # After extraction, which writes levels of its own.
+def apply_stored_values(question: Question, extras: SeedExtras) -> None:
+    """Stored levels and provenance win over computed ones."""
     if extras.physics_level is not None:
         question.physics_level = extras.physics_level
     if extras.math_level is not None:
@@ -85,17 +78,53 @@ def apply_seed_extras(db, question: Question, extras: SeedExtras) -> None:
         question.en_provenance = extras.en_provenance
 
 
-async def _import(rows: list[QuestionCreate]) -> list[int]:
-    """Import is async since [94]; the seed drives it with its own session."""
+async def _tag_names(question: Question, extras: SeedExtras) -> list[str] | None:
+    """Stored tags, or extracted ones for an entry without (DeepSeek)."""
+    if extras.tags is not None:
+        return extras.tags
+    try:
+        return await concept_service.async_extract_concept_names(
+            *question.original_text(), language=question.original_language
+        )
+    except ConceptExtractionError:
+        return None
+
+
+async def _seed(rows: list[tuple[QuestionCreate, SeedExtras]]) -> None:
+    """Import, then tags and stored values; one session, no AI call in a write."""
     async with AsyncSessionLocal() as session:
         questions = await question_write_service.import_questions_from_jsonl(
             session,
-            rows,
+            [question for question, _ in rows],
             status=QuestionStatus.APPROVED,
             source=QuestionSource.MANUAL,
             extract_concepts=False,
         )
-        return [question.id for question in questions]
+        extras = [extra for _, extra in rows]
+        names = [
+            await _tag_names(question, extra)
+            for question, extra in zip(questions, extras, strict=True)
+        ]
+        # One index for every row, as in import: a shared tag is made once.
+        plans = await concept_service.async_prepare_concepts_many(
+            session,
+            [
+                (row_names or [], question.original_language)
+                for row_names, question in zip(names, questions, strict=True)
+            ],
+        )
+        async with async_transaction(session, "seed_extras"):
+            for question, extra, row_names, plan in zip(
+                questions, extras, names, plans, strict=True
+            ):
+                if row_names is not None:
+                    await concept_service.async_apply_concepts(
+                        session, question.id, plan
+                    )
+                    if extra.tags is None:
+                        concept_service.apply_levels_to_question(question, row_names)
+                # After extraction, which writes levels of its own.
+                apply_stored_values(question, extra)
 
 
 def seed():
@@ -104,16 +133,9 @@ def seed():
     embedding_service.preload(
         seed_embeddings.read(seed_embeddings.EMBEDDINGS_FILE, settings.embedding_model)
     )
-    db = SessionLocal()
-
     try:
-        ids = asyncio.run(_import([question for question, _ in rows]))
-        questions = [db.get(Question, question_id) for question_id in ids]
-        with transaction(db, "seed_extras"):
-            for question, (_, extras) in zip(questions, rows, strict=True):
-                apply_seed_extras(db, question, extras)
+        asyncio.run(_seed(rows))
     finally:
-        db.close()
         embedding_service.clear_preloaded()
 
 

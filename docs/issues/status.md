@@ -115,13 +115,14 @@ including all discussion comments; browse it with `git bug bug` /
 | 92 | closed | 92-async-translate-route.md | Asynchronize the fill-translations route (POST /questions/translate) | — (file-era issue) |
 | 93 | closed | 93-async-create-update.md | Asynchronize create and update (prepare/apply) | — (file-era issue) |
 | 94 | closed | 94-async-import.md | Asynchronize JSONL import | — (file-era issue) |
-| 95 | open | 95-async-seed-and-clis.md | Seed and translation CLIs on the async services; delete the sync translation half | — (file-era issue) |
+| 95 | closed | 95-async-seed-and-clis.md | Seed tags step on the async services; delete the sync tag-extraction path | — (file-era issue) |
 | 96 | open | 96-async-review-export.md | Asynchronize the review dataset export | — (file-era issue) |
 | 97 | open | 97-async-ai-review-runs.md | Asynchronize AI review runs; one ai_review_service | — (file-era issue) |
 | 98 | open | 98-async-rename-pass.md | Rename pass: drop the async_ prefixes | — (file-era issue) |
 | 99 | open | 99-async-end-state-and-docs.md | Async end state: architecture test, docs, connection budget (closes [73]) | — (file-era issue) |
 | 100 | open | 100-reuse-sense-embeddings.md | Reuse sense embeddings instead of re-embedding every candidate on each extraction | — (file-era issue) |
 | 101 | closed | 101-seed-as-one-jsonl-file.md | Seed data as one JSONL file; seed.json removed | — (file-era issue) |
+| 102 | open | 102-async-translate-missing-cli.md | translate_missing CLI on the async service; delete the sync translation half | — (file-era issue) |
 
 ## Notes on the archive column
 

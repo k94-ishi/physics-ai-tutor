@@ -3,14 +3,13 @@ import re
 from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core import prompts
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.exceptions import ConceptExtractionError, TranslationError
 from physics_ai_tutor.core.prompt_library import load_library
 from physics_ai_tutor.core.text import concept_pair_text, normalize_key
-from physics_ai_tutor.database.transaction import async_transaction, transaction
+from physics_ai_tutor.database.transaction import async_transaction
 from physics_ai_tutor.models import Concept
 from physics_ai_tutor.repositories import (
     concept_repository,
@@ -134,16 +133,6 @@ def _user_prompt(question: str, answer: str, language: str) -> str:
     )
 
 
-def extract_concept_names(
-    question: str, answer: str, language: str = "ja"
-) -> list[str]:
-    """Return raw '<ja> | <en>' lines from the model (parsed later)."""
-    content = deepseek_service.chat_completion(
-        _SYSTEM_PROMPT, _user_prompt(question, answer, language)
-    )
-    return _extracted_lines(content)
-
-
 async def async_extract_concept_names(
     question: str, answer: str, language: str = "ja"
 ) -> list[str]:
@@ -219,24 +208,6 @@ def _pair_texts(name: ConceptName, pool: list[Concept]) -> list[str]:
     return [concept_pair_text(name.ja, name.en), *(_sense_pair_text(c) for c in pool)]
 
 
-def _resolve_sense(
-    index: SenseIndex, name: ConceptName
-) -> tuple[Concept | None, list[float] | None]:
-    """The existing sense this pair means, or None (+ its embedding if computed).
-
-    Both words known on one sense -> that sense. A sense sharing only one
-    word is a synonym or a homonym (速度 = velocity / speed, 位相 = phase /
-    topology): decided by embedding similarity of the two pairs ([55]).
-    """
-    full, pool = _candidates(index, name, set())
-    if not pool:
-        return None, None
-    if len(full) == 1:
-        return full[0], None
-    vectors = embedding_service.create_embeddings(_pair_texts(name, pool))
-    return _choose(name, full, pool, vectors)
-
-
 async def _async_resolve_sense(
     index: SenseIndex, name: ConceptName, pending: Pending
 ) -> tuple[Concept | None, list[float] | None]:
@@ -272,62 +243,6 @@ def _choose(
         best_score,
     )
     return None, mine
-
-
-def _new_sense(
-    name: ConceptName, embedding: list[float] | None, db: Session
-) -> Concept:
-    """Create a sense with its words in one insert (no follow-up UPDATE)."""
-    if embedding is None:
-        embedding = embedding_service.create_embeddings(
-            [concept_pair_text(name.ja, name.en)]
-        )[0]
-    return concept_repository.create(
-        db,
-        embedding=embedding,
-        extraction_model=settings.deepseek_chat_model,
-        embedding_model=settings.embedding_model,
-        extraction_prompt_version=CONCEPT_EXTRACTION_PROMPT_VERSION,
-        name_ja=name.ja,
-        name_en=name.en,
-    )
-
-
-def attach_concepts_to_question(
-    db: Session,
-    question_id: int,
-    concept_names: list[str],
-    language: str = "ja",
-) -> list[Concept]:
-    """Resolve each `<ja> | <en>` line to a sense and link it to the question.
-
-    All words of the question are looked up at once and the links are
-    written together, so the cost per question is a handful of queries
-    rather than several per concept ([66]).
-    """
-    names = _parse_names(concept_names, language)
-    index = concept_term_repository.senses_by_words(db, _all_keys(names))
-    concepts: list[Concept] = []
-    for name in names:
-        concept, embedding = _resolve_sense(index, name)
-        if concept is None:
-            concept = _new_sense(name, embedding, db)
-            # Later pairs of this question may share a word with it.
-            for key in _word_keys(name):
-                index.setdefault(key, []).append(concept)
-        else:
-            # New words of a known sense become aliases.
-            for lang, word in _sides(name):
-                concept_sense_service.add_term(
-                    db, concept, lang, word, concept_sense_service.TermSource.EXTRACTED
-                )
-        if concept not in concepts:
-            concepts.append(concept)
-
-    question_concept_repository.link_many(
-        db, question_id, [concept.id for concept in concepts]
-    )
-    return concepts
 
 
 def _parse_names(concept_names: list[str], language: str) -> list[ConceptName]:
@@ -431,6 +346,15 @@ async def _async_build_sense(
     )
 
 
+async def async_attach_concepts(
+    db: AsyncSession, question_id: int, concept_names: list[str], language: str = "ja"
+) -> list[Concept]:
+    """Prepare and apply for one question: plan, then one short write ([95])."""
+    plans = await async_prepare_concepts(db, concept_names, language)
+    async with async_transaction(db, "attach_concepts"):
+        return await async_apply_concepts(db, question_id, plans)
+
+
 async def async_apply_concepts(
     db: AsyncSession, question_id: int, plans: list[PlannedSense]
 ) -> list[Concept]:
@@ -455,41 +379,6 @@ async def async_apply_concepts(
     return concepts
 
 
-def translate_missing_name(db: Session, concept_id: int) -> bool:
-    """Add a machine term for a language the sense has no word in; commits.
-
-    Reuses `translation_service.translate_qa` with the word as the question
-    and a QA that uses it as the answer, so the translator sees the context
-    that separates 位相 (phase) from 位相 (topology). No new prompt ([53]).
-    """
-    # The reads commit before the LLM call, so no connection waits ([82]).
-    with transaction(db, "concept_name_read"):
-        plan = _name_translation_plan(db, concept_id)
-
-    if plan is None:
-        return False
-
-    concept, source, target, word, context = plan
-
-    try:
-        translated, _ = translation_service.translate_qa(
-            word, context or word, source, target
-        )
-    except TranslationError:
-        logger.warning("Concept name translation failed: concept_id=%d", concept_id)
-        return False
-
-    with transaction(db, "translate_concept_name"):
-        added = concept_sense_service.add_term(
-            db,
-            concept,
-            target.value,
-            translated,
-            concept_sense_service.TermSource.MACHINE,
-        )
-    return added is not None
-
-
 def _missing_and_present(concept: Concept) -> tuple[list[str], list[str]]:
     missing = [
         lang
@@ -498,24 +387,6 @@ def _missing_and_present(concept: Concept) -> tuple[list[str], list[str]]:
     ]
     present = [lang for lang in ("ja", "en") if lang not in missing]
     return missing, present
-
-
-def _name_translation_plan(db: Session, concept_id: int):
-    """What to translate for this sense, or None when there is nothing."""
-    concept = db.get(Concept, concept_id)
-    if concept is None:
-        return None
-
-    missing, present = _missing_and_present(concept)
-    if not missing or not present:
-        return None
-
-    source, target = Language(present[0]), Language(missing[0])
-    word = concept_sense_service.preferred_term(concept, source.value)
-    assert word is not None
-    context = question_concept_repository.context_question(db, concept_id, source.value)
-
-    return concept, source, target, word.term, context
 
 
 async def async_translate_missing_name(db: AsyncSession, concept_id: int) -> bool:

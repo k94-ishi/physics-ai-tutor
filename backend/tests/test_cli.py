@@ -17,9 +17,9 @@ def _bind_cli_sessions(monkeypatch, db):
     # CLI entry points open their own session; bind them to the test engine.
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     async_factory = async_sessionmaker(bind=async_engine, expire_on_commit=False)
-    # create_user went async in [73]; the others are still sync.
+    # create_user went async in [73] and the seed in [95].
     monkeypatch.setattr(create_user_cli, "AsyncSessionLocal", async_factory)
-    monkeypatch.setattr(seed_module, "SessionLocal", factory)
+    monkeypatch.setattr(seed_module, "AsyncSessionLocal", async_factory)
     monkeypatch.setattr(translate_cli, "SessionLocal", factory)
 
 

@@ -4,11 +4,9 @@ import pytest
 
 from physics_ai_tutor.core.text import normalize_key
 from physics_ai_tutor.models import Concept, ConceptTerm, Question, QuestionConcept
-from physics_ai_tutor.services import (
-    concept_service,
-)
 from tests.conftest import (
     async_engine,
+    attach_concepts,
     engine,
     patch_create_embeddings,
     patch_extract_concept_names,
@@ -64,9 +62,9 @@ def _question(db, text: str, status: str = "APPROVED", en: str | None = None):
 
 
 def _tag(db, question, *pairs: str) -> list[Concept]:
-    concepts = concept_service.attach_concepts_to_question(db, question.id, list(pairs))
+    # The async attach runs in its own session; it must see the row.
     db.commit()
-    return concepts
+    return attach_concepts(db, question.id, list(pairs))
 
 
 def _words(concept: Concept, language: str) -> list[tuple[str, bool]]:

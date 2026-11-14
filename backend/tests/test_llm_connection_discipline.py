@@ -298,3 +298,37 @@ async def test_create_holds_no_transaction_during_llm_calls(async_db, monkeypatc
     assert created.question_en == "[en] 新しい質問"
     assert {kind for kind, _ in seen} == {"embed", "translate", "extract"}
     assert all(open_ is False for _, open_ in seen), seen
+
+
+async def test_import_holds_no_transaction_during_llm_calls(async_db, monkeypatch):
+    """Embedding, extraction and translation of imported rows wait unheld ([94])."""
+    from physics_ai_tutor.schemas.question import QuestionCreate
+
+    seen = []
+
+    async def _embed(texts):
+        seen.append(("embed", async_db.in_transaction()))
+        return [[0.1] * 1536 for _ in texts]
+
+    async def _translate(question, answer, source, target):
+        seen.append(("translate", async_db.in_transaction()))
+        return f"[{target}] {question}", f"[{target}] {answer}"
+
+    async def _extract(question, answer, language="ja"):
+        seen.append(("extract", async_db.in_transaction()))
+        return ["概念A | concept A"]
+
+    monkeypatch.setattr(embedding_service, "async_create_embeddings", _embed)
+    monkeypatch.setattr(translation_service, "async_translate_qa", _translate)
+    monkeypatch.setattr(concept_service, "async_extract_concept_names", _extract)
+
+    created = await question_write_service.import_questions_from_jsonl(
+        async_db,
+        [QuestionCreate(question="取り込み質問", answer="取り込み回答")],
+        status=QuestionStatus.APPROVED,
+        source=QuestionSource.MANUAL,
+    )
+
+    assert created[0].question_en == "[en] 取り込み質問"
+    assert {kind for kind, _ in seen} == {"embed", "translate", "extract"}
+    assert all(open_ is False for _, open_ in seen), seen

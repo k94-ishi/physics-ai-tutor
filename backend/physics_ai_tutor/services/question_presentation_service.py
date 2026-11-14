@@ -1,14 +1,12 @@
 """Response shaping: language, concept names, references, admin extras.
 
-Each database-touching step has a sync and an async variant until [86]
-retires the admin writers' sync path; the shaping rule itself lives in
-the pure `_set_*` helpers so the two cannot drift ([83]).
+Async only since [94]; the shaping rules live in the pure `_set_*`
+helpers ([83]).
 """
 
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from physics_ai_tutor.models.ai_review import AiReview
 from physics_ai_tutor.models.question import Question
@@ -43,25 +41,6 @@ def _set_concept_names(
 ) -> None:
     for question in questions:
         question.concepts = concepts_by_id.get(question.id, [])
-
-
-def attach_concept_names(
-    db: Session,
-    questions: list[Question],
-    language: Language | str = Language.JA,
-    strict: bool = False,
-) -> None:
-    """Populate each question's transient `.concepts` (display names)."""
-    if not questions:
-        return
-
-    concepts_by_id = question_concept_repository.get_concepts_for_questions(
-        db,
-        [q.id for q in questions],
-        language=Language(language).value,
-        strict=strict,
-    )
-    _set_concept_names(questions, concepts_by_id)
 
 
 async def async_attach_concept_names(
@@ -113,23 +92,6 @@ def _set_retrieved_questions(
         ]
 
 
-def attach_retrieved_questions(
-    db: Session,
-    questions: list[Question],
-    language: Language | str = Language.JA,
-    strict: bool = False,
-) -> None:
-    """Resolve `retrieved_question_ids` to {id, question} summaries."""
-    if not questions:
-        return
-
-    all_ids = _referenced_ids(questions)
-    referenced = (
-        question_repository.get_questions_by_ids(db, list(all_ids)) if all_ids else []
-    )
-    _set_retrieved_questions(questions, referenced, language, strict)
-
-
 async def async_attach_retrieved_questions(
     db: AsyncSession,
     questions: list[Question],
@@ -157,25 +119,6 @@ def _needs_for(
     return TranslationNeeds(concept_question_ids=[q.id for q in questions])
 
 
-def prepare_for_response(
-    db: Session,
-    questions: list[Question],
-    language: Language | str | ResponseLanguage = Language.JA,
-) -> TranslationNeeds:
-    """Fill the transient response fields; report what a strict reader missed.
-
-    A plain language is the admin fallback. With a strict ResponseLanguage
-    (students), concept names and referenced questions lacking the language
-    are left out, and the presented questions are reported so their concept
-    names can be translated ([53]).
-    """
-    response = ResponseLanguage.of(language)
-    resolve_language(questions, response.language)
-    attach_concept_names(db, questions, response.language, response.strict)
-    attach_retrieved_questions(db, questions, response.language, response.strict)
-    return _needs_for(questions, response)
-
-
 async def async_prepare_for_response(
     db: AsyncSession,
     questions: list[Question],
@@ -197,14 +140,6 @@ def _set_ai_reviews(questions: list[Question], latest: dict[int, AiReview]) -> N
         question.ai_review = (
             AiReviewSummary.model_validate(row) if row is not None else None
         )
-
-
-def attach_ai_reviews(db: Session, questions: list[Question]) -> None:
-    """Expose each question's latest AI verdict; call for admins only."""
-    latest = ai_review_repository.latest_for_questions(
-        db, [question.id for question in questions]
-    )
-    _set_ai_reviews(questions, latest)
 
 
 async def async_attach_ai_reviews(db: AsyncSession, questions: list[Question]) -> None:

@@ -10,6 +10,7 @@ embedding model) is fetched from OpenAI. Entries without `tags` fall back
 to concept extraction (DeepSeek).
 """
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -17,7 +18,7 @@ from pydantic import BaseModel, Field
 
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.database import seed_embeddings
-from physics_ai_tutor.database.database import SessionLocal
+from physics_ai_tutor.database.database import AsyncSessionLocal, SessionLocal
 from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.schemas.language import TextProvenance
@@ -83,6 +84,19 @@ def apply_seed_extras(db, question: Question, extras: SeedExtras) -> None:
         question.en_provenance = extras.en_provenance
 
 
+async def _import(rows: list[QuestionCreate]) -> list[int]:
+    """Import is async since [94]; the seed drives it with its own session."""
+    async with AsyncSessionLocal() as session:
+        questions = await question_write_service.import_questions_from_jsonl(
+            session,
+            rows,
+            status=QuestionStatus.APPROVED,
+            source=QuestionSource.MANUAL,
+            extract_concepts=False,
+        )
+        return [question.id for question in questions]
+
+
 def seed():
     seed_file = Path(__file__).resolve().parent / "seed.json"
     rows = load_seed_file(seed_file)
@@ -93,13 +107,8 @@ def seed():
     db = SessionLocal()
 
     try:
-        questions = question_write_service.import_questions_from_jsonl(
-            db,
-            [question for question, _ in rows],
-            status=QuestionStatus.APPROVED,
-            source=QuestionSource.MANUAL,
-            extract_concepts=False,
-        )
+        ids = asyncio.run(_import([question for question, _ in rows]))
+        questions = [db.get(Question, question_id) for question_id in ids]
         with transaction(db, "seed_extras"):
             for question, (_, extras) in zip(questions, rows, strict=True):
                 apply_seed_extras(db, question, extras)

@@ -4,10 +4,8 @@ Split into a prepare phase and an apply phase ([82]): `prepare_*` talks
 to DeepSeek and OpenAI and takes no session, `apply_*` writes and takes
 no time. A database connection must never sit idle for the ~20 s an LLM
 call takes, so the two may only meet with the connection released in
-between - `translate_missing_languages` shows the pattern. The combined
-`translate_into` remains for callers that already own a transaction (the
-all-or-nothing import); those callers are the documented exceptions in
-`test_architecture.py`.
+between - `translate_missing_languages` shows the pattern. Since [94] no
+caller translates inside its own transaction.
 """
 
 import logging
@@ -197,61 +195,6 @@ async def async_apply_translation(
     )
 
     logger.info("Question translated: question_id=%d target=%s", question.id, target)
-
-
-def embed_language(db: Session, question: Question, language: Language) -> None:
-    """Embed one language's existing text; the caller owns the transaction.
-
-    Still used by the admin write paths, which hold their transaction
-    across this OpenAI call - the documented exceptions of [82], reworked
-    with [73]/[76].
-    """
-    text = question.text(language)
-    if text is None:
-        return
-
-    question_vec, answer_vec = embedding_service.create_embeddings(list(text))
-    write_embeddings(db, question.id, language, question_vec, answer_vec)
-
-
-def translate_into(
-    db: Session, question: Question, target: Language, source: Language | None = None
-) -> bool:
-    """Prepare and apply in one call, for a caller that owns a transaction.
-
-    Best effort; returns success. Inside the caller's transaction the
-    connection stays held across the LLM phase, which is why the
-    transaction-owning paths below use prepare/apply instead.
-    """
-    prepared = prepare_translation(question, target, source)
-    if prepared is None:
-        return False
-
-    apply_translation(db, question, target, prepared)
-    return True
-
-
-def translate_missing(db: Session, question: Question) -> list[Language]:
-    """Fill every missing language; the caller owns the transaction."""
-    filled = [
-        lang
-        for lang in Language
-        if not question.has(lang) and translate_into(db, question, lang)
-    ]
-    return filled
-
-
-def refresh_machine_translations(
-    db: Session, question: Question, edited: Language
-) -> None:
-    """After a human edit in `edited`, regenerate machine-made counterparts."""
-    for lang in Language:
-        if lang == edited:
-            continue
-        if question.provenance_of(lang) == TextProvenance.MACHINE or not question.has(
-            lang
-        ):
-            translate_into(db, question, lang, source=edited)
 
 
 def translate_missing_languages(db: Session, question_id: int) -> list[Language]:

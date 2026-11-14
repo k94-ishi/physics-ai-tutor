@@ -1,6 +1,7 @@
 """The seed rebuilds a disposable database offline, and the exports round-trip."""
 
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import Session, sessionmaker
 
 from physics_ai_tutor.cli import export_seed, export_seed_embeddings
@@ -13,7 +14,7 @@ from physics_ai_tutor.services import (
     embedding_service,
     translation_service,
 )
-from tests.conftest import engine, reset_database
+from tests.conftest import async_engine, engine, reset_database
 from tests.test_cli import _seed_file_entries
 
 
@@ -33,9 +34,19 @@ def seeded():
         )
         # The real create_embeddings serves the stored vectors; any request
         # that would reach OpenAI, and every DeepSeek entry point, fails.
+        patch.setattr(
+            seed_module,
+            "AsyncSessionLocal",
+            async_sessionmaker(bind=async_engine, expire_on_commit=False),
+        )
+        # Both sides of every seam: import is async since [94], and a
+        # guard on the sync side alone would pass without guarding.
         patch.setattr(embedding_service, "_request_embeddings", _forbidden)
+        patch.setattr(embedding_service, "_async_request_embeddings", _forbidden)
         patch.setattr(concept_service, "extract_concept_names", _forbidden)
+        patch.setattr(concept_service, "async_extract_concept_names", _forbidden)
         patch.setattr(translation_service, "translate_qa", _forbidden)
+        patch.setattr(translation_service, "async_translate_qa", _forbidden)
         seed_module.seed()
     with Session(engine) as session:
         yield session

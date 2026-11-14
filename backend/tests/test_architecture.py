@@ -221,11 +221,9 @@ LLM_CALLS = {
 
 # Sync admin-only paths that keep their transaction across an LLM call on
 # purpose, each with the issue that retires it. This list may only shrink.
-KNOWN_TRANSACTION_LLM_CALLERS = {
-    # The import is all-or-nothing by contract; splitting its transaction
-    # is the batch-embedding rework ([76]).
-    ("services/question_write_service.py", "import_questions_from_jsonl"),
-}
+# Empty since [94]: every path that held a transaction across an LLM
+# call has been split into prepare/apply. Keep it empty.
+KNOWN_TRANSACTION_LLM_CALLERS: set[tuple[str, str]] = set()
 
 
 def _llm_calls_inside_transactions(tree: ast.AST) -> dict[str, list[str]]:

@@ -198,9 +198,39 @@ def test_create_question_concept_extraction_failure_is_non_fatal(db, monkeypatch
     assert question_concept_repository.get_concepts_for_question(db, created.id) == []
 
 
-def test_import_questions_from_jsonl(db):
-    created = question_write_service.import_questions_from_jsonl(
-        db,
+@pytest.mark.anyio
+async def test_import_creates_a_new_sense_once_for_rows_sharing_it(
+    db, async_db, monkeypatch
+):
+    """Rows of one import share the concept index, as the sync code did ([94])."""
+    from physics_ai_tutor.models import Concept
+
+    patch_extract_concept_names(
+        monkeypatch, lambda question, answer, language="ja": ["新概念 | new concept"]
+    )
+
+    created = await question_write_service.import_questions_from_jsonl(
+        async_db,
+        [
+            QuestionCreate(question="一括質問A", answer="回答A"),
+            QuestionCreate(question="一括質問B", answer="回答B"),
+        ],
+        status=QuestionStatus.APPROVED,
+        source=QuestionSource.MANUAL,
+    )
+
+    db.expire_all()
+    senses = db.query(Concept).filter(Concept.name_ja == "新概念").all()
+    assert len(senses) == 1
+    for question in created:
+        linked = question_concept_repository.get_concepts_for_question(db, question.id)
+        assert [c.id for c in linked] == [senses[0].id]
+
+
+@pytest.mark.anyio
+async def test_import_questions_from_jsonl(db, async_db):
+    created = await question_write_service.import_questions_from_jsonl(
+        async_db,
         [
             QuestionCreate(question="一括質問1", answer="一括回答1"),
             QuestionCreate(question="一括質問2", answer="一括回答2"),
@@ -208,6 +238,7 @@ def test_import_questions_from_jsonl(db):
         status=QuestionStatus.UNREVIEWED,
         source=QuestionSource.AI_GENERATED,
     )
+    db.expire_all()
 
     assert len(created) == 2
     assert created[0].question == "一括質問1"
@@ -215,7 +246,10 @@ def test_import_questions_from_jsonl(db):
     assert created[0].source == "AI_GENERATED"
 
 
-def test_import_embeds_in_a_few_requests_mapped_to_the_right_rows(db, monkeypatch):
+@pytest.mark.anyio
+async def test_import_embeds_in_a_few_requests_mapped_to_the_right_rows(
+    db, async_db, monkeypatch
+):
     """100 bilingual rows: two requests, not 200, and every vector in place ([76])."""
     calls = []
 
@@ -238,9 +272,10 @@ def test_import_embeds_in_a_few_requests_mapped_to_the_right_rows(db, monkeypatc
         )
         for i in range(100)
     ]
-    created = question_write_service.import_questions_from_jsonl(
-        db, rows, status=QuestionStatus.UNREVIEWED, source=QuestionSource.MANUAL
+    created = await question_write_service.import_questions_from_jsonl(
+        async_db, rows, status=QuestionStatus.UNREVIEWED, source=QuestionSource.MANUAL
     )
+    db.expire_all()
 
     # 400 texts in chunks of 256: two requests, where there were 200.
     assert len(calls) == 2
@@ -265,8 +300,8 @@ def _embeddings_for_all(db, question_id: int):
 @pytest.mark.anyio
 async def test_import_questions_duplicate_within_batch_rejected(db, async_db):
     with pytest.raises(DuplicateQuestionError):
-        question_write_service.import_questions_from_jsonl(
-            db,
+        await question_write_service.import_questions_from_jsonl(
+            async_db,
             [
                 QuestionCreate(question="重複", answer="回答1"),
                 QuestionCreate(question="重複", answer="回答2"),
@@ -274,6 +309,7 @@ async def test_import_questions_duplicate_within_batch_rejected(db, async_db):
             status=QuestionStatus.UNREVIEWED,
             source=QuestionSource.AI_GENERATED,
         )
+        db.expire_all()
 
     assert (
         await question_read_service.fetch_questions(async_db, page=1, size=20)
@@ -285,12 +321,13 @@ async def test_import_questions_duplicate_against_existing_rejected(db, async_db
     await _acreate(db, "既存質問", "既存回答")
 
     with pytest.raises(DuplicateQuestionError):
-        question_write_service.import_questions_from_jsonl(
-            db,
+        await question_write_service.import_questions_from_jsonl(
+            async_db,
             [QuestionCreate(question="既存質問", answer="新規回答")],
             status=QuestionStatus.UNREVIEWED,
             source=QuestionSource.AI_GENERATED,
         )
+        db.expire_all()
 
     result = await question_read_service.fetch_questions(async_db, page=1, size=20)
     assert result.total == 1
@@ -413,9 +450,10 @@ async def test_update_question_rolls_back_on_embedding_failure(
     assert reloaded.answer == "更新前回答"
 
 
-def test_import_questions_creates_embeddings_for_each_question(db):
-    created = question_write_service.import_questions_from_jsonl(
-        db,
+@pytest.mark.anyio
+async def test_import_questions_creates_embeddings_for_each_question(db, async_db):
+    created = await question_write_service.import_questions_from_jsonl(
+        async_db,
         [
             QuestionCreate(question="一括質問1", answer="一括回答1"),
             QuestionCreate(question="一括質問2", answer="一括回答2"),
@@ -423,6 +461,7 @@ def test_import_questions_creates_embeddings_for_each_question(db):
         status=QuestionStatus.UNREVIEWED,
         source=QuestionSource.AI_GENERATED,
     )
+    db.expire_all()
 
     for question in created:
         embeddings = _embeddings_for(db, question.id)
@@ -439,12 +478,13 @@ async def test_import_questions_rolls_back_on_embedding_failure(
     patch_create_embeddings(monkeypatch, _raise)
 
     with pytest.raises(EmbeddingGenerationError):
-        question_write_service.import_questions_from_jsonl(
-            db,
+        await question_write_service.import_questions_from_jsonl(
+            async_db,
             [QuestionCreate(question="一括質問1", answer="一括回答1")],
             status=QuestionStatus.UNREVIEWED,
             source=QuestionSource.AI_GENERATED,
         )
+        db.expire_all()
 
     assert (
         await question_read_service.fetch_questions(async_db, page=1, size=20)
@@ -636,16 +676,21 @@ def test_create_question_approved_extracts_concepts(db, monkeypatch):
     assert question_concept_repository.get_concepts_for_question(db, created.id) != []
 
 
-def test_import_questions_unreviewed_skips_concept_extraction(db, monkeypatch):
+@pytest.mark.anyio
+async def test_import_questions_unreviewed_skips_concept_extraction(
+    db, async_db, monkeypatch
+):
     calls = []
     _spy_extract_concept_names(monkeypatch, calls)
 
-    created = question_write_service.import_questions_from_jsonl(
-        db,
+    created = await question_write_service.import_questions_from_jsonl(
+        async_db,
         [QuestionCreate(question="一括質問1", answer="一括回答1")],
         status=QuestionStatus.UNREVIEWED,
         source=QuestionSource.AI_GENERATED,
     )
+
+    db.expire_all()
 
     assert calls == []
     assert (
@@ -653,12 +698,13 @@ def test_import_questions_unreviewed_skips_concept_extraction(db, monkeypatch):
     )
 
 
-def test_import_questions_approved_extracts_concepts(db, monkeypatch):
+@pytest.mark.anyio
+async def test_import_questions_approved_extracts_concepts(db, async_db, monkeypatch):
     calls = []
     _spy_extract_concept_names(monkeypatch, calls)
 
-    created = question_write_service.import_questions_from_jsonl(
-        db,
+    created = await question_write_service.import_questions_from_jsonl(
+        async_db,
         [
             QuestionCreate(question="一括質問1", answer="一括回答1"),
             QuestionCreate(question="一括質問2", answer="一括回答2"),
@@ -666,6 +712,8 @@ def test_import_questions_approved_extracts_concepts(db, monkeypatch):
         status=QuestionStatus.APPROVED,
         source=QuestionSource.MANUAL,
     )
+
+    db.expire_all()
 
     assert len(calls) == 2
     for question in created:
@@ -960,7 +1008,8 @@ async def test_reextract_concepts_for_questions_partial_failure_continues(
     assert question_concept_repository.get_concepts_for_question(db, q2.id) != []
 
 
-def test_attach_retrieved_questions_resolves_ids_to_summaries(db):
+@pytest.mark.anyio
+async def test_attach_retrieved_questions_resolves_ids_to_summaries(db, async_db):
     referenced1 = question_repository.create_question(
         db, question="参照質問1", answer="回答1"
     )
@@ -974,7 +1023,11 @@ def test_attach_retrieved_questions_resolves_ids_to_summaries(db):
         retrieved_question_ids=[referenced1.id, referenced2.id],
     )
 
-    question_presentation_service.attach_retrieved_questions(db, [rag_question])
+    db.commit()
+
+    await question_presentation_service.async_attach_retrieved_questions(
+        async_db, [rag_question]
+    )
 
     assert rag_question.retrieved_questions == [
         {"id": referenced1.id, "question": "参照質問1"},
@@ -982,19 +1035,29 @@ def test_attach_retrieved_questions_resolves_ids_to_summaries(db):
     ]
 
 
-def test_attach_retrieved_questions_skips_missing_ids(db):
+@pytest.mark.anyio
+async def test_attach_retrieved_questions_skips_missing_ids(db, async_db):
     rag_question = question_repository.create_question(
         db, question="RAG質問", answer="RAG回答", retrieved_question_ids=[999999]
     )
 
-    question_presentation_service.attach_retrieved_questions(db, [rag_question])
+    db.commit()
+
+    await question_presentation_service.async_attach_retrieved_questions(
+        async_db, [rag_question]
+    )
 
     assert rag_question.retrieved_questions == []
 
 
-def test_attach_retrieved_questions_empty_for_normal_questions(db):
-    question = _create(db)
+@pytest.mark.anyio
+async def test_attach_retrieved_questions_empty_for_normal_questions(db, async_db):
+    question = await _acreate(db)
 
-    question_presentation_service.attach_retrieved_questions(db, [question])
+    db.commit()
+
+    await question_presentation_service.async_attach_retrieved_questions(
+        async_db, [question]
+    )
 
     assert question.retrieved_questions == []

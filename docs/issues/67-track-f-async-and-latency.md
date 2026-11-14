@@ -101,7 +101,7 @@ wait for the slowest endpoint from "whole answer" to "first words".
    7. ~~[92] Asynchronize the fill-translations route (POST /questions/translate)~~ done 2026-11-13
    8. ~~[86] Asynchronize delete and bulk delete~~ done 2026-11-14
    9. ~~[93] Asynchronize create and update (prepare/apply)~~ done 2026-11-14
-   10. [94] Asynchronize JSONL import
+   10. ~~[94] Asynchronize JSONL import~~ done 2026-11-14 ([82] allowlist now empty)
    11. [95] Seed and translation CLIs on the async services; delete the sync translation half
    12. [87] Asynchronize the usage dashboard and the agreement report
    13. [96] Asynchronize the review dataset export

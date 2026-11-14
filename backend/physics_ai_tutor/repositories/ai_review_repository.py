@@ -75,14 +75,6 @@ def _newest_per_question(rows) -> dict[int, AiReview]:
     return latest
 
 
-def latest_for_questions(db: Session, ids: list[int]) -> dict[int, AiReview]:
-    """question_id -> newest AiReview, for the ids that have one."""
-    if not ids:
-        return {}
-
-    return _newest_per_question(db.scalars(_latest_for_questions_select(ids)).all())
-
-
 async def async_latest_for_questions(
     db: AsyncSession, ids: list[int]
 ) -> dict[int, AiReview]:

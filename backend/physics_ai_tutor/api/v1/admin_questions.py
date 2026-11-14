@@ -17,12 +17,11 @@ from fastapi import (
     UploadFile,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from physics_ai_tutor.api.dependencies import (
     require_admin,
 )
-from physics_ai_tutor.database.dependency import get_async_db, get_db
+from physics_ai_tutor.database.dependency import get_async_db
 from physics_ai_tutor.schemas.bulk import (
     BulkDeleteRequest,
     BulkDeleteResponse,
@@ -229,12 +228,12 @@ async def translate_questions(
     response_model=QuestionImportResponse,
     status_code=201,
 )
-def import_questions(
+async def import_questions(
     file: UploadFile = File(...),
     source: QuestionSource = Form(default=QuestionSource.AI_GENERATED),
     status: QuestionStatus = Form(default=QuestionStatus.UNREVIEWED),
     language: Language = Form(default=Language.JA),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
     raw_lines = file.file.read().decode("utf-8").splitlines()
@@ -265,7 +264,7 @@ def import_questions(
     if not rows:
         raise HTTPException(status_code=422, detail="File contains no questions")
 
-    created = question_write_service.import_questions_from_jsonl(
+    created = await question_write_service.import_questions_from_jsonl(
         db,
         rows,
         status=status,

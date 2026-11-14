@@ -24,6 +24,12 @@ One small slice of [73]: scripts. No behaviour change.
   to the async services, forbid the async seams too, or the "zero AI
   calls" guarantee passes vacuously (found in [93]).
 
+- Done early in [94]: the seed's import step is async and its test
+  forbids both sync and async AI seams. Left here: the stored-tags step
+  (`apply_seed_extras`, sync `attach_concepts_to_question`,
+  `extract_concepts_best_effort`), the three CLIs, the sync
+  `translate_missing_languages`.
+
 ## Acceptance criteria
 
 - [ ] Offline seed still makes zero OpenAI/DeepSeek calls (`test_seed.py`); `test_cli.py` green.

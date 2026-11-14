@@ -10,7 +10,7 @@ from physics_ai_tutor.core.exceptions import (
     ConceptExtractionError,
     DuplicateQuestionError,
 )
-from physics_ai_tutor.database.transaction import async_transaction, transaction
+from physics_ai_tutor.database.transaction import async_transaction
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.repositories import (
     question_concept_repository,
@@ -31,7 +31,6 @@ from physics_ai_tutor.services import (
 )
 from physics_ai_tutor.services.question_presentation_service import (
     async_prepare_for_response,
-    prepare_for_response,
 )
 from physics_ai_tutor.services.question_translation_service import (
     PreparedTranslation,
@@ -40,8 +39,6 @@ from physics_ai_tutor.services.question_translation_service import (
     async_prepare_translation,
     async_write_embeddings,
     draft_of,
-    translate_missing,
-    write_embeddings,
 )
 
 logger = logging.getLogger(__name__)
@@ -165,7 +162,9 @@ async def create_question(
     return draft
 
 
-def _find_duplicate_texts(db: Session, rows: list[QuestionCreate]) -> list[str]:
+async def _find_duplicate_texts(
+    db: AsyncSession, rows: list[QuestionCreate]
+) -> list[str]:
     seen: set[tuple[Language, str]] = set()
     duplicates: list[str] = []
 
@@ -175,7 +174,7 @@ def _find_duplicate_texts(db: Session, rows: list[QuestionCreate]) -> list[str]:
                 duplicates.append(q)
                 continue
             seen.add((lang, q))
-            if question_repository.get_by_exact_text(db, q, language=lang):
+            if await question_repository.async_get_by_exact_text(db, q, language=lang):
                 duplicates.append(q)
 
     return duplicates
@@ -184,11 +183,11 @@ def _find_duplicate_texts(db: Session, rows: list[QuestionCreate]) -> list[str]:
 RowVectors = dict[Language, tuple[list[float], list[float]]]
 
 
-def _embed_provided_texts(rows: list[QuestionCreate]) -> list[RowVectors]:
+async def _embed_provided_texts(rows: list[QuestionCreate]) -> list[RowVectors]:
     """Per row and language, the (question, answer) vectors of the given texts.
 
-    The texts are flattened in a fixed order, embedded in chunks, and
-    mapped back by position - the one place where an off-by-one would
+    The texts are flattened in a fixed order, embedded in chunks ([76]),
+    and mapped back by position - the one place where an off-by-one would
     mis-embed every row, so the mapping is explicit and tested.
     """
     slots: list[tuple[int, Language]] = []
@@ -198,7 +197,7 @@ def _embed_provided_texts(rows: list[QuestionCreate]) -> list[RowVectors]:
             slots.append((index, lang))
             texts.extend((question, answer))
 
-    vectors = embedding_service.embed_many(texts)
+    vectors = await embedding_service.async_embed_many(texts)
 
     result: list[RowVectors] = [{} for _ in rows]
     for position, (index, lang) in enumerate(slots):
@@ -206,16 +205,67 @@ def _embed_provided_texts(rows: list[QuestionCreate]) -> list[RowVectors]:
     return result
 
 
-def import_questions_from_jsonl(
-    db: Session,
+@dataclass
+class _ImportConcepts:
+    """Per row: the extracted names (None = extraction failed) and the plan."""
+
+    names: list[list[str] | None]
+    plans: list[list[concept_service.PlannedSense]]
+
+
+async def _prepare_import_concepts(
+    db: AsyncSession, drafts: list[Question]
+) -> _ImportConcepts:
+    names: list[list[str] | None] = []
+    for draft in drafts:
+        try:
+            names.append(
+                await concept_service.async_extract_concept_names(
+                    *draft.original_text(), language=draft.original_language
+                )
+            )
+        except ConceptExtractionError:
+            logger.warning("Concept extraction failed for an imported row")
+            names.append(None)
+    items = [
+        (row_names or [], draft.original_language)
+        for row_names, draft in zip(names, drafts, strict=True)
+    ]
+    plans = await concept_service.async_prepare_concepts_many(db, items)
+    return _ImportConcepts(names=names, plans=plans)
+
+
+async def _prepare_import_translations(
+    drafts: list[Question],
+) -> list[dict[Language, PreparedTranslation]]:
+    """Each row's missing languages; a failed translation is skipped."""
+    result = []
+    for draft in drafts:
+        prepared = {}
+        for lang in Language:
+            if not draft.has(lang):
+                translation = await async_prepare_translation(draft, lang)
+                if translation is not None:
+                    prepared[lang] = translation
+        result.append(prepared)
+    return result
+
+
+async def import_questions_from_jsonl(
+    db: AsyncSession,
     rows: list[QuestionCreate],
     status: str,
     source: str,
     language: Language | str = Language.JA,
     extract_concepts: bool = True,
 ) -> list[Question]:
-    """Create rows; `extract_concepts=False` lets the seed supply stored tags."""
-    duplicates = _find_duplicate_texts(db, rows)
+    """Create rows all-or-nothing; `extract_concepts=False` lets the seed supply tags.
+
+    Read, then every AI call with no transaction open, then one short
+    write ([82], [94]).
+    """
+    async with async_transaction(db, "import_questions_read"):
+        duplicates = await _find_duplicate_texts(db, rows)
 
     if duplicates:
         raise DuplicateQuestionError(
@@ -223,31 +273,39 @@ def import_questions_from_jsonl(
             + ", ".join(duplicates)
         )
 
-    # Every provided text is embedded in a few requests before the
-    # transaction opens, instead of two requests per row inside it ([76]).
-    vectors = _embed_provided_texts(rows)
-
-    with transaction(db, "import_questions_from_jsonl"):
-        db_questions = question_repository.create_questions(
-            db,
-            [(row.texts(), row.original_language()) for row in rows],
-            status=status,
-            source=source,
+    drafts = [
+        question_repository.build_question(
+            row.texts(), row.original_language(), status, source
         )
+        for row in rows
+    ]
+    vectors = await _embed_provided_texts(rows)
+    concepts = (
+        await _prepare_import_concepts(db, drafts)
+        if extract_concepts and status == QuestionStatus.APPROVED
+        else None
+    )
+    translations = await _prepare_import_translations(drafts)
 
-        for index, db_question in enumerate(db_questions):
+    async with async_transaction(db, "import_questions_from_jsonl"):
+        db.add_all(drafts)
+        await db.flush()
+        for index, draft in enumerate(drafts):
             for lang, (q_vec, a_vec) in vectors[index].items():
-                write_embeddings(db, db_question.id, lang, q_vec, a_vec)
+                await async_write_embeddings(db, draft.id, lang, q_vec, a_vec)
+            for target, translation in translations[index].items():
+                await async_apply_translation(db, draft, target, translation)
+            if concepts is not None and concepts.names[index] is not None:
+                await concept_service.async_apply_concepts(
+                    db, draft.id, concepts.plans[index]
+                )
+                concept_service.apply_levels_to_question(
+                    draft, concepts.names[index] or []
+                )
+        await async_prepare_for_response(db, drafts, language)
 
-            if extract_concepts and status == QuestionStatus.APPROVED:
-                attach_concepts_best_effort(db, db_question)
-
-            translate_missing(db, db_question)
-
-        prepare_for_response(db, db_questions, language)
-
-    logger.info("Questions imported: count=%d", len(db_questions))
-    return db_questions
+    logger.info("Questions imported: count=%d", len(drafts))
+    return drafts
 
 
 async def delete_question(db: AsyncSession, question_id: int) -> bool:

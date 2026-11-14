@@ -364,12 +364,23 @@ async def async_prepare_concepts(
     The index is read in its own short transaction; any embedding call
     happens after it, so no connection waits on OpenAI ([82]).
     """
-    names = _parse_names(concept_names, language)
+    return (await async_prepare_concepts_many(db, [(concept_names, language)]))[0]
+
+
+async def async_prepare_concepts_many(
+    db: AsyncSession, items: list[tuple[list[str], str]]
+) -> list[list[PlannedSense]]:
+    """`async_prepare_concepts` for several questions sharing one index ([94]).
+
+    The index is read once for every pair of every question, and a sense
+    planned for one question can be matched by a later one, so an import
+    never creates the same new sense twice.
+    """
+    parsed = [_parse_names(names, language) for names, language in items]
+    keys = set().union(*(_all_keys(names) for names in parsed)) if parsed else set()
     async with async_transaction(db, "concept_index_read"):
-        index = await concept_term_repository.async_senses_by_words(
-            db, _all_keys(names)
-        )
-    return await _async_plan(index, names)
+        index = await concept_term_repository.async_senses_by_words(db, keys)
+    return [await _async_plan(index, names) for names in parsed]
 
 
 async def _async_plan(

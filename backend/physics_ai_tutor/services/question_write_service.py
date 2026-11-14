@@ -40,8 +40,8 @@ from physics_ai_tutor.services.question_translation_service import (
     async_prepare_translation,
     async_write_embeddings,
     draft_of,
-    embed_language,
     translate_missing,
+    write_embeddings,
 )
 
 logger = logging.getLogger(__name__)
@@ -181,6 +181,31 @@ def _find_duplicate_texts(db: Session, rows: list[QuestionCreate]) -> list[str]:
     return duplicates
 
 
+RowVectors = dict[Language, tuple[list[float], list[float]]]
+
+
+def _embed_provided_texts(rows: list[QuestionCreate]) -> list[RowVectors]:
+    """Per row and language, the (question, answer) vectors of the given texts.
+
+    The texts are flattened in a fixed order, embedded in chunks, and
+    mapped back by position - the one place where an off-by-one would
+    mis-embed every row, so the mapping is explicit and tested.
+    """
+    slots: list[tuple[int, Language]] = []
+    texts: list[str] = []
+    for index, row in enumerate(rows):
+        for lang, (question, answer) in row.texts().items():
+            slots.append((index, lang))
+            texts.extend((question, answer))
+
+    vectors = embedding_service.embed_many(texts)
+
+    result: list[RowVectors] = [{} for _ in rows]
+    for position, (index, lang) in enumerate(slots):
+        result[index][lang] = (vectors[2 * position], vectors[2 * position + 1])
+    return result
+
+
 def import_questions_from_jsonl(
     db: Session,
     rows: list[QuestionCreate],
@@ -198,6 +223,10 @@ def import_questions_from_jsonl(
             + ", ".join(duplicates)
         )
 
+    # Every provided text is embedded in a few requests before the
+    # transaction opens, instead of two requests per row inside it ([76]).
+    vectors = _embed_provided_texts(rows)
+
     with transaction(db, "import_questions_from_jsonl"):
         db_questions = question_repository.create_questions(
             db,
@@ -206,9 +235,9 @@ def import_questions_from_jsonl(
             source=source,
         )
 
-        for db_question in db_questions:
-            for lang in Language:
-                embed_language(db, db_question, lang)
+        for index, db_question in enumerate(db_questions):
+            for lang, (q_vec, a_vec) in vectors[index].items():
+                write_embeddings(db, db_question.id, lang, q_vec, a_vec)
 
             if extract_concepts and status == QuestionStatus.APPROVED:
                 attach_concepts_best_effort(db, db_question)

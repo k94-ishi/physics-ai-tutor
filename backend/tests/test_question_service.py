@@ -215,6 +215,53 @@ def test_import_questions_from_jsonl(db):
     assert created[0].source == "AI_GENERATED"
 
 
+def test_import_embeds_in_a_few_requests_mapped_to_the_right_rows(db, monkeypatch):
+    """100 bilingual rows: two requests, not 200, and every vector in place ([76])."""
+    calls = []
+
+    def _vector_for(text: str) -> list[float]:
+        # The first component names the text, so a misplaced vector shows.
+        return [float(hash(text) % 100_000)] + [0.0] * 1535
+
+    def fake_create_embeddings(texts):
+        calls.append(len(texts))
+        return [_vector_for(text) for text in texts]
+
+    patch_create_embeddings(monkeypatch, fake_create_embeddings)
+
+    rows = [
+        QuestionCreate(
+            question_ja=f"質問{i}",
+            answer_ja=f"回答{i}",
+            question_en=f"Question {i}",
+            answer_en=f"Answer {i}",
+        )
+        for i in range(100)
+    ]
+    created = question_write_service.import_questions_from_jsonl(
+        db, rows, status=QuestionStatus.UNREVIEWED, source=QuestionSource.MANUAL
+    )
+
+    # 400 texts in chunks of 256: two requests, where there were 200.
+    assert len(calls) == 2
+    assert sum(calls) == 400
+    for i, question in enumerate(created):
+        by_key = {
+            (e.language, e.type): e.embedding[0]
+            for e in _embeddings_for_all(db, question.id)
+        }
+        assert by_key == {
+            ("ja", "question"): _vector_for(f"質問{i}")[0],
+            ("ja", "answer"): _vector_for(f"回答{i}")[0],
+            ("en", "question"): _vector_for(f"Question {i}")[0],
+            ("en", "answer"): _vector_for(f"Answer {i}")[0],
+        }
+
+
+def _embeddings_for_all(db, question_id: int):
+    return db.query(QuestionEmbedding).filter_by(question_id=question_id).all()
+
+
 @pytest.mark.anyio
 async def test_import_questions_duplicate_within_batch_rejected(db, async_db):
     with pytest.raises(DuplicateQuestionError):

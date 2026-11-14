@@ -113,9 +113,8 @@ wait for the slowest endpoint from "whole answer" to "first words".
 9. [74] Latency quick wins independent of async: pgvector HNSW index,
    pool settings for the Supabase pooler, response compression. The
    pool numbers are best chosen after [88], when there is one pool.
-10. [76] Batch embedding calls on import (2 requests per row -> one per
-   chunk). Independent; preferably before [86], whose import conversion
-   wants the collect-then-batch shape.
+10. ~~[76] Batch embedding calls on import (2 requests per row -> one per
+   chunk)~~ done 2026-11-14 (100 bilingual rows: 200 requests -> 2).
 11. [77] Question page: three requests in two waves become one wave.
     Independent; can run any time.
 12. [100] Reuse sense embeddings in concept matching (fewer OpenAI calls

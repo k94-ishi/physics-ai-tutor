@@ -14,8 +14,10 @@ One small slice of [73]: admin import. No behaviour change.
 ## Scope
 
 - Route `POST /questions/import`, `import_questions_from_jsonl`.
-- Preferably after [76] (batch embeddings), whose collect-then-batch
-  shape removes the last [82] allowlist entry.
+- [76] is done: the provided texts are already embedded before the
+  transaction. What still runs inside it is per-row translation and
+  concept extraction; moving those out (prepare/apply, as [93] did for
+  create) is what removes the last [82] allowlist entry.
 
 ## Acceptance criteria
 

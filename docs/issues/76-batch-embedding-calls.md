@@ -45,14 +45,14 @@ preloaded vectors and calls OpenAI never). This is the remaining half.
 
 ## Acceptance criteria
 
-- [ ] A 100-row bilingual import makes a small, bounded number of OpenAI
+- [x] A 100-row bilingual import makes a small, bounded number of OpenAI
       requests instead of ~200 — asserted by counting calls on the mock.
-- [ ] Stored vectors identical to the per-row path (same model, same
+- [x] Stored vectors identical to the per-row path (same model, same
       text, same `vector_key`), so `seed_embeddings.jsonl.gz` round trips
       unchanged.
-- [ ] The offline seed still makes zero OpenAI calls
+- [x] The offline seed still makes zero OpenAI calls
       (`test_seed.py` guarantees preserved).
-- [ ] Import stays all-or-nothing on duplicate text.
+- [x] Import stays all-or-nothing on duplicate text.
 
 ## Out of scope
 
@@ -78,6 +78,45 @@ since a silent off-by-one would mis-embed every row.
 
 ## Definition of done
 
-- [ ] Backend: `pytest`, `ruff check`, `mypy` pass
-- [ ] Call-count assertion in the import test
-- [ ] Before/after import timing in this issue's Log
+- [x] Backend: `pytest`, `ruff check`, `mypy` pass
+- [x] Call-count assertion in the import test
+- [x] Before/after import timing in this issue's Log
+
+## Log
+
+### 2026-11-14 — done
+
+612 tests pass (608 + 4 new); ruff and mypy clean; frontend untouched.
+2 production files, 2 test files.
+
+**What changed.** `embedding_service.embed_many` (and `async_embed_many`
+for [94]) takes any number of texts, splits them into chunks of at most
+256 items and about 200,000 characters, and calls `create_embeddings`
+once per chunk, so the preloaded seed vectors and the test seam apply
+unchanged. The result keeps input order; the mapping back to
+(row, language, question-or-answer) is explicit in
+`question_write_service._embed_provided_texts` and tested.
+
+Import now collects every provided text first and embeds them **before
+its transaction opens**, then writes the rows and their embedding rows.
+
+**The number** (the owner asked for the simple measure, not a real-API
+timing): a 100-row bilingual import went from **200 OpenAI requests to
+2**, asserted by counting calls on the mock. Each request's latency is
+roughly fixed, so the wall time of the embedding phase shrinks by about
+the same factor; a real-API timing was not taken.
+
+**Unchanged on purpose.**
+
+- Stored vectors are the same: same model, same exact text per
+  embedding row, so `seed_embeddings.jsonl.gz` round-trips as before and
+  the offline seed still makes zero OpenAI calls (`test_seed.py`).
+- Import is still all-or-nothing: the duplicate check and the single
+  transaction are as they were; an embedding failure now happens before
+  the transaction and inserts nothing.
+- Rows missing a language are still translated one by one inside the
+  transaction, and APPROVED rows still extract concepts there. So the
+  [82] allowlist still names `import_questions_from_jsonl`; that entry
+  goes when [94] converts import and moves those calls out too. This
+  issue's text had expected the batch shape alone to remove it; it does
+  not, because of those two remaining calls.

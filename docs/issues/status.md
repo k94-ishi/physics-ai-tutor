@@ -96,7 +96,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 73 | open | 73-async-remaining-modules.md | Asynchronize the rest (umbrella for [83]-[88]): every route on the async stack; app keeps no sync engine | — (file-era issue) |
 | 74 | open | 74-latency-quick-wins.md | Latency quick wins independent of async: vector index, pool settings, compression | — (file-era issue) |
 | 75 | closed | 75-worker-safe-background-claims.md | Worker-safe background claims: move de-duplication into the database, then scale out | — (file-era issue) |
-| 76 | open | 76-batch-embedding-calls.md | Batch embedding calls: one OpenAI request per import, not two per row | — (file-era issue) |
+| 76 | closed | 76-batch-embedding-calls.md | Batch embedding calls: one OpenAI request per import, not two per row | — (file-era issue) |
 | 77 | open | 77-question-page-request-waves.md | Question page: three requests in two waves become one wave | — (file-era issue) |
 | 78 | open | 78-config-hygiene-and-startup-validation.md | Config hygiene: fix the defaults, validate at startup, end the template drift | — (file-era issue) |
 | 79 | open | 79-operator-tunable-settings.md | Operator-tunable settings: limits, pools and timeouts move out of the code | — (file-era issue) |

@@ -93,3 +93,52 @@ def test_create_embeddings_wraps_openai_error(monkeypatch):
 
     with pytest.raises(EmbeddingGenerationError):
         real_create_embeddings(["テキスト"])
+
+
+# --- batching ([76]) ----------------------------------------------------------
+
+
+def test_chunks_split_by_count_and_by_total_length(monkeypatch):
+    monkeypatch.setattr(embedding_service, "EMBED_BATCH_MAX_ITEMS", 3)
+    monkeypatch.setattr(embedding_service, "EMBED_BATCH_MAX_CHARS", 10)
+
+    by_count = embedding_service._chunks(["a", "b", "c", "d", "e", "f", "g"])
+    assert by_count == [["a", "b", "c"], ["d", "e", "f"], ["g"]]
+
+    by_length = embedding_service._chunks(["xxxx", "yyyy", "zzzz", "w"])
+    assert by_length == [["xxxx", "yyyy"], ["zzzz", "w"]]
+
+    # One oversized text still travels, alone.
+    assert embedding_service._chunks(["x" * 50, "a"]) == [["x" * 50], ["a"]]
+    assert embedding_service._chunks([]) == []
+
+
+def test_embed_many_keeps_input_order_across_chunks(monkeypatch):
+    monkeypatch.setattr(embedding_service, "EMBED_BATCH_MAX_ITEMS", 2)
+    calls = []
+
+    def fake_create_embeddings(texts):
+        calls.append(list(texts))
+        # A vector that names its text, so a shuffle would be visible.
+        return [[float(len(text))] for text in texts]
+
+    patch_create_embeddings(monkeypatch, fake_create_embeddings)
+
+    vectors = embedding_service.embed_many(["a", "bb", "ccc", "dddd", "eeeee"])
+
+    assert vectors == [[1.0], [2.0], [3.0], [4.0], [5.0]]
+    assert calls == [["a", "bb"], ["ccc", "dddd"], ["eeeee"]]
+
+
+@pytest.mark.anyio
+async def test_async_embed_many_matches_the_sync_one(monkeypatch):
+    monkeypatch.setattr(embedding_service, "EMBED_BATCH_MAX_ITEMS", 2)
+    patch_create_embeddings(
+        monkeypatch, lambda texts: [[float(len(text))] for text in texts]
+    )
+
+    assert await embedding_service.async_embed_many(["a", "bb", "ccc"]) == [
+        [1.0],
+        [2.0],
+        [3.0],
+    ]

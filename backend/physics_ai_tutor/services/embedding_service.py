@@ -42,6 +42,55 @@ def clear_preloaded() -> None:
     _preloaded.clear()
 
 
+# One OpenAI request per chunk ([76]). The API allows 2048 inputs and a
+# few hundred thousand tokens per request; these stay well inside both,
+# since a long answer plus its question can run to a few thousand chars.
+EMBED_BATCH_MAX_ITEMS = 256
+EMBED_BATCH_MAX_CHARS = 200_000
+
+
+def _chunks(texts: list[str]) -> list[list[str]]:
+    """Split by count and by total length, keeping the order."""
+    chunks: list[list[str]] = []
+    current: list[str] = []
+    size = 0
+    for text in texts:
+        if current and (
+            len(current) >= EMBED_BATCH_MAX_ITEMS
+            or size + len(text) > EMBED_BATCH_MAX_CHARS
+        ):
+            chunks.append(current)
+            current, size = [], 0
+        current.append(text)
+        size += len(text)
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def embed_many(texts: list[str]) -> list[list[float]]:
+    """Embeddings for many texts, one request per chunk, in input order ([76]).
+
+    `create_embeddings` is called per chunk, so preloaded seed vectors and
+    the test seam apply unchanged. The result lines up with `texts` by
+    index; callers keep their own (row, language, kind) mapping.
+    """
+    vectors: list[list[float]] = []
+    for chunk in _chunks(texts):
+        vectors.extend(create_embeddings(chunk))
+    assert len(vectors) == len(texts)
+    return vectors
+
+
+async def async_embed_many(texts: list[str]) -> list[list[float]]:
+    """As `embed_many`, on the event loop."""
+    vectors: list[list[float]] = []
+    for chunk in _chunks(texts):
+        vectors.extend(await async_create_embeddings(chunk))
+    assert len(vectors) == len(texts)
+    return vectors
+
+
 def create_embeddings(texts: list[str]) -> list[list[float]]:
     """Embeddings for `texts`; preloaded vectors first, OpenAI for the rest."""
     keys = [vector_key(settings.embedding_model, text) for text in texts]

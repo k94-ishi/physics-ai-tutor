@@ -233,14 +233,20 @@ async def test_import_questions_duplicate_against_existing_rejected(db, async_db
 async def test_delete_question_existing_returns_true(db, async_db):
     created = _create(db)
 
-    result = question_write_service.delete_question(db, created.id)
+    # Read before the delete: the row is gone afterwards.
+    created_id = created.id
+    result = await question_write_service.delete_question(async_db, created_id)
+
+    db.expire_all()
 
     assert result is True
-    assert (await question_read_service.fetch_question(async_db, created.id))[0] is None
+    assert (await question_read_service.fetch_question(async_db, created_id))[0] is None
 
 
-def test_delete_question_not_found_returns_false(db):
-    result = question_write_service.delete_question(db, 99999)
+@pytest.mark.anyio
+async def test_delete_question_not_found_returns_false(db, async_db):
+    result = await question_write_service.delete_question(async_db, 99999)
+    db.expire_all()
 
     assert result is False
 
@@ -370,12 +376,17 @@ async def test_import_questions_rolls_back_on_embedding_failure(
     ).items == []
 
 
-def test_delete_question_cascades_to_embeddings(db):
+@pytest.mark.anyio
+async def test_delete_question_cascades_to_embeddings(db, async_db):
     created = _create(db)
 
-    question_write_service.delete_question(db, created.id)
+    # Read before the delete: the row is gone afterwards.
+    created_id = created.id
+    await question_write_service.delete_question(async_db, created_id)
 
-    assert _embeddings_for(db, created.id) == []
+    db.expire_all()
+
+    assert _embeddings_for(db, created_id) == []
 
 
 @pytest.mark.anyio
@@ -752,9 +763,11 @@ async def test_bulk_delete_questions(db, async_db):
     q1 = _create(db, "質問1", "回答1")
     q2 = _create(db, "質問2", "回答2")
 
-    deleted_count, not_found_ids = question_write_service.bulk_delete_questions(
-        db, [q1.id, q2.id, 99999]
+    deleted_count, not_found_ids = await question_write_service.bulk_delete_questions(
+        async_db, [q1.id, q2.id, 99999]
     )
+
+    db.expire_all()
 
     assert deleted_count == 2
     assert not_found_ids == [99999]

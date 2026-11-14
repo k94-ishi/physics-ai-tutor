@@ -43,7 +43,7 @@ traffic first, then by which sync functions can be deleted soonest.
 | 6 | [91] | Asynchronize concept extraction and the re-extract route | done 2026-11-13 |
 | 7 | [85] | Asynchronize the review routes: review, bulk review, history | done 2026-11-13 |
 | 8 | [92] | Asynchronize the fill-translations route (POST /questions/translate) | done 2026-11-13 |
-| 9 | [86] | Asynchronize delete and bulk delete | open |
+| 9 | [86] | Asynchronize delete and bulk delete | done 2026-11-14 |
 | 10 | [93] | Asynchronize create and update (prepare/apply) | open |
 | 11 | [94] | Asynchronize JSONL import | open |
 | 12 | [95] | Seed and translation CLIs on the async services; delete the sync translation half | open |

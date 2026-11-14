@@ -99,7 +99,7 @@ wait for the slowest endpoint from "whole answer" to "first words".
    5. ~~[91] Asynchronize concept extraction and the re-extract route~~ done 2026-11-13
    6. ~~[85] Asynchronize the review routes: review, bulk review, history~~ done 2026-11-13
    7. ~~[92] Asynchronize the fill-translations route (POST /questions/translate)~~ done 2026-11-13
-   8. [86] Asynchronize delete and bulk delete
+   8. ~~[86] Asynchronize delete and bulk delete~~ done 2026-11-14
    9. [93] Asynchronize create and update (prepare/apply)
    10. [94] Asynchronize JSONL import
    11. [95] Seed and translation CLIs on the async services; delete the sync translation half

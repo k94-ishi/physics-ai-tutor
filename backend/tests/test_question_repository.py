@@ -201,17 +201,23 @@ def test_create_questions_bulk_empty_list(db):
     assert created == []
 
 
-def test_delete_existing_question_returns_true(db):
+@pytest.mark.anyio
+async def test_delete_existing_question_returns_true(db, async_db):
     created = _create(db)
 
-    result = question_repository.delete(db, created.id)
+    # Read before the delete: the row is gone afterwards.
+    created_id = created.id
+    result = await question_repository.delete(async_db, created_id)
+    await async_db.commit()
+    db.expire_all()
 
     assert result is True
-    assert question_repository.get_question(db, created.id) is None
+    assert question_repository.get_question(db, created_id) is None
 
 
-def test_delete_nonexistent_question_returns_false(db):
-    result = question_repository.delete(db, 99999)
+@pytest.mark.anyio
+async def test_delete_nonexistent_question_returns_false(db, async_db):
+    result = await question_repository.delete(async_db, 99999)
 
     assert result is False
 

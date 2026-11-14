@@ -19,7 +19,7 @@ One small slice of [73]: admin deletes (no LLM). No behaviour change.
 
 ## Acceptance criteria
 
-- [ ] Cascade to embeddings, links and reviews unchanged; delete tests green.
+- [x] Cascade to embeddings, links and reviews unchanged; delete tests green.
 
 ## Dependencies
 
@@ -43,5 +43,21 @@ Owner found [83] (22 files, 35 tests) too big. The earlier, wider version of thi
 
 ## Definition of done
 
-- [ ] Backend: `pytest`, `ruff check`, `mypy` pass
-- [ ] Log entry in this file; `status.md`, [67] and [73] updated
+- [x] Backend: `pytest`, `ruff check`, `mypy` pass
+- [x] Log entry in this file; `status.md`, [67] and [73] updated
+
+### 2026-11-14 — done
+
+607 tests pass (606 + 1 new); ruff and mypy clean; frontend untouched.
+3 production files, 3 test files.
+
+- `DELETE /questions/{id}` and `POST /questions/bulk-delete` are async.
+- `question_write_service.delete_question`, `bulk_delete_questions` and
+  `question_repository.delete` had no other callers, so they are async
+  only; no twins.
+- The cascade to embeddings, concept links and reviews is the
+  database's (`ON DELETE CASCADE`), so it is unchanged. A new API test
+  checks links and review rows go too; the existing one covered
+  embeddings only.
+- Three tests read `created.id` after the row was deleted in the other
+  session; they now capture the id first (same pattern as [90]).

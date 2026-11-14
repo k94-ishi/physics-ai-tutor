@@ -161,9 +161,9 @@ def import_questions_from_jsonl(
     return db_questions
 
 
-def delete_question(db: Session, question_id: int) -> bool:
-    with transaction(db, "delete_question"):
-        result = question_repository.delete(db, question_id)
+async def delete_question(db: AsyncSession, question_id: int) -> bool:
+    async with async_transaction(db, "delete_question"):
+        result = await question_repository.delete(db, question_id)
 
     logger.info("Question delete requested: id=%d found=%s", question_id, result)
     return result
@@ -250,14 +250,14 @@ async def _reextract_one(db: AsyncSession, question_id: int) -> ConceptExtractio
     )
 
 
-def bulk_delete_questions(
-    db: Session, question_ids: list[int]
+async def bulk_delete_questions(
+    db: AsyncSession, question_ids: list[int]
 ) -> tuple[int, list[int]]:
     deleted_count = 0
     not_found_ids: list[int] = []
 
     for question_id in question_ids:
-        if delete_question(db, question_id):
+        if await delete_question(db, question_id):
             deleted_count += 1
         else:
             not_found_ids.append(question_id)

@@ -381,14 +381,14 @@ def create_questions(
     return db_questions
 
 
-def delete(db: Session, question_id: int) -> bool:
-    question = db.query(Question).filter(Question.id == question_id).first()
+async def delete(db: AsyncSession, question_id: int) -> bool:
+    question = await db.get(Question, question_id)
 
     if not question:
         return False
 
-    db.delete(question)
-    db.flush()
+    await db.delete(question)
+    await db.flush()
 
     return True
 

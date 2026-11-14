@@ -743,6 +743,23 @@ def test_delete_question_removes_embeddings(admin_client, db):
     assert remaining == []
 
 
+def test_delete_question_removes_concept_links_and_reviews(admin_client, db):
+    """The database cascade still runs from the async session ([86])."""
+    from physics_ai_tutor.models import QuestionConcept, QuestionReview
+
+    create_response = _post(admin_client, "履歴つき削除対象", "回答")
+    question_id = create_response.json()[Key.ID]
+    admin_client.post(f"{PATH}/{question_id}/review", json={"action": "APPROVE"})
+    assert db.query(QuestionConcept).filter_by(question_id=question_id).count() > 0
+    assert db.query(QuestionReview).filter_by(question_id=question_id).count() == 1
+
+    assert admin_client.delete(f"{PATH}/{question_id}").status_code == 204
+
+    db.expire_all()
+    assert db.query(QuestionConcept).filter_by(question_id=question_id).count() == 0
+    assert db.query(QuestionReview).filter_by(question_id=question_id).count() == 0
+
+
 def test_create_question_response_includes_concepts_and_language(admin_client):
     response = _post(admin_client, "概念テスト質問", "概念テスト回答")
 

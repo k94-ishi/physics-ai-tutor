@@ -102,12 +102,12 @@ def create_question(
     "/bulk-delete",
     response_model=BulkDeleteResponse,
 )
-def bulk_delete_questions(
+async def bulk_delete_questions(
     data: BulkDeleteRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
-    deleted_count, not_found_ids = question_write_service.bulk_delete_questions(
+    deleted_count, not_found_ids = await question_write_service.bulk_delete_questions(
         db, data.question_ids
     )
 
@@ -326,12 +326,12 @@ async def review_question(
 
 
 @router.delete("/{question_id}", status_code=204)
-def delete_question(
+async def delete_question(
     question_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
-    deleted = question_write_service.delete_question(db, question_id)
+    deleted = await question_write_service.delete_question(db, question_id)
 
     if not deleted:
         raise HTTPException(

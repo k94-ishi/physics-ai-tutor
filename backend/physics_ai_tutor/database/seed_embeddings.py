@@ -1,6 +1,6 @@
 """Read and write seed_embeddings.jsonl.gz, the seed's stored vectors.
 
-Kept apart from seed.json (owner, 2026-11-10): seed.json is the
+Kept apart from seed.jsonl (owner, 2026-11-10): seed.jsonl is the
 reviewable content; this file only spares the OpenAI calls when a local
 database is rebuilt. Standard library only: gzip-compressed JSON lines,
 a header line, then one `{"key", "vector"}` line per embedding, with the

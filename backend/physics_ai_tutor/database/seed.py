@@ -1,4 +1,4 @@
-"""Load seed.json into an empty database ([40], [53], [55]).
+"""Load seed.jsonl into an empty database ([40], [53], [55], [101]).
 
 Everything an LLM produced and a teacher may rely on is stored in the
 file, so a disposable local stack can be rebuilt without DeepSeek:
@@ -11,13 +11,13 @@ to concept extraction (DeepSeek).
 """
 
 import asyncio
-import json
 from pathlib import Path
 
 from pydantic import BaseModel, Field
 
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.database import seed_embeddings
+from physics_ai_tutor.database import seed_file as seed_file_module
 from physics_ai_tutor.database.database import AsyncSessionLocal, SessionLocal
 from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models.question import Question
@@ -47,15 +47,16 @@ class SeedExtras(BaseModel):
 EXTRA_KEYS = tuple(SeedExtras.model_fields)
 
 
-def load_seed_file(seed_file: Path) -> list[tuple[QuestionCreate, SeedExtras]]:
-    """Read seed.json into question texts plus their stored extras.
+def load_seed_file(
+    seed_file: Path = seed_file_module.SEED_FILE,
+) -> list[tuple[QuestionCreate, SeedExtras]]:
+    """Read seed.jsonl into question texts plus their stored extras.
 
     Entries may use `question`/`answer` (Japanese) or the explicit
     `question_ja`/`answer_ja`/`question_en`/`answer_en` columns; missing
     languages are machine translated on import.
     """
-    with open(seed_file, encoding="utf-8") as f:
-        data = json.load(f)
+    data = seed_file_module.read_entries(seed_file)
 
     rows = []
     for entry in data:
@@ -98,8 +99,7 @@ async def _import(rows: list[QuestionCreate]) -> list[int]:
 
 
 def seed():
-    seed_file = Path(__file__).resolve().parent / "seed.json"
-    rows = load_seed_file(seed_file)
+    rows = load_seed_file()
 
     embedding_service.preload(
         seed_embeddings.read(seed_embeddings.EMBEDDINGS_FILE, settings.embedding_model)

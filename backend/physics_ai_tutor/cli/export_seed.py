@@ -1,4 +1,4 @@
-"""Write the APPROVED questions of a database to seed.json ([55]).
+"""Write the APPROVED questions of a database to seed.jsonl ([55], [101]).
 
 Keeps what only the database knows and an LLM produced: both languages
 with their provenance, the tags as `"<ja> | <en>"` pairs (preferred
@@ -9,18 +9,18 @@ command reports them so nothing is lost silently.
 """
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core.text import concept_line
+from physics_ai_tutor.database import seed_file
 from physics_ai_tutor.database.database import SessionLocal
 from physics_ai_tutor.models import Concept, Question, QuestionConcept
 from physics_ai_tutor.schemas.language import TextProvenance
 
-SEED_FILE = Path(__file__).resolve().parents[1] / "database" / "seed.json"
+SEED_FILE = seed_file.SEED_FILE
 
 
 def _entry(question: Question, tags: list[str]) -> dict:
@@ -76,8 +76,10 @@ def build_entries(db: Session, order: list[str]) -> tuple[list[dict], list[str]]
 def main(out: Path) -> int:
     order: list[str] = []
     if SEED_FILE.exists():
-        with open(SEED_FILE, encoding="utf-8") as f:
-            order = [e.get("question_ja") or e.get("question") for e in json.load(f)]
+        order = [
+            e.get("question_ja") or e.get("question") or ""
+            for e in seed_file.read_entries(SEED_FILE)
+        ]
 
     db = SessionLocal()
     try:
@@ -85,9 +87,7 @@ def main(out: Path) -> int:
     finally:
         db.close()
 
-    with open(out, "w", encoding="utf-8") as f:
-        json.dump(entries, f, ensure_ascii=False, indent=2)
-        f.write("\n")
+    seed_file.write_entries(entries, out)
     for note in notes:
         print(f"note: {note}", file=sys.stderr)
     print(f"Wrote {len(entries)} entries to {out}")

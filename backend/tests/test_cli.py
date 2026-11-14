@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -8,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from physics_ai_tutor.cli import create_user as create_user_cli
 from physics_ai_tutor.cli import translate_missing as translate_cli
 from physics_ai_tutor.database import seed as seed_module
+from physics_ai_tutor.database import seed_file
 from physics_ai_tutor.models import Question, User
 from tests.conftest import async_engine, engine
 
@@ -49,10 +49,7 @@ def test_create_user_cli_rejects_invalid_email(db, _bind_cli_sessions):
 
 
 def _seed_file_entries() -> list[dict]:
-    seed_file = Path(seed_module.__file__).resolve().parent / "seed.json"
-
-    with open(seed_file, encoding="utf-8") as f:
-        return json.load(f)
+    return seed_file.read_entries()
 
 
 def test_seed_file_has_no_duplicate_questions():
@@ -115,3 +112,18 @@ def test_embeddings_file_for_another_model_is_ignored(tmp_path):
 
     assert seed_embeddings.read(path, "model-a") == {"k": [0.5, -1.0]}
     assert seed_embeddings.read(path, "model-b") == {}
+
+
+def test_seed_lines_are_valid_input_for_the_admin_upload(admin_client):
+    """seed.jsonl doubles as an upload file; extra fields are ignored ([101])."""
+    lines = [
+        json.dumps(entry, ensure_ascii=False) for entry in _seed_file_entries()[:3]
+    ]
+
+    response = admin_client.post(
+        "/api/v1/questions/import",
+        files={"file": ("seed.jsonl", "\n".join(lines).encode(), "application/jsonl")},
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["created_count"] == 3

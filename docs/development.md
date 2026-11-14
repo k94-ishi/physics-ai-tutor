@@ -53,7 +53,8 @@ To load sample data:
 docker compose exec backend uv run python -m physics_ai_tutor.database.seed
 ```
 
-The seed script reads `backend/physics_ai_tutor/database/seed.json` and
+The seed script reads `backend/physics_ai_tutor/database/seed.jsonl` (one
+question per line) and
 inserts every entry as an approved question in both languages. Entries may
 be `{"question", "answer"}` (Japanese, English machine translated) or carry
 explicit `question_ja` / `answer_ja` / `question_en` / `answer_en` columns
@@ -68,8 +69,8 @@ The import is all-or-nothing: if any question text already exists, nothing
 is inserted. Reset the database (see [docs/database.md](database.md)) before
 re-seeding.
 
-`seed.jsonl` in the same directory holds the same data in JSONL form, which
-is the format accepted by the admin "Upload" page.
+The same lines are valid input for the admin "Upload" page, which reads
+the texts and ignores the stored tags, levels and provenance ([101]).
 
 ### Translate existing rows
 

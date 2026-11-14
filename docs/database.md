@@ -639,7 +639,8 @@ docker compose exec backend uv run python -m physics_ai_tutor.database.seed
 
 ### Seed data
 
-`seed.json` holds 144 entries: 21 hand-translated bilingual pairs plus 123
+`seed.jsonl` holds 144 entries, one JSON object per line ([101]): 21
+hand-translated bilingual pairs plus 123
 teacher-approved Q&A exported from production on 2026-10-30. The local
 database is **disposable**: everything in it that an LLM produced is also
 in the file (2026-11-10), so a reset loses nothing:
@@ -656,7 +657,7 @@ All LLM-made fields come from one extraction run (the `elm` stack of the
 
 The embeddings of those questions and tags live in a separate file,
 `seed_embeddings.jsonl.gz` (about 5.5 MB, 1,366 vectors; kept apart from
-the reviewable `seed.json` on the owner's request). Format: gzip JSON
+the reviewable `seed.jsonl` on the owner's request). Format: gzip JSON
 lines, a header `{"model", "dimensions", "format": "float32-le-base64"}`,
 then `{"key", "vector"}` per embedding, where `key` is
 `embedding_service.vector_key(model, text)` - a SHA-256 of the model and
@@ -677,7 +678,8 @@ keeps the file's order and reports aliases and glosses, which the format
 does not carry yet).
 
 `backend/physics_ai_tutor/database/seed.py` loads
-`backend/physics_ai_tutor/database/seed.json` and inserts each entry as an
+`backend/physics_ai_tutor/database/seed.jsonl` (read and written through
+`database/seed_file.py`) and inserts each entry as an
 `APPROVED` / `MANUAL` question with embeddings in every language. Entries
 may be written either way:
 
@@ -705,10 +707,11 @@ after concept extraction, so they win over a fresh rating and every new
 stack shows the two-axis grid. They are advisory like any rating; the
 production rows still need `backfill_levels`.
 
-`seed.jsonl` in the same directory holds the question texts in JSONL form
-(no tags, levels or translations) and is the format accepted by the admin
-import endpoint
-(`POST /api/v1/questions/import`) and the "Upload" page in the admin UI.
+The same file is valid input for the admin import endpoint
+(`POST /api/v1/questions/import`) and the "Upload" page in the admin UI:
+they read the texts and ignore the other fields. Until 2026-11-14 the
+seed lived in `seed.json` and `seed.jsonl` held only 21 older text-only
+entries; the two were merged into this one file ([101]).
 
 ### Creating an admin user
 

@@ -121,6 +121,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 98 | open | 98-async-rename-pass.md | Rename pass: drop the async_ prefixes | — (file-era issue) |
 | 99 | open | 99-async-end-state-and-docs.md | Async end state: architecture test, docs, connection budget (closes [73]) | — (file-era issue) |
 | 100 | open | 100-reuse-sense-embeddings.md | Reuse sense embeddings instead of re-embedding every candidate on each extraction | — (file-era issue) |
+| 101 | closed | 101-seed-as-one-jsonl-file.md | Seed data as one JSONL file; seed.json removed | — (file-era issue) |
 
 ## Notes on the archive column
 

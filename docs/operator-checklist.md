@@ -339,8 +339,9 @@ noise.
 ### 5.4 Refresh the seed data occasionally
 
 After a review pass, export the approved questions again and replace the
-production part of `backend/physics_ai_tutor/database/seed.json` (the
-first 21 entries are the hand-translated pairs - keep them).
+production part of `backend/physics_ai_tutor/database/seed.jsonl` (the
+first 21 lines are the hand-translated pairs - keep them);
+`python -m physics_ai_tutor.cli.export_seed` writes the file in place.
 
 ---
 

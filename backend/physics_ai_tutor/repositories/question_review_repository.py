@@ -2,7 +2,6 @@ from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from physics_ai_tutor.models import Question, QuestionReview
 
@@ -48,18 +47,19 @@ async def list_for_question(db: AsyncSession, question_id: int) -> list[Question
     return list((await db.scalars(query)).all())
 
 
-def list_with_questions_since(
-    db: Session,
+async def list_with_questions_since(
+    db: AsyncSession,
     since: datetime | None,
 ) -> list[tuple[QuestionReview, Question]]:
     """Reviews joined to their question, oldest first; `since` is inclusive."""
-    query = db.query(QuestionReview, Question).join(
+    query = select(QuestionReview, Question).join(
         Question, QuestionReview.question_id == Question.id
     )
 
     if since is not None:
-        query = query.filter(QuestionReview.created_at >= since)
+        query = query.where(QuestionReview.created_at >= since)
 
-    rows = query.order_by(QuestionReview.created_at.asc(), QuestionReview.id.asc())
+    query = query.order_by(QuestionReview.created_at.asc(), QuestionReview.id.asc())
+    rows = (await db.execute(query)).tuples().all()
 
-    return [(review, question) for review, question in rows.all()]
+    return [(review, question) for review, question in rows]

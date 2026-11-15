@@ -1,10 +1,8 @@
-from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import Select, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from physics_ai_tutor.models import AiReview, Question, QuestionReview
 
@@ -26,46 +24,26 @@ class ReviewPair:
     reviewed_at: datetime
 
 
-def _ai_reviews_select(question_ids: set[int]) -> Select[tuple[AiReview]]:
-    """One statement for both twins, so their order cannot drift."""
-    return (
-        select(AiReview)
-        .where(AiReview.question_id.in_(question_ids))
-        .order_by(AiReview.created_at.asc(), AiReview.id.asc())
-    )
-
-
-def _group_by_question(rows: Iterable[AiReview]) -> dict[int, list[AiReview]]:
-    grouped: dict[int, list[AiReview]] = {}
-    for row in rows:
-        grouped.setdefault(row.question_id, []).append(row)
-
-    return grouped
-
-
-def ai_reviews_by_question(
-    db: Session, question_ids: set[int]
+async def async_ai_reviews_by_question(
+    db: AsyncSession, question_ids: set[int]
 ) -> dict[int, list[AiReview]]:
     """All AI reviews for the given questions, oldest first per question.
 
-    Sync twin for review_export_service until [96] converts it.
+    The sync twin went with its last caller ([96]); [98] drops the prefix.
     """
     if not question_ids:
         return {}
 
-    return _group_by_question(db.scalars(_ai_reviews_select(question_ids)).all())
+    query = (
+        select(AiReview)
+        .where(AiReview.question_id.in_(question_ids))
+        .order_by(AiReview.created_at.asc(), AiReview.id.asc())
+    )
+    grouped: dict[int, list[AiReview]] = {}
+    for row in (await db.scalars(query)).all():
+        grouped.setdefault(row.question_id, []).append(row)
 
-
-async def async_ai_reviews_by_question(
-    db: AsyncSession, question_ids: set[int]
-) -> dict[int, list[AiReview]]:
-    """As `ai_reviews_by_question`, on an `AsyncSession` ([87])."""
-    if not question_ids:
-        return {}
-
-    rows = (await db.scalars(_ai_reviews_select(question_ids))).all()
-
-    return _group_by_question(rows)
+    return grouped
 
 
 def ai_review_before(

@@ -4,7 +4,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy.orm import sessionmaker
 
 from physics_ai_tutor.cli import review_metrics as metrics_cli
 from physics_ai_tutor.models import AiReview, QuestionReview
@@ -20,7 +19,6 @@ from physics_ai_tutor.schemas.question_review import QuestionReviewReason
 from physics_ai_tutor.services import review_metrics_service
 from tests.conftest import (
     async_engine,
-    engine,
     fake_generation,
     patch_generation,
 )
@@ -309,8 +307,8 @@ def test_cli_from_export_file_matches_the_database_report(
     from physics_ai_tutor.cli import export_reviews as export_cli
     from physics_ai_tutor.services import review_export_service
 
-    factory = sessionmaker(bind=engine, expire_on_commit=False)
-    monkeypatch.setattr(export_cli, "SessionLocal", factory)
+    factory = async_sessionmaker(bind=async_engine, expire_on_commit=False)
+    monkeypatch.setattr(export_cli, "AsyncSessionLocal", factory)
 
     agreed = _ask(client, monkeypatch, "ファイル集計の質問1")
     disagreed = _ask(client, monkeypatch, "ファイル集計の質問2")

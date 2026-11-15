@@ -2,12 +2,12 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from physics_ai_tutor.cli import export_reviews as export_cli
 from physics_ai_tutor.models import QuestionReview
 from physics_ai_tutor.services import review_export_service
-from tests.conftest import engine, fake_generation, patch_generation
+from tests.conftest import async_engine, fake_generation, patch_generation
 
 ASK_PATH = "/api/v1/ai/ask"
 QUESTIONS = "/api/v1/questions"
@@ -129,8 +129,9 @@ def test_export_requires_admin(client, user_client):
 
 @pytest.fixture
 def _bind_export_cli(monkeypatch, db):
-    factory = sessionmaker(bind=engine, expire_on_commit=False)
-    monkeypatch.setattr(export_cli, "SessionLocal", factory)
+    # The CLI is async since [96]; bind it to the test engine.
+    factory = async_sessionmaker(bind=async_engine, expire_on_commit=False)
+    monkeypatch.setattr(export_cli, "AsyncSessionLocal", factory)
 
 
 def test_cli_writes_jsonl_file(

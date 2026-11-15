@@ -1,8 +1,10 @@
 import argparse
+import asyncio
 import sys
 from datetime import UTC, date, datetime
+from typing import TextIO
 
-from physics_ai_tutor.database.database import SessionLocal
+from physics_ai_tutor.database.database import AsyncSessionLocal
 from physics_ai_tutor.services import review_export_service
 
 
@@ -40,25 +42,27 @@ def resolve_since(since: date | None, include_all: bool) -> datetime | None:
     return datetime.combine(since, datetime.min.time(), tzinfo=UTC)
 
 
-def main(since: date | None = None, include_all: bool = False, out: str = "-") -> int:
-    db = SessionLocal()
-    count = 0
+async def _write_rows(start: datetime | None, handle: TextIO) -> int:
+    """Async since [96]; the CLI opens its own session."""
+    async with AsyncSessionLocal() as db:
+        rows = [row async for row in review_export_service.iter_export_rows(db, start)]
 
+    count = 0
+    for line in review_export_service.to_jsonl(rows):
+        handle.write(line)
+        count += 1
+
+    return count
+
+
+def main(since: date | None = None, include_all: bool = False, out: str = "-") -> int:
+    start = resolve_since(since, include_all)
+    handle = sys.stdout if out == "-" else open(out, "w", encoding="utf-8")
     try:
-        start = resolve_since(since, include_all)
-        lines = review_export_service.to_jsonl(
-            review_export_service.iter_export_rows(db, start)
-        )
-        handle = sys.stdout if out == "-" else open(out, "w", encoding="utf-8")
-        try:
-            for line in lines:
-                handle.write(line)
-                count += 1
-        finally:
-            if handle is not sys.stdout:
-                handle.close()
+        count = asyncio.run(_write_rows(start, handle))
     finally:
-        db.close()
+        if handle is not sys.stdout:
+            handle.close()
 
     print(f"Exported {count} reviews", file=sys.stderr)
     return count

@@ -105,7 +105,7 @@ wait for the slowest endpoint from "whole answer" to "first words".
    11. ~~[95] Seed tags step on the async services; delete the sync tag-extraction path~~ done 2026-11-14
    11a. ~~[102] translate_missing CLI on the async service; delete the sync translation half~~ done 2026-11-14
    12. ~~[87] Asynchronize the usage dashboard and the agreement report~~ done 2026-11-15
-   13. [96] Asynchronize the review dataset export
+   13. ~~[96] Asynchronize the review dataset export~~ done 2026-11-15
    14. [97] Asynchronize AI review runs; one ai_review_service
    15. [88] Delete the sync engine, sync LLM clients and remaining sync twins
    16. [98] Rename pass: drop the async_ prefixes

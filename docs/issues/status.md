@@ -116,7 +116,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 93 | closed | 93-async-create-update.md | Asynchronize create and update (prepare/apply) | — (file-era issue) |
 | 94 | closed | 94-async-import.md | Asynchronize JSONL import | — (file-era issue) |
 | 95 | closed | 95-async-seed-and-clis.md | Seed tags step on the async services; delete the sync tag-extraction path | — (file-era issue) |
-| 96 | open | 96-async-review-export.md | Asynchronize the review dataset export | — (file-era issue) |
+| 96 | closed | 96-async-review-export.md | Asynchronize the review dataset export | — (file-era issue) |
 | 97 | open | 97-async-ai-review-runs.md | Asynchronize AI review runs; one ai_review_service | — (file-era issue) |
 | 98 | open | 98-async-rename-pass.md | Rename pass: drop the async_ prefixes | — (file-era issue) |
 | 99 | open | 99-async-end-state-and-docs.md | Async end state: architecture test, docs, connection budget (closes [73]) | — (file-era issue) |

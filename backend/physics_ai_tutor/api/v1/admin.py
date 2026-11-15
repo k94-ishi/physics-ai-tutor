@@ -42,10 +42,10 @@ async def get_usage_stats(
 
 
 @router.get("/reviews/export", dependencies=[Depends(require_admin)])
-def export_reviews(
+async def export_reviews(
     since: date | None = Query(default=None),
     all: bool = Query(default=False),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """The review dataset as JSONL, for when the CLI has no DB access.
 
@@ -59,11 +59,8 @@ def export_reviews(
     else:
         start = datetime.combine(since, datetime.min.time(), tzinfo=UTC)
 
-    body = "".join(
-        review_export_service.to_jsonl(
-            review_export_service.iter_export_rows(db, start)
-        )
-    )
+    rows = [row async for row in review_export_service.iter_export_rows(db, start)]
+    body = "".join(review_export_service.to_jsonl(rows))
 
     return Response(
         content=body,

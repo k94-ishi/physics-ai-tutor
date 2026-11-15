@@ -108,7 +108,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 85 | closed | 85-async-admin-review-workflow.md | Asynchronize the review routes: review, bulk review, history | — (file-era issue) |
 | 86 | closed | 86-async-admin-content-writes.md | Asynchronize delete and bulk delete | — (file-era issue) |
 | 87 | closed | 87-async-admin-stats-exports-and-ai-review-runs.md | Asynchronize the usage dashboard and the agreement report | — (file-era issue) |
-| 88 | open | 88-retire-the-sync-stack.md | Delete the sync engine, sync LLM clients and remaining sync twins | — (file-era issue) |
+| 88 | open | 88-retire-the-sync-stack.md | Delete the sync engine, sync LLM clients and remaining sync twins (umbrella for [107]-[112]) | — (file-era issue) |
 | 89 | closed | 89-async-admin-concept-reads.md | Asynchronize the admin tag editor reads: list and detail | — (file-era issue) |
 | 90 | closed | 90-async-admin-concept-writes.md | Asynchronize the admin tag editor writes: gloss, words, merge, split | — (file-era issue) |
 | 91 | closed | 91-async-concept-extraction.md | Asynchronize concept extraction and the re-extract route | — (file-era issue) |
@@ -127,6 +127,12 @@ including all discussion comments; browse it with `git bug bug` /
 | 104 | closed | 104-async-start-ai-review-run.md | Asynchronize starting an AI review run (POST /admin/ai-review/runs) | — (file-era issue) |
 | 105 | closed | 105-async-review-pending-cli.md | Nightly review_pending CLI on the async executor; delete the sync run code | — (file-era issue) |
 | 106 | closed | 106-async-eval-and-one-reviewer.md | Prompt eval on the async reviewer; delete the sync reviewer (one ai_review_service) | — (file-era issue) |
+| 107 | open | 107-delete-sync-rate-limiter-and-dead-code.md | Delete the sync rate limiter and the dead sync repository functions | — (file-era issue) |
+| 108 | open | 108-delete-sync-rag-and-llm-clients.md | Delete the sync RAG path and the sync LLM clients | — (file-era issue) |
+| 109 | open | 109-async-seed-export-and-maintenance-clis.md | Seed export, init_db and the maintenance CLIs on the async engine | — (file-era issue) |
+| 110 | open | 110-delete-sync-engine-from-app.md | Delete the sync engine, SessionLocal, get_db, background_session and transaction() from the app | — (file-era issue) |
+| 111 | open | 111-question-repository-test-helpers-out-of-app.md | Test-only sync helpers in question_repository move out of the app | — (file-era issue) |
+| 112 | open | 112-concept-embedding-test-helpers-out-of-app.md | Test-only sync helpers in the concept and embedding repositories move out of the app | — (file-era issue) |
 
 ## Notes on the archive column
 

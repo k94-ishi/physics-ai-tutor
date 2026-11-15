@@ -1,6 +1,6 @@
 ---
-title: "[88] Delete the sync engine, sync LLM clients and remaining sync twins"
-labels: [backend, async, refactor]
+title: "[88] Delete the sync engine, sync LLM clients and remaining sync twins (umbrella for [107]-[112])"
+labels: [backend, async, refactor, epic]
 milestone: M1 Student value
 priority: P2
 ---
@@ -9,25 +9,55 @@ priority: P2
 
 ## Summary
 
-One small slice of [73]: deletions. No behaviour change.
+Deletions: once every caller is async, the sync engine, the sync LLM
+clients and every remaining sync function leave the app. No behaviour
+change. Tests keep a test-only sync session in conftest.
 
-## Scope
+**Split 2026-11-16** into six slices, each its own commit with the suite
+green. This issue stays open until all six are closed.
 
-- Delete sync `engine`, `SessionLocal`, `get_db`, `transaction()`,
-  `background_session()` from the app, the sync LLM clients, and the
-  last sync twins. `export_seed`, `export_seed_embeddings`, `init_db`
-  via `asyncio.run`. Tests keep a test-only sync session in conftest.
+## Scope: the slices
 
-## Acceptance criteria
+| # | Issue | What goes | Status |
+| --- | --- | --- | --- |
+| 1 | [107] | Sync rate limiter; dead sync repository functions | open |
+| 2 | [108] | Sync RAG path; sync OpenAI and DeepSeek clients | open |
+| 3 | [109] | `export_seed`, `export_seed_embeddings`, `init_db`, `split_merged_concepts`, `backfill_levels` onto the async engine | open |
+| 4 | [110] | Sync `engine`, `SessionLocal`, `get_db`, `background_session`, `transaction()` | open |
+| 5 | [111] | Test-only sync helpers in `question_repository` | open |
+| 6 | [112] | Test-only sync helpers in the concept and embedding repositories | open |
+
+Chain: [107]→[108]→[109]→[110]→[111]→[112]→[98].
+
+## Acceptance criteria (ticked when [112] closes)
 
 - [ ] `rg "SessionLocal|get_db"` matches only `database/`, `alembic/`, `tests/`.
+- [ ] No sync LLM client; no app module takes a sync `Session`.
 
 ## Dependencies
 
-- Blocked by: [95], [97] (both done 2026-11-16; unblocked)
+- Blocked by: [95], [97] (both done 2026-11-16)
 - Blocks: [98]
 
 ## Log
+
+### 2026-11-16 — split into [107]-[112]
+
+Measured against the code (HEAD 0dc6a2b) with an AST scan of every
+function that takes a sync `Session`, counting only module-qualified
+callers:
+
+- **No production path uses the sync stack any more.** Every remaining
+  sync function is dead (4) or reached only from tests (~20 entry
+  points), apart from five CLIs that still open `SessionLocal`.
+- The test churn is about 85 tests: sync RAG/LLM path ~19, rate limiter
+  5, CLIs ~6, and **57** for sync repository helpers that tests use to
+  arrange rows. That is roughly eight times the owner's ten-test slice.
+- The helpers (slices 5-6) must go before [98]: renaming
+  `async_create_question` to `create_question` would collide with the
+  sync function of the same name.
+- The engine itself (slice 4) needs only slices 1-3: the test-only
+  helpers take a session as a parameter and never import the engine.
 
 ### 2026-11-13 — re-scoped smaller
 
@@ -44,5 +74,5 @@ Owner found [83] (22 files, 35 tests) too big. The earlier, wider version of thi
 
 ## Definition of done
 
-- [ ] Backend: `pytest`, `ruff check`, `mypy` pass
+- [ ] [107]-[112] closed
 - [ ] Log entry in this file; `status.md`, [67] and [73] updated

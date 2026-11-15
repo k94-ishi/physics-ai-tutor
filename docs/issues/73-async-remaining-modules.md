@@ -55,11 +55,17 @@ traffic first, then by which sync functions can be deleted soonest.
 | 15b | [104] | Asynchronize starting an AI review run (POST /admin/ai-review/runs) | done 2026-11-16 |
 | 15c | [105] | Nightly review_pending CLI on the async executor; delete the sync run code | done 2026-11-16 |
 | 15d | [106] | Prompt eval on the async reviewer; delete the sync reviewer | done 2026-11-16 |
-| 16 | [88] | Delete the sync engine, sync LLM clients and remaining sync twins | open |
+| 16 | [88] | Delete the sync engine, sync LLM clients and remaining sync twins (umbrella, split 2026-11-16) | open |
+| 16a | [107] | Sync rate limiter and dead sync functions | open |
+| 16b | [108] | Sync RAG path and sync LLM clients | open |
+| 16c | [109] | Seed export, init_db and maintenance CLIs on the async engine | open |
+| 16d | [110] | Sync engine, SessionLocal, get_db, background_session, transaction() | open |
+| 16e | [111] | Test-only sync helpers in question_repository | open |
+| 16f | [112] | Test-only sync helpers in the concept and embedding repositories | open |
 | 17 | [98] | Rename pass: drop the async_ prefixes | open |
 | 18 | [99] | Async end state: architecture test, docs, connection budget (closes [73]) | open |
 
-Chains: concepts [84]→[89]→[90]→[91], review [85]→[92], writes [86]→[93]→[94]→[95], admin stats [87]→[96]→[97] ([103]→[104]→[105]→[106]), end [88]→[98]→[99]. [87] needs only [83] and can run beside the concept chain. [76] (batch embeddings on import) is
+Chains: concepts [84]→[89]→[90]→[91], review [85]→[92], writes [86]→[93]→[94]→[95], admin stats [87]→[96]→[97] ([103]→[104]→[105]→[106]), end [88] ([107]→[108]→[109]→[110]→[111]→[112])→[98]→[99]. [87] needs only [83] and can run beside the concept chain. [76] (batch embeddings on import) is
 recommended before [86].
 
 ## Acceptance criteria (the end state, ticked by [88])

@@ -1,8 +1,10 @@
-from sqlalchemy import select
+from datetime import timedelta
+
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from physics_ai_tutor.models import AiReview
+from physics_ai_tutor.models import AiReview, Question
 from physics_ai_tutor.schemas.ai_review import AiReviewCreate
 
 
@@ -94,22 +96,21 @@ async def async_latest_for_questions(
 MAX_PARSE_ATTEMPTS = 3
 
 
-def _pending_question_query(db: Session):
-    """UNREVIEWED AI questions with no usable verdict yet, oldest first."""
-    from sqlalchemy import func
+def _pending_question_select() -> Select[tuple[int]]:
+    """UNREVIEWED AI questions with no usable verdict yet, oldest first.
 
-    from physics_ai_tutor.models import Question
-
-    graded = db.query(AiReview.question_id).filter(AiReview.verdict.isnot(None))
+    One statement for the sync and async twins, so the rule cannot drift.
+    """
+    graded = select(AiReview.question_id).where(AiReview.verdict.isnot(None))
     exhausted = (
-        db.query(AiReview.question_id)
+        select(AiReview.question_id)
         .group_by(AiReview.question_id)
         .having(func.count(AiReview.id) >= MAX_PARSE_ATTEMPTS)
     )
 
     return (
-        db.query(Question.id)
-        .filter(
+        select(Question.id)
+        .where(
             Question.status == "UNREVIEWED",
             Question.source.in_(["AI_GENERATED", "RAG_RESULT"]),
             ~Question.id.in_(graded),
@@ -119,38 +120,45 @@ def _pending_question_query(db: Session):
     )
 
 
-def list_pending_question_ids(db: Session, limit: int) -> list[int]:
-    rows = _pending_question_query(db).limit(limit).all()
+def _count_of(query: Select[tuple[int]]) -> Select[tuple[int]]:
+    """`SELECT count(*)` over a statement, as `Query.count()` did."""
+    return select(func.count()).select_from(query.order_by(None).subquery())
 
-    return [question_id for (question_id,) in rows]
+
+def list_pending_question_ids(db: Session, limit: int) -> list[int]:
+    return list(db.scalars(_pending_question_select().limit(limit)).all())
 
 
 def count_pending_questions(db: Session) -> int:
     """The true total, unbounded by any run's limit or the daily cap."""
-    return _pending_question_query(db).count()
+    return db.scalar(_count_of(_pending_question_select())) or 0
+
+
+async def async_count_pending_questions(db: AsyncSession) -> int:
+    """As `count_pending_questions` ([103])."""
+    return (await db.scalar(_count_of(_pending_question_select()))) or 0
+
+
+def _created_since_count(hours: int) -> Select[tuple[int]]:
+    cutoff = func.now() - timedelta(hours=hours)
+
+    return select(func.count(AiReview.id)).where(AiReview.created_at > cutoff)
 
 
 def count_created_since(db: Session, hours: int) -> int:
     """AI reviews created in the last `hours`, for the daily cap."""
-    from datetime import timedelta
-
-    from sqlalchemy import func
-
-    cutoff = func.now() - timedelta(hours=hours)
-
-    return (
-        db.query(func.count(AiReview.id)).filter(AiReview.created_at > cutoff).scalar()
-    ) or 0
+    return db.scalar(_created_since_count(hours)) or 0
 
 
-def _stale_question_query(db: Session, current_version: str):
+async def async_count_created_since(db: AsyncSession, hours: int) -> int:
+    """As `count_created_since` ([103])."""
+    return (await db.scalar(_created_since_count(hours))) or 0
+
+
+def _stale_question_select(current_version: str) -> Select[tuple[int]]:
     """UNREVIEWED AI questions whose latest verdict used an older prompt."""
-    from sqlalchemy import func
-
-    from physics_ai_tutor.models import Question
-
     latest = (
-        db.query(
+        select(
             AiReview.question_id,
             func.max(AiReview.id).label("latest_id"),
         )
@@ -159,10 +167,10 @@ def _stale_question_query(db: Session, current_version: str):
     )
 
     return (
-        db.query(Question.id)
+        select(Question.id)
         .join(latest, latest.c.question_id == Question.id)
         .join(AiReview, AiReview.id == latest.c.latest_id)
-        .filter(
+        .where(
             Question.status == "UNREVIEWED",
             Question.source.in_(["AI_GENERATED", "RAG_RESULT"]),
             AiReview.prompt_version != current_version,
@@ -172,20 +180,25 @@ def _stale_question_query(db: Session, current_version: str):
 
 
 def list_stale_question_ids(db: Session, current_version: str, limit: int) -> list[int]:
-    rows = _stale_question_query(db, current_version).limit(limit).all()
+    query = _stale_question_select(current_version).limit(limit)
 
-    return [question_id for (question_id,) in rows]
+    return list(db.scalars(query).all())
 
 
 def count_stale_questions(db: Session, current_version: str) -> int:
     """The true total, unbounded by any run's limit or the daily cap."""
-    return _stale_question_query(db, current_version).count()
+    return db.scalar(_count_of(_stale_question_select(current_version))) or 0
+
+
+async def async_count_stale_questions(db: AsyncSession, current_version: str) -> int:
+    """As `count_stale_questions` ([103])."""
+    query = _count_of(_stale_question_select(current_version))
+
+    return (await db.scalar(query)) or 0
 
 
 def filter_reviewable_ids(db: Session, ids: list[int]) -> list[int]:
     """Keep only UNREVIEWED AI questions, preserving the given order."""
-    from physics_ai_tutor.models import Question
-
     if not ids:
         return []
 

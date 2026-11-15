@@ -134,11 +134,11 @@ def start_ai_review_run(
     response_model=list[AiReviewRunResponse],
     dependencies=[Depends(require_admin)],
 )
-def list_ai_review_runs(
+async def list_ai_review_runs(
     limit: int = Query(default=20, ge=1, le=100),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
-    return ai_review_service.list_runs(db, limit)
+    return await ai_review_service.list_runs(db, limit)
 
 
 @router.get(
@@ -146,11 +146,11 @@ def list_ai_review_runs(
     response_model=AiReviewRunResponse,
     dependencies=[Depends(require_admin)],
 )
-def get_ai_review_run(
+async def get_ai_review_run(
     run_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
-    run = ai_review_service.get_run(db, run_id)
+    run = await ai_review_service.get_run(db, run_id)
 
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -163,8 +163,8 @@ def get_ai_review_run(
     response_model=PendingCountResponse,
     dependencies=[Depends(require_admin)],
 )
-def get_ai_review_pending_count(
-    db: Session = Depends(get_db),
+async def get_ai_review_pending_count(
+    db: AsyncSession = Depends(get_async_db),
 ):
     """How many questions await review, and how many a run could do now.
 
@@ -173,9 +173,9 @@ def get_ai_review_pending_count(
     """
     from physics_ai_tutor.core.config import settings
 
-    remaining = ai_review_service.remaining_daily_budget(db)
-    pending = ai_review_service.count_pending(db)
-    stale = ai_review_service.count_stale(db)
+    remaining = await ai_review_service.async_remaining_daily_budget(db)
+    pending = await ai_review_service.async_count_pending(db)
+    stale = await ai_review_service.async_count_stale(db)
 
     return PendingCountResponse(
         pending=pending,

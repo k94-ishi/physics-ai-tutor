@@ -14,10 +14,7 @@ from sqlalchemy.orm import Session
 from physics_ai_tutor.core import timing
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.prompt_library import load_library
-from physics_ai_tutor.database.session import (
-    async_background_session,
-    background_session,
-)
+from physics_ai_tutor.database.session import async_background_session
 from physics_ai_tutor.database.transaction import async_transaction, transaction
 from physics_ai_tutor.models import AiReview, AiReviewRun, Question
 from physics_ai_tutor.repositories import (
@@ -460,10 +457,21 @@ class DailyCapExhaustedError(Exception):
     """The rolling 24h budget of reviewer calls is spent."""
 
 
+def _budget_left(used: int) -> int:
+    return max(settings.ai_review_daily_cap - used, 0)
+
+
 def remaining_daily_budget(db: Session) -> int:
     used = ai_review_repository.count_created_since(db, CAP_WINDOW_HOURS)
 
-    return max(settings.ai_review_daily_cap - used, 0)
+    return _budget_left(used)
+
+
+async def async_remaining_daily_budget(db: AsyncSession) -> int:
+    """As `remaining_daily_budget` ([103])."""
+    used = await ai_review_repository.async_count_created_since(db, CAP_WINDOW_HOURS)
+
+    return _budget_left(used)
 
 
 def eligible_question_ids(
@@ -496,6 +504,18 @@ def count_pending(db: Session) -> int:
 def count_stale(db: Session) -> int:
     """Questions whose verdict predates the current rubric."""
     return ai_review_repository.count_stale_questions(db, REVIEW_PROMPT_VERSION)
+
+
+async def async_count_pending(db: AsyncSession) -> int:
+    """As `count_pending` ([103])."""
+    return await ai_review_repository.async_count_pending_questions(db)
+
+
+async def async_count_stale(db: AsyncSession) -> int:
+    """As `count_stale` ([103])."""
+    return await ai_review_repository.async_count_stale_questions(
+        db, REVIEW_PROMPT_VERSION
+    )
 
 
 def _fail_timed_out_runs(db: Session) -> None:
@@ -636,23 +656,15 @@ def _finish(
     return bool(updated)
 
 
-def execute_run_in_background(run_id: int) -> None:
-    """Run the reviewer after the response is sent, on its own session."""
-    with timing.request_path("background:ai_review_run"), background_session() as db:
-        try:
-            with timing.stage("ai_review_run", run_id=run_id):
-                execute_run(db, run_id)
-        except Exception:
-            logger.exception("Background AI review run crashed: run_id=%d", run_id)
-
-
-def list_runs(db: Session, limit: int) -> list[AiReviewRun]:
+async def list_runs(db: AsyncSession, limit: int) -> list[AiReviewRun]:
     """Recent runs, newest first."""
-    return db.query(AiReviewRun).order_by(AiReviewRun.id.desc()).limit(limit).all()
+    query = select(AiReviewRun).order_by(AiReviewRun.id.desc()).limit(limit)
+
+    return list((await db.scalars(query)).all())
 
 
-def get_run(db: Session, run_id: int) -> AiReviewRun | None:
-    return db.get(AiReviewRun, run_id)
+async def get_run(db: AsyncSession, run_id: int) -> AiReviewRun | None:
+    return await db.get(AiReviewRun, run_id)
 
 
 # --- concurrent runs ([72]) -----------------------------------------------------

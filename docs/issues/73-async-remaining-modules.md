@@ -50,12 +50,16 @@ traffic first, then by which sync functions can be deleted soonest.
 | 12a | [102] | translate_missing CLI on the async service; delete the sync translation half | done 2026-11-14 |
 | 13 | [87] | Asynchronize the usage dashboard and the agreement report | done 2026-11-15 |
 | 14 | [96] | Asynchronize the review dataset export | done 2026-11-15 |
-| 15 | [97] | Asynchronize AI review runs; one ai_review_service | open |
+| 15 | [97] | Asynchronize AI review runs; one ai_review_service (umbrella, split 2026-11-15) | open |
+| 15a | [103] | Asynchronize the AI review run reads: list, detail, pending count | done 2026-11-15 |
+| 15b | [104] | Asynchronize starting an AI review run (POST /admin/ai-review/runs) | open |
+| 15c | [105] | Nightly review_pending CLI on the async executor; delete the sync run code | open |
+| 15d | [106] | Prompt eval on the async reviewer; delete the sync reviewer | open |
 | 16 | [88] | Delete the sync engine, sync LLM clients and remaining sync twins | open |
 | 17 | [98] | Rename pass: drop the async_ prefixes | open |
 | 18 | [99] | Async end state: architecture test, docs, connection budget (closes [73]) | open |
 
-Chains: concepts [84]→[89]→[90]→[91], review [85]→[92], writes [86]→[93]→[94]→[95], admin stats [87]→[96]→[97], end [88]→[98]→[99]. [87] needs only [83] and can run beside the concept chain. [76] (batch embeddings on import) is
+Chains: concepts [84]→[89]→[90]→[91], review [85]→[92], writes [86]→[93]→[94]→[95], admin stats [87]→[96]→[97] ([103]→[104]→[105]→[106]), end [88]→[98]→[99]. [87] needs only [83] and can run beside the concept chain. [76] (batch embeddings on import) is
 recommended before [86].
 
 ## Acceptance criteria (the end state, ticked by [88])

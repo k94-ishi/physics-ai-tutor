@@ -117,12 +117,16 @@ including all discussion comments; browse it with `git bug bug` /
 | 94 | closed | 94-async-import.md | Asynchronize JSONL import | — (file-era issue) |
 | 95 | closed | 95-async-seed-and-clis.md | Seed tags step on the async services; delete the sync tag-extraction path | — (file-era issue) |
 | 96 | closed | 96-async-review-export.md | Asynchronize the review dataset export | — (file-era issue) |
-| 97 | open | 97-async-ai-review-runs.md | Asynchronize AI review runs; one ai_review_service | — (file-era issue) |
+| 97 | open | 97-async-ai-review-runs.md | Asynchronize AI review runs; one ai_review_service (umbrella for [103]-[106]) | — (file-era issue) |
 | 98 | open | 98-async-rename-pass.md | Rename pass: drop the async_ prefixes | — (file-era issue) |
 | 99 | open | 99-async-end-state-and-docs.md | Async end state: architecture test, docs, connection budget (closes [73]) | — (file-era issue) |
 | 100 | open | 100-reuse-sense-embeddings.md | Reuse sense embeddings instead of re-embedding every candidate on each extraction | — (file-era issue) |
 | 101 | closed | 101-seed-as-one-jsonl-file.md | Seed data as one JSONL file; seed.json removed | — (file-era issue) |
 | 102 | closed | 102-async-translate-missing-cli.md | translate_missing CLI on the async service; delete the sync translation half | — (file-era issue) |
+| 103 | closed | 103-async-ai-review-run-reads.md | Asynchronize the AI review run reads: list, detail, pending count | — (file-era issue) |
+| 104 | open | 104-async-start-ai-review-run.md | Asynchronize starting an AI review run (POST /admin/ai-review/runs) | — (file-era issue) |
+| 105 | open | 105-async-review-pending-cli.md | Nightly review_pending CLI on the async executor; delete the sync run code | — (file-era issue) |
+| 106 | open | 106-async-eval-and-one-reviewer.md | Prompt eval on the async reviewer; delete the sync reviewer (one ai_review_service) | — (file-era issue) |
 
 ## Notes on the archive column
 

@@ -469,6 +469,42 @@ def test_pending_count_is_not_capped_by_the_daily_budget(
     assert body["would_review_pending"] == 2, "what a run started now would touch"
 
 
+def test_pending_count_reports_stale_and_used_budget(
+    client, admin_client, db, monkeypatch
+):
+    """The async counters ([103]) apply the same rules as the run's scopes."""
+    from physics_ai_tutor.repositories import ai_review_repository
+    from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
+    from physics_ai_tutor.schemas.language import Language
+
+    old, current, unparsed = _three_pending(client, monkeypatch)
+    rows = (
+        (old, AiReviewVerdict.APPROVE, "r0"),
+        (current, AiReviewVerdict.APPROVE, ai_review_service.REVIEW_PROMPT_VERSION),
+        (unparsed, None, ai_review_service.REVIEW_PROMPT_VERSION),
+    )
+    for question_id, verdict, version in rows:
+        ai_review_repository.create(
+            db,
+            AiReviewCreate(
+                question_id=question_id,
+                language=Language.JA,
+                verdict=verdict,
+                model="mock",
+                prompt_version=version,
+            ),
+        )
+    db.commit()
+
+    body = admin_client.get("/api/v1/admin/ai-review/pending-count").json()
+
+    # Only the unparsed verdict is retried; only the r0 verdict is stale.
+    assert body["pending"] == 1
+    assert body["stale"] == 1
+    assert body["used_24h"] == 3
+    assert body["remaining"] == settings.ai_review_daily_cap - 3
+
+
 def test_timed_out_run_is_failed_and_replaced(client, db, monkeypatch):
     _three_pending(client, monkeypatch)
     from datetime import UTC, datetime, timedelta

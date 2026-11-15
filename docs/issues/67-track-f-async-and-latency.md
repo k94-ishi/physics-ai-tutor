@@ -106,7 +106,12 @@ wait for the slowest endpoint from "whole answer" to "first words".
    11a. ~~[102] translate_missing CLI on the async service; delete the sync translation half~~ done 2026-11-14
    12. ~~[87] Asynchronize the usage dashboard and the agreement report~~ done 2026-11-15
    13. ~~[96] Asynchronize the review dataset export~~ done 2026-11-15
-   14. [97] Asynchronize AI review runs; one ai_review_service
+   14. [97] Asynchronize AI review runs; one ai_review_service - split
+       2026-11-15 into four slices:
+       1. ~~[103] AI review run reads: list, detail, pending count~~ done 2026-11-15
+       2. [104] Starting a run (POST /admin/ai-review/runs)
+       3. [105] Nightly review_pending CLI on the async executor
+       4. [106] Prompt eval on the async reviewer; one ai_review_service
    15. [88] Delete the sync engine, sync LLM clients and remaining sync twins
    16. [98] Rename pass: drop the async_ prefixes
    17. [99] Async end state: architecture test, docs, connection budget (closes [73])
@@ -148,5 +153,5 @@ Rules for the whole track:
 ## Dependencies
 
 - Independent of Track E's remaining items ([61], [65]).
-- [26]'s nightly GitHub Actions run calls `review_pending`, which [97]
+- [26]'s nightly GitHub Actions run calls `review_pending`, which [105]
   wraps with `asyncio.run`; the workflow itself does not change.

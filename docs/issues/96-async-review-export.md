@@ -16,6 +16,10 @@ One small slice of [73]: admin export. No behaviour change.
 - Route `GET /admin/reviews/export` (async generator, same NDJSON).
 - `review_export_service` (outright); `cli/export_reviews.py` via
   `asyncio.run`.
+- Delete the sync twin `review_metrics_repository.ai_reviews_by_question`
+  that [87] left; this slice removes its last caller. Fold
+  `_ai_reviews_select` and `_group_by_question` back into the async
+  version if nothing else needs them.
 
 ## Acceptance criteria
 

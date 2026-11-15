@@ -354,7 +354,7 @@ one from the app. Both use the same psycopg driver and the same
 
 | | Sync (not yet converted) | Async (converted) |
 | --- | --- | --- |
-| Request session | `Depends(get_db)` (admin and concept routes) | `Depends(get_async_db)` (health, auth, users, ai, public question reads) |
+| Request session | `Depends(get_db)` (review export and AI review runs in `api/v1/admin.py`, until [96]/[97]) | `Depends(get_async_db)` (every other route) |
 | Background session | `with background_session()` | `async with async_background_session()` |
 | Writes | `with transaction(db, "op")` | `async with async_transaction(db, "op")` |
 | Test fixture | `db` | `async_db` |

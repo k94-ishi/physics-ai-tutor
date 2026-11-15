@@ -1,6 +1,9 @@
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 
+from sqlalchemy import Select, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.models import AiReview, Question, QuestionReview
@@ -23,24 +26,46 @@ class ReviewPair:
     reviewed_at: datetime
 
 
-def ai_reviews_by_question(
-    db: Session, question_ids: set[int]
-) -> dict[int, list[AiReview]]:
-    """All AI reviews for the given questions, oldest first per question."""
-    if not question_ids:
-        return {}
-
-    rows = (
-        db.query(AiReview)
-        .filter(AiReview.question_id.in_(question_ids))
+def _ai_reviews_select(question_ids: set[int]) -> Select[tuple[AiReview]]:
+    """One statement for both twins, so their order cannot drift."""
+    return (
+        select(AiReview)
+        .where(AiReview.question_id.in_(question_ids))
         .order_by(AiReview.created_at.asc(), AiReview.id.asc())
-        .all()
     )
+
+
+def _group_by_question(rows: Iterable[AiReview]) -> dict[int, list[AiReview]]:
     grouped: dict[int, list[AiReview]] = {}
     for row in rows:
         grouped.setdefault(row.question_id, []).append(row)
 
     return grouped
+
+
+def ai_reviews_by_question(
+    db: Session, question_ids: set[int]
+) -> dict[int, list[AiReview]]:
+    """All AI reviews for the given questions, oldest first per question.
+
+    Sync twin for review_export_service until [96] converts it.
+    """
+    if not question_ids:
+        return {}
+
+    return _group_by_question(db.scalars(_ai_reviews_select(question_ids)).all())
+
+
+async def async_ai_reviews_by_question(
+    db: AsyncSession, question_ids: set[int]
+) -> dict[int, list[AiReview]]:
+    """As `ai_reviews_by_question`, on an `AsyncSession` ([87])."""
+    if not question_ids:
+        return {}
+
+    rows = (await db.scalars(_ai_reviews_select(question_ids))).all()
+
+    return _group_by_question(rows)
 
 
 def ai_review_before(
@@ -52,28 +77,29 @@ def ai_review_before(
     return earlier[-1] if earlier else None
 
 
-def list_pairs(db: Session, since: datetime | None) -> list[ReviewPair]:
+async def list_pairs(db: AsyncSession, since: datetime | None) -> list[ReviewPair]:
     """Pair each human review with the latest AI review created before it.
 
     Human reviews with no earlier AI verdict (the backlog case) are left
     out: they say nothing about the reviewer's accuracy.
     """
     query = (
-        db.query(QuestionReview, Question)
+        select(QuestionReview, Question)
         .join(Question, QuestionReview.question_id == Question.id)
-        .filter(
+        .where(
             QuestionReview.reviewer_kind == "human",
             QuestionReview.action.in_(HUMAN_ACTIONS),
         )
     )
     if since is not None:
-        query = query.filter(QuestionReview.created_at >= since)
+        query = query.where(QuestionReview.created_at >= since)
 
-    reviews = query.order_by(QuestionReview.created_at.asc()).all()
+    result = await db.execute(query.order_by(QuestionReview.created_at.asc()))
+    reviews = result.tuples().all()
     if not reviews:
         return []
 
-    ai_by_question = ai_reviews_by_question(
+    ai_by_question = await async_ai_reviews_by_question(
         db, {review.question_id for review, _ in reviews}
     )
 

@@ -107,7 +107,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 84 | closed | 84-async-concepts.md | Asynchronize the public tag search (GET /concepts) | — (file-era issue) |
 | 85 | closed | 85-async-admin-review-workflow.md | Asynchronize the review routes: review, bulk review, history | — (file-era issue) |
 | 86 | closed | 86-async-admin-content-writes.md | Asynchronize delete and bulk delete | — (file-era issue) |
-| 87 | open | 87-async-admin-stats-exports-and-ai-review-runs.md | Asynchronize the usage dashboard and the agreement report | — (file-era issue) |
+| 87 | closed | 87-async-admin-stats-exports-and-ai-review-runs.md | Asynchronize the usage dashboard and the agreement report | — (file-era issue) |
 | 88 | open | 88-retire-the-sync-stack.md | Delete the sync engine, sync LLM clients and remaining sync twins | — (file-era issue) |
 | 89 | closed | 89-async-admin-concept-reads.md | Asynchronize the admin tag editor reads: list and detail | — (file-era issue) |
 | 90 | closed | 90-async-admin-concept-writes.md | Asynchronize the admin tag editor writes: gloss, words, merge, split | — (file-era issue) |

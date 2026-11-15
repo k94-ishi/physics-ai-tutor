@@ -6,13 +6,17 @@ snapshot without database access.
 """
 
 import argparse
+import asyncio
 import json
 import sys
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from physics_ai_tutor.database.database import SessionLocal
-from physics_ai_tutor.schemas.admin_stats import AgreementMetrics
+from physics_ai_tutor.database.database import AsyncSessionLocal
+from physics_ai_tutor.schemas.admin_stats import (
+    AgreementMetrics,
+    ReviewAgreementResponse,
+)
 from physics_ai_tutor.services import review_export_service, review_metrics_service
 
 
@@ -71,6 +75,12 @@ def _read_export(path: Path) -> list[dict]:
         return [json.loads(line) for line in handle if line.strip()]
 
 
+async def _report_from_database(start: datetime | None) -> ReviewAgreementResponse:
+    """Async since [87]; the CLI opens its own session."""
+    async with AsyncSessionLocal() as db:
+        return await review_metrics_service.build_report(db, start)
+
+
 def main(
     since: date | None = None,
     include_all: bool = False,
@@ -89,11 +99,7 @@ def main(
             pairs = [pair for pair in pairs if pair.reviewed_at >= start]
         report = review_metrics_service.build_report_from_pairs(pairs, start)
     else:
-        db = SessionLocal()
-        try:
-            report = review_metrics_service.build_report(db, start)
-        finally:
-            db.close()
+        report = asyncio.run(_report_from_database(start))
 
     print(format_metrics("overall", report.overall))
     for label, groups in (

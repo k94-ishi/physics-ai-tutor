@@ -2,10 +2,11 @@ import logging
 from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.api.dependencies import require_admin
-from physics_ai_tutor.database.dependency import get_db
+from physics_ai_tutor.database.dependency import get_async_db, get_db
 from physics_ai_tutor.schemas.admin_stats import (
     AdminStatsResponse,
     ReviewAgreementResponse,
@@ -33,11 +34,11 @@ router = APIRouter(prefix="/admin", tags=["admin"])
     response_model=AdminStatsResponse,
     dependencies=[Depends(require_admin)],
 )
-def get_usage_stats(
+async def get_usage_stats(
     days: int = Query(default=14, ge=1, le=90),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
-    return stats_service.fetch_usage_stats(db, days)
+    return await stats_service.fetch_usage_stats(db, days)
 
 
 @router.get("/reviews/export", dependencies=[Depends(require_admin)])
@@ -76,9 +77,9 @@ def export_reviews(
     response_model=ReviewAgreementResponse,
     dependencies=[Depends(require_admin)],
 )
-def get_review_agreement(
+async def get_review_agreement(
     since: date | None = Query(default=None),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """How often the AI pre-reviewer agreed with the teacher who came after."""
     start = (
@@ -87,7 +88,7 @@ def get_review_agreement(
         else review_export_service.default_since()
     )
 
-    return review_metrics_service.build_report(db, start)
+    return await review_metrics_service.build_report(db, start)
 
 
 @router.post("/ai-review/runs", response_model=AiReviewRunResponse, status_code=202)

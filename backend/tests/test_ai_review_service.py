@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy.orm import sessionmaker
@@ -297,14 +298,17 @@ def test_run_over_pending_questions_counts_and_sums_tokens(
     assert db.query(AiReview).count() == 3
 
 
-def test_second_run_refused_while_one_is_running(client, db, monkeypatch):
+@pytest.mark.anyio
+async def test_second_run_refused_while_one_is_running(
+    async_db, client, db, monkeypatch
+):
     _three_pending(client, monkeypatch)
     from physics_ai_tutor.services import ai_review_service as service
 
-    service.start_run(db, scope="pending", trigger="cli")
+    await service.async_start_run(async_db, scope="pending", trigger="cli")
 
     with pytest.raises(service.RunInProgressError):
-        service.start_run(db, scope="pending", trigger="cli")
+        await service.async_start_run(async_db, scope="pending", trigger="cli")
 
     from physics_ai_tutor.models import AiReviewRun
 
@@ -338,7 +342,10 @@ def test_one_failure_is_counted_and_does_not_stop_the_run(client, db, monkeypatc
     assert sorted(r.question_id for r in db.query(AiReview)) == sorted([ids[0], ids[2]])
 
 
-def test_stale_scope_picks_only_old_prompt_versions(client, db, monkeypatch):
+@pytest.mark.anyio
+async def test_stale_scope_picks_only_old_prompt_versions(
+    async_db, client, db, monkeypatch
+):
     first, second, _ = _three_pending(client, monkeypatch)
     from physics_ai_tutor.repositories import ai_review_repository
     from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
@@ -359,10 +366,11 @@ def test_stale_scope_picks_only_old_prompt_versions(client, db, monkeypatch):
         )
     db.commit()
 
-    assert service.eligible_question_ids(db, "stale") == [first]
+    assert await service.async_eligible_question_ids(async_db, "stale") == [first]
 
 
-def test_daily_cap_truncates_and_then_refuses(client, db, monkeypatch):
+@pytest.mark.anyio
+async def test_daily_cap_truncates_and_then_refuses(async_db, client, db, monkeypatch):
     _three_pending(client, monkeypatch)
     monkeypatch.setattr(settings, "ai_review_daily_cap", 2)
     patch_generation(
@@ -371,16 +379,17 @@ def test_daily_cap_truncates_and_then_refuses(client, db, monkeypatch):
     )
     from physics_ai_tutor.services import ai_review_service as service
 
-    run = service.start_run(db, scope="pending", trigger="cli")
+    run = await service.async_start_run(async_db, scope="pending", trigger="cli")
     assert run.requested_count == 2
-    service.execute_run(db, run.id)
+    await service.async_execute_run(async_db, run.id)
 
     with pytest.raises(service.DailyCapExhaustedError):
-        service.start_run(db, scope="pending", trigger="cli")
+        await service.async_start_run(async_db, scope="pending", trigger="cli")
 
 
-def test_selected_scope_keeps_only_reviewable_ids(
-    client, admin_client, db, monkeypatch
+@pytest.mark.anyio
+async def test_selected_scope_keeps_only_reviewable_ids(
+    async_db, client, admin_client, db, monkeypatch
 ):
     ids = _three_pending(client, monkeypatch)
     manual = admin_client.post(
@@ -389,8 +398,8 @@ def test_selected_scope_keeps_only_reviewable_ids(
     ).json()["id"]
     from physics_ai_tutor.services import ai_review_service as service
 
-    eligible = service.eligible_question_ids(
-        db, "selected", question_ids=[ids[0], manual, ids[2], 99999]
+    eligible = await service.async_eligible_question_ids(
+        async_db, "selected", question_ids=[ids[0], manual, ids[2], 99999]
     )
 
     assert eligible == [ids[0], ids[2]]
@@ -505,21 +514,22 @@ def test_pending_count_reports_stale_and_used_budget(
     assert body["remaining"] == settings.ai_review_daily_cap - 3
 
 
-def test_timed_out_run_is_failed_and_replaced(client, db, monkeypatch):
+@pytest.mark.anyio
+async def test_timed_out_run_is_failed_and_replaced(async_db, client, db, monkeypatch):
     _three_pending(client, monkeypatch)
     from datetime import UTC, datetime, timedelta
 
     from physics_ai_tutor.models import AiReviewRun
     from physics_ai_tutor.services import ai_review_service as service
 
-    stuck = service.start_run(db, scope="pending", trigger="cli")
+    stuck = await service.async_start_run(async_db, scope="pending", trigger="cli")
     # Silent for an hour: the heartbeat is what the reaper looks at.
     db.query(AiReviewRun).filter_by(id=stuck.id).update(
         {"heartbeat_at": datetime.now(UTC) - timedelta(hours=1)}
     )
     db.commit()
 
-    fresh = service.start_run(db, scope="pending", trigger="manual")
+    fresh = await service.async_start_run(async_db, scope="pending", trigger="manual")
 
     stale_row = db.get(AiReviewRun, stuck.id)
     assert stale_row.status == "failed"
@@ -527,7 +537,8 @@ def test_timed_out_run_is_failed_and_replaced(client, db, monkeypatch):
     assert fresh.status == "running"
 
 
-def test_long_but_healthy_run_is_not_reaped(client, db, monkeypatch):
+@pytest.mark.anyio
+async def test_long_but_healthy_run_is_not_reaped(async_db, client, db, monkeypatch):
     """Duration alone must not reap a run; a full-cap run exceeds the timeout."""
     _three_pending(client, monkeypatch)
     from datetime import UTC, datetime, timedelta
@@ -535,7 +546,7 @@ def test_long_but_healthy_run_is_not_reaped(client, db, monkeypatch):
     from physics_ai_tutor.models import AiReviewRun
     from physics_ai_tutor.services import ai_review_service as service
 
-    busy = service.start_run(db, scope="pending", trigger="cli")
+    busy = await service.async_start_run(async_db, scope="pending", trigger="cli")
     db.query(AiReviewRun).filter_by(id=busy.id).update(
         {
             "started_at": datetime.now(UTC) - timedelta(hours=3),
@@ -544,10 +555,12 @@ def test_long_but_healthy_run_is_not_reaped(client, db, monkeypatch):
     )
     db.commit()
 
+    # Read before the refusal: its rollback expires `busy` ([70]).
+    busy_id = busy.id
     with pytest.raises(service.RunInProgressError):
-        service.start_run(db, scope="pending", trigger="manual")
+        await service.async_start_run(async_db, scope="pending", trigger="manual")
 
-    assert db.get(AiReviewRun, busy.id).status == "running"
+    assert db.get(AiReviewRun, busy_id).status == "running"
 
 
 def test_reaped_run_executor_stops_instead_of_overlapping(client, db, monkeypatch):
@@ -616,17 +629,104 @@ def test_run_endpoints(client, user_client, admin_client, db, monkeypatch):
     assert admin_client.get(f"{RUNS}/9999").status_code == 404
 
 
-def test_run_endpoint_conflict_returns_409(client, admin_client, db, monkeypatch):
+@pytest.mark.anyio
+async def test_run_endpoint_conflict_returns_409(
+    async_db, client, admin_client, db, monkeypatch
+):
     _three_pending(client, monkeypatch)
     from physics_ai_tutor.services import ai_review_service as service
 
-    service.start_run(db, scope="pending", trigger="cli")
+    await service.async_start_run(async_db, scope="pending", trigger="cli")
 
     response = admin_client.post(
         "/api/v1/admin/ai-review/runs", json={"scope": "pending"}
     )
 
     assert response.status_code == 409
+
+
+def test_run_endpoint_exhausted_budget_returns_429(admin_client, monkeypatch):
+    monkeypatch.setattr(settings, "ai_review_daily_cap", 0)
+
+    response = admin_client.post(
+        "/api/v1/admin/ai-review/runs", json={"scope": "pending"}
+    )
+
+    assert response.status_code == 429
+
+
+def _silent_running_run(db):
+    from datetime import UTC, datetime, timedelta
+
+    from physics_ai_tutor.models import AiReviewRun
+
+    run = AiReviewRun(
+        trigger="cli",
+        scope="pending",
+        question_ids=[],
+        requested_count=0,
+        status="running",
+        heartbeat_at=datetime.now(UTC) - timedelta(hours=1),
+    )
+    db.add(run)
+    db.commit()
+    return run
+
+
+@pytest.mark.anyio
+async def test_refusing_to_start_also_undoes_the_reaping(async_db, db, monkeypatch):
+    """The reap and the refusal share one transaction, as before ([104])."""
+    from physics_ai_tutor.models import AiReviewRun
+
+    stuck = _silent_running_run(db)
+    monkeypatch.setattr(settings, "ai_review_daily_cap", 0)
+
+    with pytest.raises(ai_review_service.DailyCapExhaustedError):
+        await ai_review_service.async_start_run(
+            async_db, scope="pending", trigger="manual"
+        )
+
+    db.expire_all()
+    assert db.get(AiReviewRun, stuck.id).status == "running"
+
+
+@pytest.mark.anyio
+async def test_losing_the_start_race_reports_a_run_in_progress(
+    async_db, db, monkeypatch
+):
+    """The unique index, not the pre-check, is the real guard ([25])."""
+    from physics_ai_tutor.models import AiReviewRun
+
+    real_eligible = ai_review_service.async_eligible_question_ids
+
+    async def _rival_starts_first(*args, **kwargs):
+        # A concurrent start commits after our pre-check passed.
+        rival = _silent_running_run(db)
+        rival.heartbeat_at = datetime.now(UTC)
+        db.commit()
+        return await real_eligible(*args, **kwargs)
+
+    monkeypatch.setattr(
+        ai_review_service, "async_eligible_question_ids", _rival_starts_first
+    )
+
+    with pytest.raises(ai_review_service.RunInProgressError, match="concurrent"):
+        await ai_review_service.async_start_run(
+            async_db, scope="pending", trigger="manual"
+        )
+
+    assert db.query(AiReviewRun).count() == 1
+
+
+@pytest.mark.anyio
+async def test_other_integrity_errors_are_not_reported_as_in_progress(async_db, db):
+    from sqlalchemy.exc import IntegrityError
+
+    # No user 99999: the foreign key fails, which is not a conflict.
+    with pytest.raises(IntegrityError):
+        await ai_review_service.async_start_run(
+            async_db, scope="pending", trigger="manual", started_by=99999
+        )
 
 
 def test_reviewer_calls_use_the_larger_token_budget(monkeypatch):

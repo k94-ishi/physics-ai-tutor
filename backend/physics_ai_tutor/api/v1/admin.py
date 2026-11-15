@@ -3,10 +3,9 @@ from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from physics_ai_tutor.api.dependencies import require_admin
-from physics_ai_tutor.database.dependency import get_async_db, get_db
+from physics_ai_tutor.database.dependency import get_async_db
 from physics_ai_tutor.schemas.admin_stats import (
     AdminStatsResponse,
     ReviewAgreementResponse,
@@ -89,14 +88,14 @@ async def get_review_agreement(
 
 
 @router.post("/ai-review/runs", response_model=AiReviewRunResponse, status_code=202)
-def start_ai_review_run(
+async def start_ai_review_run(
     data: StartRunRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
     try:
-        run = ai_review_service.start_run(
+        run = await ai_review_service.async_start_run(
             db,
             scope=data.scope.value,
             trigger="manual",

@@ -124,7 +124,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 101 | closed | 101-seed-as-one-jsonl-file.md | Seed data as one JSONL file; seed.json removed | — (file-era issue) |
 | 102 | closed | 102-async-translate-missing-cli.md | translate_missing CLI on the async service; delete the sync translation half | — (file-era issue) |
 | 103 | closed | 103-async-ai-review-run-reads.md | Asynchronize the AI review run reads: list, detail, pending count | — (file-era issue) |
-| 104 | open | 104-async-start-ai-review-run.md | Asynchronize starting an AI review run (POST /admin/ai-review/runs) | — (file-era issue) |
+| 104 | closed | 104-async-start-ai-review-run.md | Asynchronize starting an AI review run (POST /admin/ai-review/runs) | — (file-era issue) |
 | 105 | open | 105-async-review-pending-cli.md | Nightly review_pending CLI on the async executor; delete the sync run code | — (file-era issue) |
 | 106 | open | 106-async-eval-and-one-reviewer.md | Prompt eval on the async reviewer; delete the sync reviewer (one ai_review_service) | — (file-era issue) |
 

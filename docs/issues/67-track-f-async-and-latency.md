@@ -109,7 +109,7 @@ wait for the slowest endpoint from "whole answer" to "first words".
    14. [97] Asynchronize AI review runs; one ai_review_service - split
        2026-11-15 into four slices:
        1. ~~[103] AI review run reads: list, detail, pending count~~ done 2026-11-15
-       2. [104] Starting a run (POST /admin/ai-review/runs)
+       2. ~~[104] Starting a run (POST /admin/ai-review/runs)~~ done 2026-11-16
        3. [105] Nightly review_pending CLI on the async executor
        4. [106] Prompt eval on the async reviewer; one ai_review_service
    15. [88] Delete the sync engine, sync LLM clients and remaining sync twins

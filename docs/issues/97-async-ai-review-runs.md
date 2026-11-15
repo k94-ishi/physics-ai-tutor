@@ -21,7 +21,7 @@ suite green. This issue stays open until all four are closed.
 | # | Issue | What converts | Status |
 | --- | --- | --- | --- |
 | 1 | [103] | Run reads: list, detail, pending count | done 2026-11-15 |
-| 2 | [104] | Starting a run (`POST /admin/ai-review/runs`): 409 / 429 / reaping | open |
+| 2 | [104] | Starting a run (`POST /admin/ai-review/runs`): 409 / 429 / reaping | done 2026-11-16 |
 | 3 | [105] | Nightly `review_pending` CLI on the async executor; sync run code deleted | open |
 | 4 | [106] | Prompt eval on the async reviewer; sync reviewer deleted | open |
 

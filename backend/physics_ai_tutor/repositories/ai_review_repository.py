@@ -129,6 +129,13 @@ def list_pending_question_ids(db: Session, limit: int) -> list[int]:
     return list(db.scalars(_pending_question_select().limit(limit)).all())
 
 
+async def async_list_pending_question_ids(db: AsyncSession, limit: int) -> list[int]:
+    """As `list_pending_question_ids` ([104])."""
+    query = _pending_question_select().limit(limit)
+
+    return list((await db.scalars(query)).all())
+
+
 def count_pending_questions(db: Session) -> int:
     """The true total, unbounded by any run's limit or the daily cap."""
     return db.scalar(_count_of(_pending_question_select())) or 0
@@ -185,6 +192,15 @@ def list_stale_question_ids(db: Session, current_version: str, limit: int) -> li
     return list(db.scalars(query).all())
 
 
+async def async_list_stale_question_ids(
+    db: AsyncSession, current_version: str, limit: int
+) -> list[int]:
+    """As `list_stale_question_ids` ([104])."""
+    query = _stale_question_select(current_version).limit(limit)
+
+    return list((await db.scalars(query)).all())
+
+
 def count_stale_questions(db: Session, current_version: str) -> int:
     """The true total, unbounded by any run's limit or the daily cap."""
     return db.scalar(_count_of(_stale_question_select(current_version))) or 0
@@ -197,20 +213,32 @@ async def async_count_stale_questions(db: AsyncSession, current_version: str) ->
     return (await db.scalar(query)) or 0
 
 
+def _reviewable_select(ids: list[int]) -> Select[tuple[int]]:
+    """The given ids that are still UNREVIEWED AI questions."""
+    return select(Question.id).where(
+        Question.id.in_(ids),
+        Question.status == "UNREVIEWED",
+        Question.source.in_(["AI_GENERATED", "RAG_RESULT"]),
+    )
+
+
+def _in_given_order(ids: list[int], eligible: set[int]) -> list[int]:
+    return [question_id for question_id in ids if question_id in eligible]
+
+
 def filter_reviewable_ids(db: Session, ids: list[int]) -> list[int]:
     """Keep only UNREVIEWED AI questions, preserving the given order."""
     if not ids:
         return []
 
-    rows = (
-        db.query(Question.id)
-        .filter(
-            Question.id.in_(ids),
-            Question.status == "UNREVIEWED",
-            Question.source.in_(["AI_GENERATED", "RAG_RESULT"]),
-        )
-        .all()
-    )
-    eligible = {question_id for (question_id,) in rows}
+    return _in_given_order(ids, set(db.scalars(_reviewable_select(ids)).all()))
 
-    return [question_id for question_id in ids if question_id in eligible]
+
+async def async_filter_reviewable_ids(db: AsyncSession, ids: list[int]) -> list[int]:
+    """As `filter_reviewable_ids` ([104])."""
+    if not ids:
+        return []
+
+    eligible = set((await db.scalars(_reviewable_select(ids))).all())
+
+    return _in_given_order(ids, eligible)

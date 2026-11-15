@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import cast
 
-from sqlalchemy import CursorResult, func, select, update
+from sqlalchemy import CursorResult, Select, Update, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -474,13 +474,23 @@ async def async_remaining_daily_budget(db: AsyncSession) -> int:
     return _budget_left(used)
 
 
+def _scope_bound(limit: int | None) -> int:
+    return limit if limit is not None else settings.ai_review_daily_cap
+
+
+def _check_scope(scope: str) -> None:
+    if scope not in {"pending", "stale", "selected"}:
+        raise ValueError(f"Unknown scope: {scope}")
+
+
 def eligible_question_ids(
     db: Session,
     scope: str,
     question_ids: list[int] | None = None,
     limit: int | None = None,
 ) -> list[int]:
-    bound = limit if limit is not None else settings.ai_review_daily_cap
+    _check_scope(scope)
+    bound = _scope_bound(limit)
 
     if scope == "pending":
         return ai_review_repository.list_pending_question_ids(db, bound)
@@ -494,6 +504,28 @@ def eligible_question_ids(
         ]
 
     raise ValueError(f"Unknown scope: {scope}")
+
+
+async def async_eligible_question_ids(
+    db: AsyncSession,
+    scope: str,
+    question_ids: list[int] | None = None,
+    limit: int | None = None,
+) -> list[int]:
+    """As `eligible_question_ids` ([104])."""
+    _check_scope(scope)
+    bound = _scope_bound(limit)
+
+    if scope == "pending":
+        return await ai_review_repository.async_list_pending_question_ids(db, bound)
+    if scope == "stale":
+        return await ai_review_repository.async_list_stale_question_ids(
+            db, REVIEW_PROMPT_VERSION, bound
+        )
+
+    ids = await ai_review_repository.async_filter_reviewable_ids(db, question_ids or [])
+
+    return ids[:bound]
 
 
 def count_pending(db: Session) -> int:
@@ -518,7 +550,7 @@ async def async_count_stale(db: AsyncSession) -> int:
     )
 
 
-def _fail_timed_out_runs(db: Session) -> None:
+def _reap_statement() -> Update:
     """Reap runs that have gone silent, not merely long ones.
 
     The executor heartbeats after every question, so the cutoff measures
@@ -527,14 +559,35 @@ def _fail_timed_out_runs(db: Session) -> None:
     """
     cutoff = datetime.now(UTC) - timedelta(minutes=RUN_TIMEOUT_MINUTES)
 
-    db.query(AiReviewRun).filter(
-        AiReviewRun.status == "running", AiReviewRun.heartbeat_at < cutoff
-    ).update(
-        {
-            "status": "failed",
-            "error": f"no progress for {RUN_TIMEOUT_MINUTES} minutes",
-            "finished_at": func.now(),
-        }
+    return (
+        update(AiReviewRun)
+        .where(AiReviewRun.status == "running", AiReviewRun.heartbeat_at < cutoff)
+        .values(
+            status="failed",
+            error=f"no progress for {RUN_TIMEOUT_MINUTES} minutes",
+            finished_at=func.now(),
+        )
+    )
+
+
+def _fail_timed_out_runs(db: Session) -> None:
+    db.execute(_reap_statement())
+
+
+def _running_run_select() -> Select[tuple[AiReviewRun]]:
+    return select(AiReviewRun).where(AiReviewRun.status == "running").limit(1)
+
+
+def _new_run(
+    scope: str, trigger: str, ids: list[int], started_by: int | None
+) -> AiReviewRun:
+    return AiReviewRun(
+        trigger=trigger,
+        scope=scope,
+        started_by_user_id=started_by,
+        question_ids=ids,
+        requested_count=len(ids),
+        status="running",
     )
 
 
@@ -557,9 +610,7 @@ def start_run(
         with transaction(db, "start_ai_review_run"):
             _fail_timed_out_runs(db)
 
-            running = (
-                db.query(AiReviewRun).filter(AiReviewRun.status == "running").first()
-            )
+            running = db.scalar(_running_run_select())
             if running is not None:
                 raise RunInProgressError(str(running.id))
 
@@ -569,14 +620,7 @@ def start_run(
 
             ids = eligible_question_ids(db, scope, question_ids, limit)[:budget]
 
-            run = AiReviewRun(
-                trigger=trigger,
-                scope=scope,
-                started_by_user_id=started_by,
-                question_ids=ids,
-                requested_count=len(ids),
-                status="running",
-            )
+            run = _new_run(scope, trigger, ids, started_by)
             db.add(run)
     except IntegrityError as exc:
         if _is_single_running_violation(exc):
@@ -584,6 +628,41 @@ def start_run(
             raise RunInProgressError("concurrent start") from exc
         # Anything else (a dangling started_by, say) is a real error and
         # must not be reported to the caller as "a run is in progress".
+        raise
+
+    return run
+
+
+async def async_start_run(
+    db: AsyncSession,
+    scope: str,
+    trigger: str,
+    question_ids: list[int] | None = None,
+    limit: int | None = None,
+    started_by: int | None = None,
+) -> AiReviewRun:
+    """As `start_run` ([104]); the nightly CLI keeps the sync one until [105]."""
+    try:
+        # Same single transaction: a refusal also undoes the reaping.
+        async with async_transaction(db, "start_ai_review_run"):
+            await db.execute(_reap_statement())
+
+            running = await db.scalar(_running_run_select())
+            if running is not None:
+                raise RunInProgressError(str(running.id))
+
+            budget = await async_remaining_daily_budget(db)
+            if budget <= 0:
+                raise DailyCapExhaustedError(str(settings.ai_review_daily_cap))
+
+            eligible = await async_eligible_question_ids(db, scope, question_ids, limit)
+            run = _new_run(scope, trigger, eligible[:budget], started_by)
+            db.add(run)
+    except IntegrityError as exc:
+        if _is_single_running_violation(exc):
+            # Lost the race against a concurrent start.
+            raise RunInProgressError("concurrent start") from exc
+        # Anything else is a real error, not "a run is in progress".
         raise
 
     return run

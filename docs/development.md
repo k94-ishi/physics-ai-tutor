@@ -354,7 +354,7 @@ one from the app. Both use the same psycopg driver and the same
 
 | | Sync (not yet converted) | Async (converted) |
 | --- | --- | --- |
-| Request session | `Depends(get_db)` (only `POST /admin/ai-review/runs`, until [104]) | `Depends(get_async_db)` (every other route) |
+| Request session | none since [104]; `get_db` remains only for [88] to delete | `Depends(get_async_db)` (every route) |
 | Background session | `with background_session()` | `async with async_background_session()` |
 | Writes | `with transaction(db, "op")` | `async with async_transaction(db, "op")` |
 | Test fixture | `db` | `async_db` |

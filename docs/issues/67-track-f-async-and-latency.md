@@ -106,12 +106,12 @@ wait for the slowest endpoint from "whole answer" to "first words".
    11a. ~~[102] translate_missing CLI on the async service; delete the sync translation half~~ done 2026-11-14
    12. ~~[87] Asynchronize the usage dashboard and the agreement report~~ done 2026-11-15
    13. ~~[96] Asynchronize the review dataset export~~ done 2026-11-15
-   14. [97] Asynchronize AI review runs; one ai_review_service - split
-       2026-11-15 into four slices:
+   14. ~~[97] Asynchronize AI review runs; one ai_review_service~~ - split
+       2026-11-15 into four slices, all done 2026-11-16:
        1. ~~[103] AI review run reads: list, detail, pending count~~ done 2026-11-15
        2. ~~[104] Starting a run (POST /admin/ai-review/runs)~~ done 2026-11-16
        3. ~~[105] Nightly review_pending CLI on the async executor~~ done 2026-11-16
-       4. [106] Prompt eval on the async reviewer; one ai_review_service
+       4. ~~[106] Prompt eval on the async reviewer; one ai_review_service~~ done 2026-11-16
    15. [88] Delete the sync engine, sync LLM clients and remaining sync twins
    16. [98] Rename pass: drop the async_ prefixes
    17. [99] Async end state: architecture test, docs, connection budget (closes [73])

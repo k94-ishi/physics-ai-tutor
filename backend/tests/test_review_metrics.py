@@ -7,10 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from physics_ai_tutor.cli import review_metrics as metrics_cli
 from physics_ai_tutor.models import AiReview, QuestionReview
-from physics_ai_tutor.repositories import (
-    ai_review_repository,
-    review_metrics_repository,
-)
+from physics_ai_tutor.repositories import review_metrics_repository
 from physics_ai_tutor.repositories.review_metrics_repository import ReviewPair
 from physics_ai_tutor.schemas.admin_stats import ReviewAgreementResponse
 from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
@@ -19,6 +16,7 @@ from physics_ai_tutor.schemas.question_review import QuestionReviewReason
 from physics_ai_tutor.services import review_metrics_service
 from tests.conftest import (
     async_engine,
+    create_ai_review,
     fake_generation,
     patch_generation,
 )
@@ -136,7 +134,7 @@ def _ask(client, monkeypatch, text):
 
 
 def _ai_review(db, question_id, verdict, confidence=0.9, created_at=None, version="r1"):
-    row = ai_review_repository.create(
+    row = create_ai_review(
         db,
         AiReviewCreate(
             question_id=question_id,

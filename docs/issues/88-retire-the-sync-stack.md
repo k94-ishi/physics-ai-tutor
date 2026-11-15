@@ -24,7 +24,7 @@ One small slice of [73]: deletions. No behaviour change.
 
 ## Dependencies
 
-- Blocked by: [95], [97] (its last slice is [106])
+- Blocked by: [95], [97] (both done 2026-11-16; unblocked)
 - Blocks: [98]
 
 ## Log

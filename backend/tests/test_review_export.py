@@ -7,7 +7,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from physics_ai_tutor.cli import export_reviews as export_cli
 from physics_ai_tutor.models import QuestionReview
 from physics_ai_tutor.services import review_export_service
-from tests.conftest import async_engine, fake_generation, patch_generation
+from tests.conftest import (
+    async_engine,
+    create_ai_review,
+    fake_generation,
+    patch_generation,
+)
 
 ASK_PATH = "/api/v1/ai/ask"
 QUESTIONS = "/api/v1/questions"
@@ -172,7 +177,6 @@ def test_cli_parses_arguments():
 def test_export_carries_the_ai_verdict_the_teacher_could_see(
     client, admin_client, db, monkeypatch
 ):
-    from physics_ai_tutor.repositories import ai_review_repository
     from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
     from physics_ai_tutor.schemas.language import Language
     from physics_ai_tutor.schemas.question_review import QuestionReviewReason
@@ -181,7 +185,7 @@ def test_export_carries_the_ai_verdict_the_teacher_could_see(
     question_id = client.post(ASK_PATH, json={"question": "AI付き輸出の質問"}).json()[
         "question_id"
     ]
-    ai_review_repository.create(
+    create_ai_review(
         db,
         AiReviewCreate(
             question_id=question_id,

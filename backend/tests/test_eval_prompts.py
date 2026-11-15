@@ -23,6 +23,15 @@ def test_golden_set_is_valid_and_balanced():
             assert case.note, case.id
 
 
+def _patch_grade(monkeypatch, grade):
+    """Install one plain sync stub on the async grading seam ([106])."""
+
+    async def _async_grade(*args, **kwargs):
+        return grade(*args, **kwargs)
+
+    monkeypatch.setattr(ai_review_service, "async_grade_answer", _async_grade)
+
+
 def _graded(verdict, reasons=(), confidence=0.9):
     return SimpleNamespace(
         verdict=AiReviewVerdict(verdict) if verdict else None,
@@ -53,7 +62,7 @@ def _perfect_reviewer(cases):
 def test_perfect_reviewer_passes_and_baseline_roundtrips(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(eval_prompts, "EVAL_DIR", tmp_path)
     cases = eval_prompts.load_golden_set(eval_prompts.DEFAULT_SET)
-    monkeypatch.setattr(ai_review_service, "grade_answer", _perfect_reviewer(cases))
+    _patch_grade(monkeypatch, _perfect_reviewer(cases))
 
     assert eval_prompts.main(save=True) == 0
     baseline = json.loads(
@@ -70,15 +79,11 @@ def test_broken_reviewer_fails_against_the_baseline(monkeypatch, tmp_path, capsy
     monkeypatch.setattr(eval_prompts, "EVAL_DIR", tmp_path)
     cases = eval_prompts.load_golden_set(eval_prompts.DEFAULT_SET)
 
-    monkeypatch.setattr(ai_review_service, "grade_answer", _perfect_reviewer(cases))
+    _patch_grade(monkeypatch, _perfect_reviewer(cases))
     assert eval_prompts.main(save=True) == 0
 
     # A "broken prompt" that approves everything must be flagged.
-    monkeypatch.setattr(
-        ai_review_service,
-        "grade_answer",
-        lambda *args, **kwargs: _graded("APPROVE"),
-    )
+    _patch_grade(monkeypatch, lambda *args, **kwargs: _graded("APPROVE"))
 
     assert eval_prompts.main() == 1
     out = capsys.readouterr().out
@@ -94,7 +99,7 @@ def test_reject_recall_collapse_is_gated(monkeypatch, tmp_path, capsys):
     """
     monkeypatch.setattr(eval_prompts, "EVAL_DIR", tmp_path)
     cases = eval_prompts.load_golden_set(eval_prompts.DEFAULT_SET)
-    monkeypatch.setattr(ai_review_service, "grade_answer", _perfect_reviewer(cases))
+    _patch_grade(monkeypatch, _perfect_reviewer(cases))
     assert eval_prompts.main(save=True) == 0
 
     # Perfect except that most rejects are downgraded to EDIT: precision
@@ -110,7 +115,7 @@ def test_reject_recall_collapse_is_gated(monkeypatch, tmp_path, capsys):
                 return _graded("EDIT", [])
         return graded
 
-    monkeypatch.setattr(ai_review_service, "grade_answer", _shy_about_rejecting)
+    _patch_grade(monkeypatch, _shy_about_rejecting)
 
     assert eval_prompts.main() == 1
     assert "reject_recall" in capsys.readouterr().out
@@ -119,7 +124,7 @@ def test_reject_recall_collapse_is_gated(monkeypatch, tmp_path, capsys):
 def test_missing_baseline_warns_but_passes(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(eval_prompts, "EVAL_DIR", tmp_path)
     cases = eval_prompts.load_golden_set(eval_prompts.DEFAULT_SET)
-    monkeypatch.setattr(ai_review_service, "grade_answer", _perfect_reviewer(cases))
+    _patch_grade(monkeypatch, _perfect_reviewer(cases))
 
     assert eval_prompts.main() == 0
     assert "NO BASELINE" in capsys.readouterr().out
@@ -129,7 +134,7 @@ def test_dry_run_needs_no_api(monkeypatch, capsys):
     def _forbidden(*args, **kwargs):
         raise AssertionError("dry run must not call the API")
 
-    monkeypatch.setattr(ai_review_service, "grade_answer", _forbidden)
+    _patch_grade(monkeypatch, _forbidden)
     patch_generation(monkeypatch, _forbidden)
 
     assert eval_prompts.main(dry_run=True) == 0
@@ -159,7 +164,7 @@ def test_regenerate_uses_the_answer_prompt_at_temperature_zero(monkeypatch, tmp_
         by_question = {case.question: case.expected_verdict for case in cases}
         return _graded(by_question[question])
 
-    monkeypatch.setattr(ai_review_service, "grade_answer", _grade)
+    _patch_grade(monkeypatch, _grade)
 
     assert eval_prompts.main(regenerate=True, save=True) == 0
     assert seen["temperatures"] == {0.0}
@@ -168,9 +173,7 @@ def test_regenerate_uses_the_answer_prompt_at_temperature_zero(monkeypatch, tmp_
 
 def test_unparsed_verdict_counts_as_disagreement(monkeypatch, tmp_path):
     monkeypatch.setattr(eval_prompts, "EVAL_DIR", tmp_path)
-    monkeypatch.setattr(
-        ai_review_service, "grade_answer", lambda *a, **k: _graded(None)
-    )
+    _patch_grade(monkeypatch, lambda *a, **k: _graded(None))
 
     assert eval_prompts.main(save=True) == 0
     baseline = json.loads(

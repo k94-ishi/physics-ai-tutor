@@ -1,8 +1,7 @@
-from physics_ai_tutor.repositories import ai_review_repository
 from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
 from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.question_review import QuestionReviewReason
-from tests.conftest import fake_generation, patch_generation
+from tests.conftest import create_ai_review, fake_generation, patch_generation
 
 ASK_PATH = "/api/v1/ai/ask"
 QUESTIONS = "/api/v1/questions"
@@ -14,7 +13,7 @@ def _ask(client, monkeypatch, text, answer="回答"):
 
 
 def _store_review(db, question_id, verdict, confidence, reasons=(), suggested=None):
-    ai_review_repository.create(
+    create_ai_review(
         db,
         AiReviewCreate(
             question_id=question_id,

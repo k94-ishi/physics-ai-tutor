@@ -1,8 +1,8 @@
-from physics_ai_tutor.repositories import ai_review_repository
+from physics_ai_tutor.models import AiReview
 from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
 from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.question_review import QuestionReviewReason
-from tests.conftest import fake_generation, patch_generation
+from tests.conftest import create_ai_review, fake_generation, patch_generation
 
 ASK_PATH = "/api/v1/ai/ask"
 
@@ -28,13 +28,29 @@ def _review(question_id: int, **overrides) -> AiReviewCreate:
     return AiReviewCreate(**defaults)
 
 
+def _history(db, question_id: int) -> list[AiReview]:
+    """Newest first, as the deleted sync repository reader returned them."""
+    return (
+        db.query(AiReview)
+        .filter(AiReview.question_id == question_id)
+        .order_by(AiReview.created_at.desc(), AiReview.id.desc())
+        .all()
+    )
+
+
+def _latest(db, question_id: int) -> AiReview | None:
+    rows = _history(db, question_id)
+
+    return rows[0] if rows else None
+
+
 def test_create_and_read_back_ai_review(client, db, monkeypatch):
     question_id = _make_question(client, monkeypatch)
 
-    row = ai_review_repository.create(db, _review(question_id))
+    row = create_ai_review(db, _review(question_id))
     db.commit()
 
-    loaded = ai_review_repository.get_latest_for_question(db, question_id)
+    loaded = _latest(db, question_id)
 
     assert loaded is not None
     assert loaded.id == row.id
@@ -48,14 +64,14 @@ def test_create_and_read_back_ai_review(client, db, monkeypatch):
 def test_latest_review_wins_over_earlier_ones(client, db, monkeypatch):
     question_id = _make_question(client, monkeypatch)
 
-    ai_review_repository.create(db, _review(question_id))
-    second = ai_review_repository.create(
+    create_ai_review(db, _review(question_id))
+    second = create_ai_review(
         db, _review(question_id, verdict=AiReviewVerdict.APPROVE, reasons=[])
     )
     db.commit()
 
-    latest = ai_review_repository.get_latest_for_question(db, question_id)
-    history = ai_review_repository.list_for_question(db, question_id)
+    latest = _latest(db, question_id)
+    history = _history(db, question_id)
 
     assert latest is not None and latest.id == second.id
     assert latest.verdict == "APPROVE"
@@ -65,7 +81,7 @@ def test_latest_review_wins_over_earlier_ones(client, db, monkeypatch):
 def test_unparseable_output_row_keeps_raw_text(client, db, monkeypatch):
     question_id = _make_question(client, monkeypatch)
 
-    ai_review_repository.create(
+    create_ai_review(
         db,
         _review(
             question_id,
@@ -78,7 +94,7 @@ def test_unparseable_output_row_keeps_raw_text(client, db, monkeypatch):
     )
     db.commit()
 
-    loaded = ai_review_repository.get_latest_for_question(db, question_id)
+    loaded = _latest(db, question_id)
 
     assert loaded is not None
     assert loaded.verdict is None
@@ -89,12 +105,12 @@ def test_deleting_the_question_cascades_to_ai_reviews(
     client, admin_client, db, monkeypatch
 ):
     question_id = _make_question(client, monkeypatch)
-    ai_review_repository.create(db, _review(question_id))
+    create_ai_review(db, _review(question_id))
     db.commit()
 
     assert admin_client.delete(f"/api/v1/questions/{question_id}").status_code == 204
 
-    assert ai_review_repository.list_for_question(db, question_id) == []
+    assert _history(db, question_id) == []
 
 
 def test_human_reviews_read_back_as_reviewer_kind_human(

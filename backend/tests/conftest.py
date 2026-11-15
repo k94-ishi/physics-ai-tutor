@@ -291,6 +291,22 @@ def attach_concepts(db, question_id: int, names: list[str], language: str = "ja"
     return [db.get(Concept, concept_id) for concept_id in asyncio.run(_attach())]
 
 
+def create_ai_review(db, review):
+    """Arrange an AI review row from a sync test ([106]).
+
+    The application writes only through `async_create`; this keeps the
+    many sync tests on their `db` fixture. Flushes, as the deleted sync
+    repository function did; the caller commits.
+    """
+    from physics_ai_tutor.repositories.ai_review_repository import _new_review
+
+    row = _new_review(review)
+    db.add(row)
+    db.flush()
+
+    return row
+
+
 def fake_translate(question, answer, source, target):
     # Deterministic, reversible marker so tests can assert on translations.
     return f"[{target}] {question}", f"[{target}] {answer}"

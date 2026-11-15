@@ -9,13 +9,12 @@ from typing import cast
 from sqlalchemy import CursorResult, Select, Update, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core import timing
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.prompt_library import load_library
 from physics_ai_tutor.database.session import async_background_session
-from physics_ai_tutor.database.transaction import async_transaction, transaction
+from physics_ai_tutor.database.transaction import async_transaction
 from physics_ai_tutor.models import AiReview, AiReviewRun, Question
 from physics_ai_tutor.repositories import (
     ai_review_repository,
@@ -142,22 +141,6 @@ def _optional_text(value: object) -> str | None:
     return None
 
 
-def _build_context(db: Session, question: Question, language: Language) -> str:
-    """Approved reference QA blocks for RAG-grounded answers, if any."""
-    ids = list(question.retrieved_question_ids or [])
-    if not ids:
-        return ""
-
-    references = rag_service.load_context_by_ids(db, ids, language)
-    if not references:
-        return ""
-
-    header = _LIBRARY.get("ai_review", "context_header", language)
-    blocks = "\n\n".join(f"Q: {item.question}\nA: {item.answer}" for item in references)
-
-    return f"\n{header}{blocks}\n"
-
-
 def build_review_prompts(
     question_text: str,
     answer_text: str,
@@ -203,101 +186,12 @@ class GradedAnswer:
             self.parsed = True
 
 
-def grade_answer(
-    question_text: str,
-    answer_text: str,
-    language: Language,
-    concepts: list[str] | None = None,
-    context: str = "",
-    temperature: float | None = None,
-) -> GradedAnswer:
-    """Grade one Q&A with the rubric; database-free (used by the eval too)."""
-    system_prompt, user_prompt = build_review_prompts(
-        question_text, answer_text, language, concepts, context
-    )
-    result = deepseek_service.generate_answer(
-        system_prompt,
-        user_prompt,
-        temperature=temperature,
-        max_tokens=settings.ai_review_max_tokens,
-    )
-
-    return GradedAnswer(result, _parse_output(result.content))
-
-
 class Outcome(StrEnum):
     """Why a question produced no review, so a run can count it honestly."""
 
     REVIEWED = "reviewed"
     SKIPPED = "skipped"
     FAILED = "failed"
-
-
-def review_question(db: Session, question: Question) -> AiReview | None:
-    """Grade one UNREVIEWED AI answer and store the verdict. Advisory only.
-
-    Never raises and never touches the question's status; a reviewer
-    failure must not affect the student-facing flow.
-    """
-    return review_question_with_outcome(db, question)[0]
-
-
-def review_question_with_outcome(
-    db: Session, question: Question
-) -> tuple[AiReview | None, Outcome]:
-    """As `review_question`, but says whether None meant skipped or failed."""
-    skip = _skip_reason(question)
-    if skip is not None:
-        logger.info("AI review skipped: question_id=%d reason=%s", question.id, skip)
-        return None, Outcome.SKIPPED
-
-    language = Language(question.original_language)
-
-    try:
-        with timing.stage("ai_review_item", question_id=question.id):
-            # The reads commit before the grading call, so no connection
-            # waits out the LLM ([82]); a failed read still rolls back
-            # without poisoning the session.
-            with transaction(db, "ai_review_read"):
-                text = question.text(language) or question.original_text()
-                concepts = question_concept_repository.get_concepts_for_questions(
-                    db, [question.id], language=language.value
-                ).get(question.id, [])
-                context = _build_context(db, question, language)
-            graded = grade_answer(
-                text[0],
-                text[1],
-                language,
-                concepts=concepts,
-                context=context,
-            )
-    except Exception:
-        logger.warning(
-            "AI review failed before storing: question_id=%d",
-            question.id,
-            exc_info=True,
-        )
-        return None, Outcome.FAILED
-
-    try:
-        with transaction(db, "store_ai_review"):
-            row = ai_review_repository.create(
-                db, _review_to_store(question.id, language, graded)
-            )
-    except Exception:
-        logger.warning(
-            "Storing AI review failed: question_id=%d", question.id, exc_info=True
-        )
-        return None, Outcome.FAILED
-
-    logger.info(
-        "AI review stored: question_id=%d verdict=%s confidence=%s",
-        question.id,
-        row.verdict,
-        row.confidence,
-    )
-
-    return row, Outcome.REVIEWED
 
 
 def _review_to_store(question_id: int, language: Language, graded) -> AiReviewCreate:
@@ -335,7 +229,7 @@ async def async_grade_answer(
     context: str = "",
     temperature: float | None = None,
 ) -> GradedAnswer:
-    """As `grade_answer`, on the event loop ([70])."""
+    """Grade one Q&A with the rubric; database-free (used by the eval too)."""
     system_prompt, user_prompt = build_review_prompts(
         question_text, answer_text, language, concepts, context
     )
@@ -352,7 +246,7 @@ async def async_grade_answer(
 async def _async_build_context(
     db: AsyncSession, ids: list[int], language: Language
 ) -> str:
-    """As `_build_context`, but given the ids rather than the row ([70])."""
+    """The RAG context the answer was generated from, by reference ids."""
     if not ids:
         return ""
 
@@ -369,7 +263,11 @@ async def _async_build_context(
 async def async_review_question(
     db: AsyncSession, question: Question
 ) -> AiReview | None:
-    """As `review_question`; advisory only and never raises ([70])."""
+    """Grade one UNREVIEWED AI answer and store the verdict. Advisory only.
+
+    Never raises and never touches the question's status; a reviewer
+    failure must not affect the student-facing flow.
+    """
     skip = _skip_reason(question)
     if skip is not None:
         logger.info("AI review skipped: question_id=%d reason=%s", question.id, skip)
@@ -631,7 +529,7 @@ def _apply_item(run: AiReviewRun, result: ItemResult) -> None:
 async def async_review_question_with_outcome(
     db: AsyncSession, question: Question
 ) -> tuple[AiReview | None, Outcome]:
-    """As `review_question_with_outcome`, on the event loop ([72])."""
+    """As `async_review_question`, but says whether None meant skipped or failed."""
     if _skip_reason(question) is not None:
         logger.info(
             "AI review skipped: question_id=%d reason=%s",

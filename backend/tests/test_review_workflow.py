@@ -5,7 +5,7 @@ hidden from students, reviewed by an admin, then published or rejected.
 """
 
 from physics_ai_tutor.models import QuestionEmbedding
-from tests.conftest import fake_generation, patch_generation
+from tests.conftest import create_ai_review, fake_generation, patch_generation
 
 QUESTIONS = "/api/v1/questions"
 ASK = "/api/v1/ai/ask"
@@ -167,14 +167,13 @@ def test_review_response_keeps_the_ai_verdict_and_generation_meta(
 ):
     """[35]: the queue replaces its card with this response; the AI badge
     and generation metadata must survive the swap like on the list."""
-    from physics_ai_tutor.repositories import ai_review_repository
     from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
     from physics_ai_tutor.schemas.language import Language
 
     _ask(client, monkeypatch, "承認後もAIバッジが残りますか？")
     question_id = _find_id_as_admin(admin_client, "承認後もAIバッジ")
 
-    ai_review_repository.create(
+    create_ai_review(
         db,
         AiReviewCreate(
             question_id=question_id,

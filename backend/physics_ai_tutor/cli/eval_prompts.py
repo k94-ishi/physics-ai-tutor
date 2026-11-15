@@ -8,6 +8,7 @@ key - no database. Eval calls pin temperature=0 for reproducibility.
 """
 
 import argparse
+import asyncio
 import hashlib
 import json
 import sys
@@ -79,23 +80,28 @@ def baseline_path() -> Path:
     )
 
 
-def grade_cases(
+async def grade_cases(
     cases: list[GoldenCase], regenerate: bool, verbose: bool = False
 ) -> list[ReviewPair]:
-    """One ReviewPair per case; the hand label plays the human reviewer."""
+    """One ReviewPair per case; the hand label plays the human reviewer.
+
+    Async since [106], still one case at a time: the printed order and the
+    baseline must not depend on scheduling.
+    """
     now = datetime.now(UTC)
     pairs = []
 
     for index, case in enumerate(cases):
         answer = case.answer
         if regenerate:
-            answer = deepseek_service.generate_answer(
+            generated = await deepseek_service.async_generate_answer(
                 prompts.SYSTEM_PROMPTS[case.language],
                 case.question,
                 temperature=EVAL_TEMPERATURE,
-            ).content
+            )
+            answer = generated.content
 
-        graded = ai_review_service.grade_answer(
+        graded = await ai_review_service.async_grade_answer(
             case.question, answer, case.language, temperature=EVAL_TEMPERATURE
         )
         verdict = graded.verdict.value if graded.verdict else None
@@ -249,7 +255,7 @@ def main(
         print("dry run: set is valid; no API calls made.")
         return 0
 
-    pairs = grade_cases(cases, regenerate, verbose)
+    pairs = asyncio.run(grade_cases(cases, regenerate, verbose))
     metrics = compute_agreement(pairs)
     print()
     print(format_metrics("golden set", metrics))

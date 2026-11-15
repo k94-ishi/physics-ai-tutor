@@ -23,15 +23,15 @@ suite green. This issue stays open until all four are closed.
 | 1 | [103] | Run reads: list, detail, pending count | done 2026-11-15 |
 | 2 | [104] | Starting a run (`POST /admin/ai-review/runs`): 409 / 429 / reaping | done 2026-11-16 |
 | 3 | [105] | Nightly `review_pending` CLI on the async executor; sync run code deleted | done 2026-11-16 |
-| 4 | [106] | Prompt eval on the async reviewer; sync reviewer deleted | open |
+| 4 | [106] | Prompt eval on the async reviewer; sync reviewer deleted | done 2026-11-16 |
 
 Chain: [103]→[104]→[105]→[106]→[88].
 
 ## Acceptance criteria (ticked when [106] closes)
 
-- [ ] 409/429/timeout semantics unchanged; `test_ai_review_service.py`
+- [x] 409/429/timeout semantics unchanged; `test_ai_review_service.py`
       green; `eval_prompts --dry-run` works.
-- [ ] No sync function left in `ai_review_service` or
+- [x] No sync function left in `ai_review_service` or
       `ai_review_repository`; no route in `api/v1/admin.py` uses `get_db`.
 
 ## Dependencies
@@ -63,6 +63,13 @@ The owner found the single issue too big. Measured against the code
 - **Also found:** the sync `execute_run_in_background` had no caller;
   [103] deleted it.
 
+### 2026-11-16 — all four slices done; closed
+
+[103] run reads, [104] starting a run (last route off `get_db`), [105]
+nightly CLI on the async executor with the owner's stop-on-crash default,
+[106] eval and one reviewer. Both acceptance criteria verified; [88] is
+unblocked ([95] and this were its blockers).
+
 ## Rules (all [73] slices)
 
 - Twins only while an unconverted caller needs the sync version; delete a
@@ -74,5 +81,5 @@ The owner found the single issue too big. Measured against the code
 
 ## Definition of done
 
-- [ ] [103]-[106] closed
-- [ ] Log entry in this file; `status.md`, [67] and [73] updated
+- [x] [103]-[106] closed
+- [x] Log entry in this file; `status.md`, [67] and [73] updated

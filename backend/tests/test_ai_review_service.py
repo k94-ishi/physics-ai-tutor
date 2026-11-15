@@ -9,7 +9,12 @@ from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.models import AiReview, Question
 from physics_ai_tutor.services import ai_review_service
 from physics_ai_tutor.services.deepseek_service import GenerationResult
-from tests.conftest import async_engine, fake_generation, patch_generation
+from tests.conftest import (
+    async_engine,
+    create_ai_review,
+    fake_generation,
+    patch_generation,
+)
 
 ASK_PATH = "/api/v1/ai/ask"
 
@@ -246,16 +251,17 @@ def test_cli_exits_nonzero_when_the_run_fails(
     assert review_pending_cli.main(limit=1) == 1
 
 
-def test_service_skips_non_ai_and_already_reviewed_questions(
-    admin_client, db, monkeypatch
+@pytest.mark.anyio
+async def test_service_skips_non_ai_and_already_reviewed_questions(
+    async_db, admin_client, db, monkeypatch
 ):
     created = admin_client.post(
         "/api/v1/questions",
         json={"question": "手動の質問です", "answer": "手動の回答"},
     )
-    question = db.get(Question, created.json()["id"])
+    question = await async_db.get(Question, created.json()["id"])
 
-    assert ai_review_service.review_question(db, question) is None
+    assert await ai_review_service.async_review_question(async_db, question) is None
     assert db.query(AiReview).count() == 0
 
 
@@ -354,14 +360,13 @@ async def test_stale_scope_picks_only_old_prompt_versions(
     async_db, client, db, monkeypatch
 ):
     first, second, _ = _three_pending(client, monkeypatch)
-    from physics_ai_tutor.repositories import ai_review_repository
     from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
     from physics_ai_tutor.schemas.language import Language
     from physics_ai_tutor.services import ai_review_service as service
 
     versions = ((first, "r0"), (second, service.REVIEW_PROMPT_VERSION))
     for question_id, version in versions:
-        ai_review_repository.create(
+        create_ai_review(
             db,
             AiReviewCreate(
                 question_id=question_id,
@@ -495,7 +500,6 @@ def test_pending_count_reports_stale_and_used_budget(
     client, admin_client, db, monkeypatch
 ):
     """The async counters ([103]) apply the same rules as the run's scopes."""
-    from physics_ai_tutor.repositories import ai_review_repository
     from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
     from physics_ai_tutor.schemas.language import Language
 
@@ -506,7 +510,7 @@ def test_pending_count_reports_stale_and_used_budget(
         (unparsed, None, ai_review_service.REVIEW_PROMPT_VERSION),
     )
     for question_id, verdict, version in rows:
-        ai_review_repository.create(
+        create_ai_review(
             db,
             AiReviewCreate(
                 question_id=question_id,
@@ -813,7 +817,8 @@ async def test_other_integrity_errors_are_not_reported_as_in_progress(async_db, 
         )
 
 
-def test_reviewer_calls_use_the_larger_token_budget(monkeypatch):
+@pytest.mark.anyio
+async def test_reviewer_calls_use_the_larger_token_budget(monkeypatch):
     from physics_ai_tutor.schemas.language import Language
     from physics_ai_tutor.services import ai_review_service as service
 
@@ -830,7 +835,7 @@ def test_reviewer_calls_use_the_larger_token_budget(monkeypatch):
 
     patch_generation(monkeypatch, _capture)
 
-    service.grade_answer("質問", "回答", Language.JA)
+    await service.async_grade_answer("質問", "回答", Language.JA)
 
     assert seen["max_tokens"] == settings.ai_review_max_tokens
     assert settings.ai_review_max_tokens > settings.deepseek_max_tokens
@@ -945,13 +950,12 @@ def test_cli_scheduled_both_reviews_pending_then_stale(
 ):
     """[26]: the nightly call records trigger=scheduled and covers both scopes."""
     from physics_ai_tutor.models import AiReviewRun
-    from physics_ai_tutor.repositories import ai_review_repository
     from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
     from physics_ai_tutor.schemas.language import Language
 
     ids = _three_pending(client, monkeypatch)
     # One question already has a verdict from an older prompt: stale.
-    ai_review_repository.create(
+    create_ai_review(
         db,
         AiReviewCreate(
             question_id=ids[0],

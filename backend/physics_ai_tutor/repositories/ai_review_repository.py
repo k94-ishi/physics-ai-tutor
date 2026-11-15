@@ -2,7 +2,6 @@ from datetime import timedelta
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from physics_ai_tutor.models import AiReview, Question
 from physics_ai_tutor.schemas.ai_review import AiReviewCreate
@@ -25,15 +24,6 @@ def _new_review(review: AiReviewCreate) -> AiReview:
     )
 
 
-def create(db: Session, review: AiReviewCreate) -> AiReview:
-    row = _new_review(review)
-
-    db.add(row)
-    db.flush()
-
-    return row
-
-
 async def async_create(db: AsyncSession, review: AiReviewCreate) -> AiReview:
     row = _new_review(review)
 
@@ -41,24 +31,6 @@ async def async_create(db: AsyncSession, review: AiReviewCreate) -> AiReview:
     await db.flush()
 
     return row
-
-
-def get_latest_for_question(db: Session, question_id: int) -> AiReview | None:
-    return (
-        db.query(AiReview)
-        .filter(AiReview.question_id == question_id)
-        .order_by(AiReview.created_at.desc(), AiReview.id.desc())
-        .first()
-    )
-
-
-def list_for_question(db: Session, question_id: int) -> list[AiReview]:
-    return (
-        db.query(AiReview)
-        .filter(AiReview.question_id == question_id)
-        .order_by(AiReview.created_at.desc(), AiReview.id.desc())
-        .all()
-    )
 
 
 def _latest_for_questions_select(ids: list[int]):

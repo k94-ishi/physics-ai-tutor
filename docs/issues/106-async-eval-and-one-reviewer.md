@@ -28,9 +28,9 @@ reviewer, and the sync reviewer is deleted. No behaviour change.
 
 ## Acceptance criteria
 
-- [ ] `eval_prompts --dry-run` works; `test_eval_prompts.py` green;
+- [x] `eval_prompts --dry-run` works; `test_eval_prompts.py` green;
       committed baseline unchanged.
-- [ ] Prompt texts and versions untouched (no `prompt_library.yaml`
+- [x] Prompt texts and versions untouched (no `prompt_library.yaml`
       change, so no fingerprint bump).
 
 ## Out of scope
@@ -44,6 +44,45 @@ reviewer, and the sync reviewer is deleted. No behaviour change.
 - Blocked by: [105]
 - Blocks: [88]
 
+## Log
+
+### 2026-11-16 — done; closes [97]
+
+**Converted:** `eval_prompts.grade_cases` is async and awaits
+`async_generate_answer` / `async_grade_answer`, still one case at a time
+so the printed order and the baseline cannot depend on scheduling;
+`main` wraps it in `asyncio.run`. Arguments and output unchanged;
+`--dry-run` verified for real: 68 cases, no API call, exit 0.
+
+**Deleted:** the sync `grade_answer`, `review_question`,
+`review_question_with_outcome` and `_build_context`. `ai_review_service`
+now has one implementation of everything and imports no sync `Session`
+or `transaction`.
+
+**The repository trio:** `create`, `get_latest_for_question` and
+`list_for_question` had no production caller left ([105]'s note), so per
+[97]'s "no sync function in `ai_review_repository`" they went too. Sync
+tests arrange rows through a new `tests/conftest.create_ai_review`
+helper (same `_new_review` mapping the async write uses, flush not
+commit); `test_ai_review_schema.py` reads back with two local query
+helpers that keep the deleted readers' newest-first order. Seven test
+files touched; `test_review_workflow.py` had an eighth `create` call the
+first sweep missed - the suite caught it.
+
+**Eval tests:** stubs stay plain sync functions; a module-local
+`_patch_grade` installs them on the async seam, following the
+`patch_generation` convention.
+
+**Noticed, pre-existing:** there is no committed
+`baseline-v5-r5.json` - the rubric became r5 in [51] and no baseline was
+saved since (the newest is v5-r4). `--dry-run` reports it missing, and a
+real eval would warn-and-pass rather than gate. Owner may want a
+baseline run once prompts next change; nothing in this slice altered
+prompts or baselines.
+
+**Results:** 622 passed, `ruff check`, `ruff format --check`, `mypy`
+clean. Frontend untouched.
+
 ## Rules (all [73] slices)
 
 - Twins only while an unconverted caller needs the sync version; delete a
@@ -55,5 +94,5 @@ reviewer, and the sync reviewer is deleted. No behaviour change.
 
 ## Definition of done
 
-- [ ] Backend: `pytest`, `ruff check`, `mypy` pass
-- [ ] Log entry in this file; `status.md`, [67], [73] and [97] updated
+- [x] Backend: `pytest`, `ruff check`, `mypy` pass
+- [x] Log entry in this file; `status.md`, [67], [73] and [97] updated

@@ -21,6 +21,10 @@ reviewer, and the sync reviewer is deleted. No behaviour change.
   `review_question_with_outcome` and `_build_context`; their remaining
   tests move to `async_review_question`.
 - After this `ai_review_service` imports no sync `Session`.
+- `ai_review_repository.create`, `get_latest_for_question` and
+  `list_for_question` (sync) are then used only by tests, to arrange
+  rows; move them into a test helper or keep them for [88] to decide
+  (noted by [105]).
 
 ## Acceptance criteria
 

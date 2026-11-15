@@ -461,14 +461,8 @@ def _budget_left(used: int) -> int:
     return max(settings.ai_review_daily_cap - used, 0)
 
 
-def remaining_daily_budget(db: Session) -> int:
-    used = ai_review_repository.count_created_since(db, CAP_WINDOW_HOURS)
-
-    return _budget_left(used)
-
-
 async def async_remaining_daily_budget(db: AsyncSession) -> int:
-    """As `remaining_daily_budget` ([103])."""
+    """Reviewer calls left in the rolling 24 h window."""
     used = await ai_review_repository.async_count_created_since(db, CAP_WINDOW_HOURS)
 
     return _budget_left(used)
@@ -483,36 +477,13 @@ def _check_scope(scope: str) -> None:
         raise ValueError(f"Unknown scope: {scope}")
 
 
-def eligible_question_ids(
-    db: Session,
-    scope: str,
-    question_ids: list[int] | None = None,
-    limit: int | None = None,
-) -> list[int]:
-    _check_scope(scope)
-    bound = _scope_bound(limit)
-
-    if scope == "pending":
-        return ai_review_repository.list_pending_question_ids(db, bound)
-    if scope == "stale":
-        return ai_review_repository.list_stale_question_ids(
-            db, REVIEW_PROMPT_VERSION, bound
-        )
-    if scope == "selected":
-        return ai_review_repository.filter_reviewable_ids(db, question_ids or [])[
-            :bound
-        ]
-
-    raise ValueError(f"Unknown scope: {scope}")
-
-
 async def async_eligible_question_ids(
     db: AsyncSession,
     scope: str,
     question_ids: list[int] | None = None,
     limit: int | None = None,
 ) -> list[int]:
-    """As `eligible_question_ids` ([104])."""
+    """The question ids a run over `scope` would review, at most `limit`."""
     _check_scope(scope)
     bound = _scope_bound(limit)
 
@@ -528,23 +499,13 @@ async def async_eligible_question_ids(
     return ids[:bound]
 
 
-def count_pending(db: Session) -> int:
-    """Questions awaiting a first verdict, ignoring any run or cap limit."""
-    return ai_review_repository.count_pending_questions(db)
-
-
-def count_stale(db: Session) -> int:
-    """Questions whose verdict predates the current rubric."""
-    return ai_review_repository.count_stale_questions(db, REVIEW_PROMPT_VERSION)
-
-
 async def async_count_pending(db: AsyncSession) -> int:
-    """As `count_pending` ([103])."""
+    """Questions awaiting a first verdict, ignoring any run or cap limit."""
     return await ai_review_repository.async_count_pending_questions(db)
 
 
 async def async_count_stale(db: AsyncSession) -> int:
-    """As `count_stale` ([103])."""
+    """Questions whose verdict predates the current rubric."""
     return await ai_review_repository.async_count_stale_questions(
         db, REVIEW_PROMPT_VERSION
     )
@@ -570,10 +531,6 @@ def _reap_statement() -> Update:
     )
 
 
-def _fail_timed_out_runs(db: Session) -> None:
-    db.execute(_reap_statement())
-
-
 def _running_run_select() -> Select[tuple[AiReviewRun]]:
     return select(AiReviewRun).where(AiReviewRun.status == "running").limit(1)
 
@@ -591,8 +548,8 @@ def _new_run(
     )
 
 
-def start_run(
-    db: Session,
+async def async_start_run(
+    db: AsyncSession,
     scope: str,
     trigger: str,
     question_ids: list[int] | None = None,
@@ -605,45 +562,7 @@ def start_run(
     pre-check only produces a friendlier error for the common case.
     """
     try:
-        # One transaction: refusing to start also undoes the reaping above,
-        # exactly as before; a lost race surfaces as IntegrityError on commit.
-        with transaction(db, "start_ai_review_run"):
-            _fail_timed_out_runs(db)
-
-            running = db.scalar(_running_run_select())
-            if running is not None:
-                raise RunInProgressError(str(running.id))
-
-            budget = remaining_daily_budget(db)
-            if budget <= 0:
-                raise DailyCapExhaustedError(str(settings.ai_review_daily_cap))
-
-            ids = eligible_question_ids(db, scope, question_ids, limit)[:budget]
-
-            run = _new_run(scope, trigger, ids, started_by)
-            db.add(run)
-    except IntegrityError as exc:
-        if _is_single_running_violation(exc):
-            # Lost the race against a concurrent start.
-            raise RunInProgressError("concurrent start") from exc
-        # Anything else (a dangling started_by, say) is a real error and
-        # must not be reported to the caller as "a run is in progress".
-        raise
-
-    return run
-
-
-async def async_start_run(
-    db: AsyncSession,
-    scope: str,
-    trigger: str,
-    question_ids: list[int] | None = None,
-    limit: int | None = None,
-    started_by: int | None = None,
-) -> AiReviewRun:
-    """As `start_run` ([104]); the nightly CLI keeps the sync one until [105]."""
-    try:
-        # Same single transaction: a refusal also undoes the reaping.
+        # One transaction: a refusal also undoes the reaping.
         async with async_transaction(db, "start_ai_review_run"):
             await db.execute(_reap_statement())
 
@@ -666,73 +585,6 @@ async def async_start_run(
         raise
 
     return run
-
-
-def execute_run(db: Session, run_id: int) -> AiReviewRun | None:
-    """Process the run's fixed question list, committing progress per item."""
-    run = db.get(AiReviewRun, run_id)
-    if run is None or run.status != "running":
-        return run
-
-    try:
-        for question_id in run.question_ids:
-            # One transaction per question, so progress polling sees it.
-            with transaction(db, "ai_review_progress"):
-                # Another start may have reaped this run as timed out and
-                # begun its own. Stop rather than review alongside it, which
-                # would break the overlap guard and spend an unbudgeted call.
-                db.refresh(run)
-                if run.status != "running":
-                    logger.warning(
-                        "AI review run stopped: run_id=%d status=%s",
-                        run_id,
-                        run.status,
-                    )
-                    return run
-
-                question = db.get(Question, question_id)
-                if question is None:
-                    row, outcome = None, Outcome.SKIPPED
-                else:
-                    row, outcome = review_question_with_outcome(db, question)
-
-                if outcome is Outcome.REVIEWED and row is not None:
-                    run.reviewed_count += 1
-                    run.prompt_tokens += row.prompt_tokens or 0
-                    run.completion_tokens += row.completion_tokens or 0
-                elif outcome is Outcome.SKIPPED:
-                    run.skipped_count += 1
-                else:
-                    run.failed_count += 1
-
-                run.heartbeat_at = datetime.now(UTC)
-
-        if _finish(db, run, "done"):
-            return run
-        logger.warning("AI review run was taken over: run_id=%d", run_id)
-    except Exception:
-        logger.exception("AI review run failed: run_id=%d", run_id)
-        _finish(db, run, "failed", "unexpected error; see server logs")
-
-    return run
-
-
-def _finish(
-    db: Session, run: AiReviewRun, status: str, error: str | None = None
-) -> bool:
-    """Close the run, but only while it is still ours. True when written."""
-    with transaction(db, "finish_ai_review_run"):
-        updated = (
-            db.query(AiReviewRun)
-            .filter(AiReviewRun.id == run.id, AiReviewRun.status == "running")
-            .update(
-                {"status": status, "error": error, "finished_at": func.now()},
-                synchronize_session=False,
-            )
-        )
-    db.refresh(run)
-
-    return bool(updated)
 
 
 async def list_runs(db: AsyncSession, limit: int) -> list[AiReviewRun]:
@@ -804,13 +656,20 @@ async def _still_running(db: AsyncSession, run_id: int) -> bool:
     return status == "running"
 
 
-async def async_execute_run(db: AsyncSession, run_id: int) -> AiReviewRun | None:
+async def async_execute_run(
+    db: AsyncSession, run_id: int, *, stop_on_crash: bool = False
+) -> AiReviewRun | None:
     """Process the run's question list, a few at a time ([72]).
 
     Each item grades on its own session, because a session cannot be
     shared between tasks running at once. The run row is updated from one
     place, under a lock, so progress polling still sees counts climb and
     two items never write the row at the same time.
+
+    A reviewer failure is always one failed item. An unexpected crash
+    outside the review is too, unless `stop_on_crash` is set: then no new
+    item starts, the ones in flight finish, and the run ends 'failed'
+    ([105]).
     """
     run = await db.get(AiReviewRun, run_id)
     if run is None or run.status != "running":
@@ -820,6 +679,7 @@ async def async_execute_run(db: AsyncSession, run_id: int) -> AiReviewRun | None
     limiter = asyncio.Semaphore(max(1, settings.ai_review_concurrency))
     progress = asyncio.Lock()
     taken_over = asyncio.Event()
+    crashed: list[int] = []
 
     async def record(result: ItemResult) -> None:
         async with progress:
@@ -832,7 +692,7 @@ async def async_execute_run(db: AsyncSession, run_id: int) -> AiReviewRun | None
 
     async def review_one(question_id: int) -> None:
         async with limiter:
-            if taken_over.is_set():
+            if taken_over.is_set() or crashed:
                 return
 
             try:
@@ -863,6 +723,8 @@ async def async_execute_run(db: AsyncSession, run_id: int) -> AiReviewRun | None
                     question_id,
                 )
                 result = ItemResult(Outcome.FAILED)
+                if stop_on_crash:
+                    crashed.append(question_id)
 
             await record(result)
 
@@ -872,6 +734,12 @@ async def async_execute_run(db: AsyncSession, run_id: int) -> AiReviewRun | None
         if taken_over.is_set():
             logger.warning("AI review run stopped: run_id=%d taken_over=1", run_id)
             await db.refresh(run)
+            return run
+
+        if crashed:
+            error = f"question {crashed[0]} crashed; see server logs"
+            logger.error("AI review run stopped: run_id=%d %s", run_id, error)
+            await _async_finish(db, run, "failed", error)
             return run
 
         if await _async_finish(db, run, "done"):

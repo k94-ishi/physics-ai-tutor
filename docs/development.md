@@ -518,6 +518,17 @@ without `--force`, so a mis-set cron fails loudly (exit 2) instead of
 paying full price. A failed run exits 1 and fails the job, which triggers
 GitHub's failure e-mail; results are also on `/admin/stats`.
 
+Since [105] the CLI grades `AI_REVIEW_CONCURRENCY` questions at a time,
+like a run started from the admin page. A reviewer failure (DeepSeek
+down, unreadable verdict) is one failed question and the run goes on.
+An unexpected crash outside the review (a bug, a database error) stops
+the run: no new question starts, the ones in flight finish and are
+saved, the run ends `failed` with "question N crashed", and the CLI
+exits 1 so the job alerts. `--continue-on-crash` counts the crash as one
+failed question instead and finishes the run (exit 0); use it for a
+manual re-run once the cause is known. Runs started from the admin page
+always continue.
+
 Required repository secrets: `DATABASE_URL` (Supabase pooler) and
 `DEEPSEEK_API_KEY`. With the nightly in place, `AI_REVIEW_ENABLED` can
 stay `false` in production: teachers find fresh verdicts in the morning

@@ -99,7 +99,7 @@ MAX_PARSE_ATTEMPTS = 3
 def _pending_question_select() -> Select[tuple[int]]:
     """UNREVIEWED AI questions with no usable verdict yet, oldest first.
 
-    One statement for the sync and async twins, so the rule cannot drift.
+    One statement for the list and the count, so they cannot disagree.
     """
     graded = select(AiReview.question_id).where(AiReview.verdict.isnot(None))
     exhausted = (
@@ -125,24 +125,15 @@ def _count_of(query: Select[tuple[int]]) -> Select[tuple[int]]:
     return select(func.count()).select_from(query.order_by(None).subquery())
 
 
-def list_pending_question_ids(db: Session, limit: int) -> list[int]:
-    return list(db.scalars(_pending_question_select().limit(limit)).all())
-
-
 async def async_list_pending_question_ids(db: AsyncSession, limit: int) -> list[int]:
-    """As `list_pending_question_ids` ([104])."""
+    """Pending question ids, oldest first, at most `limit`."""
     query = _pending_question_select().limit(limit)
 
     return list((await db.scalars(query)).all())
 
 
-def count_pending_questions(db: Session) -> int:
-    """The true total, unbounded by any run's limit or the daily cap."""
-    return db.scalar(_count_of(_pending_question_select())) or 0
-
-
 async def async_count_pending_questions(db: AsyncSession) -> int:
-    """As `count_pending_questions` ([103])."""
+    """The true total, unbounded by any run's limit or the daily cap."""
     return (await db.scalar(_count_of(_pending_question_select()))) or 0
 
 
@@ -152,13 +143,8 @@ def _created_since_count(hours: int) -> Select[tuple[int]]:
     return select(func.count(AiReview.id)).where(AiReview.created_at > cutoff)
 
 
-def count_created_since(db: Session, hours: int) -> int:
-    """AI reviews created in the last `hours`, for the daily cap."""
-    return db.scalar(_created_since_count(hours)) or 0
-
-
 async def async_count_created_since(db: AsyncSession, hours: int) -> int:
-    """As `count_created_since` ([103])."""
+    """AI reviews created in the last `hours`, for the daily cap."""
     return (await db.scalar(_created_since_count(hours))) or 0
 
 
@@ -186,28 +172,17 @@ def _stale_question_select(current_version: str) -> Select[tuple[int]]:
     )
 
 
-def list_stale_question_ids(db: Session, current_version: str, limit: int) -> list[int]:
-    query = _stale_question_select(current_version).limit(limit)
-
-    return list(db.scalars(query).all())
-
-
 async def async_list_stale_question_ids(
     db: AsyncSession, current_version: str, limit: int
 ) -> list[int]:
-    """As `list_stale_question_ids` ([104])."""
+    """Stale question ids, oldest first, at most `limit`."""
     query = _stale_question_select(current_version).limit(limit)
 
     return list((await db.scalars(query)).all())
 
 
-def count_stale_questions(db: Session, current_version: str) -> int:
-    """The true total, unbounded by any run's limit or the daily cap."""
-    return db.scalar(_count_of(_stale_question_select(current_version))) or 0
-
-
 async def async_count_stale_questions(db: AsyncSession, current_version: str) -> int:
-    """As `count_stale_questions` ([103])."""
+    """The true total, unbounded by any run's limit or the daily cap."""
     query = _count_of(_stale_question_select(current_version))
 
     return (await db.scalar(query)) or 0
@@ -226,16 +201,8 @@ def _in_given_order(ids: list[int], eligible: set[int]) -> list[int]:
     return [question_id for question_id in ids if question_id in eligible]
 
 
-def filter_reviewable_ids(db: Session, ids: list[int]) -> list[int]:
-    """Keep only UNREVIEWED AI questions, preserving the given order."""
-    if not ids:
-        return []
-
-    return _in_given_order(ids, set(db.scalars(_reviewable_select(ids)).all()))
-
-
 async def async_filter_reviewable_ids(db: AsyncSession, ids: list[int]) -> list[int]:
-    """As `filter_reviewable_ids` ([104])."""
+    """Keep only UNREVIEWED AI questions, preserving the given order."""
     if not ids:
         return []
 

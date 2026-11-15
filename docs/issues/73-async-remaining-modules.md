@@ -53,7 +53,7 @@ traffic first, then by which sync functions can be deleted soonest.
 | 15 | [97] | Asynchronize AI review runs; one ai_review_service (umbrella, split 2026-11-15) | open |
 | 15a | [103] | Asynchronize the AI review run reads: list, detail, pending count | done 2026-11-15 |
 | 15b | [104] | Asynchronize starting an AI review run (POST /admin/ai-review/runs) | done 2026-11-16 |
-| 15c | [105] | Nightly review_pending CLI on the async executor; delete the sync run code | open |
+| 15c | [105] | Nightly review_pending CLI on the async executor; delete the sync run code | done 2026-11-16 |
 | 15d | [106] | Prompt eval on the async reviewer; delete the sync reviewer | open |
 | 16 | [88] | Delete the sync engine, sync LLM clients and remaining sync twins | open |
 | 17 | [98] | Rename pass: drop the async_ prefixes | open |

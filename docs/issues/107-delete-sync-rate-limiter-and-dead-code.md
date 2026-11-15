@@ -25,12 +25,35 @@ First slice of [88]: code nothing in the app calls. No behaviour change.
 
 ## Acceptance criteria
 
-- [ ] The rate limiter has one implementation; its unit tests exercise it.
+- [x] The rate limiter has one implementation; its unit tests exercise it.
 
 ## Dependencies
 
 - Blocked by: [97]
 - Blocks: [110]
+
+## Log
+
+### 2026-11-16 — done
+
+**Deleted from the app:** the sync `rate_limit_service.check` / `record`
+and `rate_limit_repository.count_recent_hits` / `record_hit` /
+`delete_hits_older_than`; the dead `concept_term_repository.senses_by_words`
+and `get_many`, `question_concept_repository.context_question` and
+`link_many`, and the repository-level `question_repository.set_text`
+(the `Question.set_text` model method that services call is a different
+function and stays). Each was re-checked with a plain text search before
+deletion. Ruff dropped the imports this left unused. Surviving async
+functions whose docstrings said "As `<deleted>`" now carry the deleted
+originals' wording.
+
+**Tests:** the five `test_rate_limit.py` unit tests now exercise the async
+limiter the routes actually use; rows are arranged on `async_db` with
+`flush()`, keeping each test inside one session as before. Same five
+tests, same assertions.
+
+**Results:** 622 passed, `ruff check`, `ruff format --check`, `mypy`
+clean. Frontend untouched.
 
 ## Rules (all [73] slices)
 
@@ -43,5 +66,5 @@ First slice of [88]: code nothing in the app calls. No behaviour change.
 
 ## Definition of done
 
-- [ ] Backend: `pytest`, `ruff check`, `mypy` pass
-- [ ] Log entry in this file; `status.md`, [67], [73] and [88] updated
+- [x] Backend: `pytest`, `ruff check`, `mypy` pass
+- [x] Log entry in this file; `status.md`, [67], [73] and [88] updated

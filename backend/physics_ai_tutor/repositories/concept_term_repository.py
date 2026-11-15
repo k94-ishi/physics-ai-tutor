@@ -1,6 +1,5 @@
 from sqlalchemy import func, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from physics_ai_tutor.models import Concept, ConceptTerm, Question, QuestionConcept
 
@@ -67,14 +66,8 @@ async def move_links(
     )
 
 
-def get_many(db: Session, concept_ids: list[int]) -> list[Concept]:
-    if not concept_ids:
-        return []
-    return list(db.scalars(select(Concept).where(Concept.id.in_(concept_ids))).all())
-
-
 async def async_get_many(db: AsyncSession, concept_ids: list[int]) -> list[Concept]:
-    """As `get_many` ([84]); `Concept.terms` loads eagerly (selectin)."""
+    """Concepts by id; `Concept.terms` loads eagerly (selectin)."""
     if not concept_ids:
         return []
     query = select(Concept).where(Concept.id.in_(concept_ids))
@@ -206,21 +199,6 @@ async def linked_questions(
 WordKey = tuple[str, str]
 
 
-def senses_by_words(db: Session, keys: set[WordKey]) -> dict[WordKey, list[Concept]]:
-    """For each (language, normalized) word, the senses that have it.
-
-    Two queries for any number of words, instead of one lookup per word.
-    """
-    if not keys:
-        return {}
-    rows = db.execute(_word_rows_select(keys)).all()
-    concepts = {c.id: c for c in get_many(db, list({cid for _, _, cid in rows}))}
-    index: dict[WordKey, list[Concept]] = {}
-    for language, normalized, concept_id in rows:
-        index.setdefault((language, normalized), []).append(concepts[concept_id])
-    return index
-
-
 def _word_rows_select(keys: set[WordKey]):
     return select(
         ConceptTerm.language, ConceptTerm.normalized, ConceptTerm.concept_id
@@ -230,7 +208,10 @@ def _word_rows_select(keys: set[WordKey]):
 async def async_senses_by_words(
     db: AsyncSession, keys: set[WordKey]
 ) -> dict[WordKey, list[Concept]]:
-    """As `senses_by_words` ([91]); create, review and the seed use the sync one."""
+    """For each (language, normalized) word, the senses that have it.
+
+    Two queries for any number of words, instead of one lookup per word.
+    """
     if not keys:
         return {}
     rows = (await db.execute(_word_rows_select(keys))).all()

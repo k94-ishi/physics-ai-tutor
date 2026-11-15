@@ -4,7 +4,6 @@ from typing import cast
 from sqlalchemy import CursorResult, func, select
 from sqlalchemy import delete as sql_delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from physics_ai_tutor.models.rate_limit_hit import RateLimitHit
 
@@ -20,15 +19,6 @@ def _count_select(action: str, bucket_key: str, window_seconds: int):
     )
 
 
-def count_recent_hits(
-    db: Session,
-    action: str,
-    bucket_key: str,
-    window_seconds: int,
-) -> int:
-    return db.scalar(_count_select(action, bucket_key, window_seconds)) or 0
-
-
 async def async_count_recent_hits(
     db: AsyncSession,
     action: str,
@@ -36,18 +26,6 @@ async def async_count_recent_hits(
     window_seconds: int,
 ) -> int:
     return (await db.scalar(_count_select(action, bucket_key, window_seconds))) or 0
-
-
-def record_hit(
-    db: Session,
-    action: str,
-    bucket_key: str,
-) -> RateLimitHit:
-    hit = RateLimitHit(action=action, bucket_key=bucket_key)
-    db.add(hit)
-    db.flush()
-
-    return hit
 
 
 async def async_record_hit(
@@ -66,17 +44,6 @@ def _delete_old_statement(max_age_seconds: int):
     cutoff = func.now() - timedelta(seconds=max_age_seconds)
 
     return sql_delete(RateLimitHit).where(RateLimitHit.created_at < cutoff)
-
-
-def delete_hits_older_than(
-    db: Session,
-    max_age_seconds: int,
-) -> int:
-    result = cast(CursorResult, db.execute(_delete_old_statement(max_age_seconds)))
-    deleted = result.rowcount
-    db.flush()
-
-    return deleted
 
 
 async def async_delete_hits_older_than(

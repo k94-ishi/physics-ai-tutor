@@ -127,7 +127,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 104 | closed | 104-async-start-ai-review-run.md | Asynchronize starting an AI review run (POST /admin/ai-review/runs) | — (file-era issue) |
 | 105 | closed | 105-async-review-pending-cli.md | Nightly review_pending CLI on the async executor; delete the sync run code | — (file-era issue) |
 | 106 | closed | 106-async-eval-and-one-reviewer.md | Prompt eval on the async reviewer; delete the sync reviewer (one ai_review_service) | — (file-era issue) |
-| 107 | open | 107-delete-sync-rate-limiter-and-dead-code.md | Delete the sync rate limiter and the dead sync repository functions | — (file-era issue) |
+| 107 | closed | 107-delete-sync-rate-limiter-and-dead-code.md | Delete the sync rate limiter and the dead sync repository functions | — (file-era issue) |
 | 108 | open | 108-delete-sync-rag-and-llm-clients.md | Delete the sync RAG path and the sync LLM clients | — (file-era issue) |
 | 109 | open | 109-async-seed-export-and-maintenance-clis.md | Seed export, init_db and the maintenance CLIs on the async engine | — (file-era issue) |
 | 110 | open | 110-delete-sync-engine-from-app.md | Delete the sync engine, SessionLocal, get_db, background_session and transaction() from the app | — (file-era issue) |

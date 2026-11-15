@@ -403,25 +403,6 @@ async def delete(db: AsyncSession, question_id: int) -> bool:
     return True
 
 
-def set_text(
-    db: Session,
-    question_id: int,
-    language: Language | str,
-    question: str,
-    answer: str,
-    provenance: str,
-) -> Question | None:
-    db_question = db.query(Question).filter(Question.id == question_id).first()
-
-    if not db_question:
-        return None
-
-    db_question.set_text(language, question, answer, provenance)
-    db.flush()
-
-    return db_question
-
-
 async def async_update_status(
     db: AsyncSession, question_id: int, status: str
 ) -> Question | None:

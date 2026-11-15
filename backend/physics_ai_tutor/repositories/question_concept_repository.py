@@ -111,7 +111,7 @@ def get_concept_ids_for_question(db: Session, question_id: int) -> list[int]:
 async def async_get_concept_ids_for_question(
     db: AsyncSession, question_id: int
 ) -> list[int]:
-    """As `get_concept_ids_for_question` ([83]); the sync one serves `link_many`."""
+    """As `get_concept_ids_for_question` ([83])."""
     return list((await db.scalars(_concept_ids_select(question_id))).all())
 
 
@@ -181,11 +181,6 @@ def _context_question_select(concept_id: int, language: str):
     )
 
 
-def context_question(db: Session, concept_id: int, language: str) -> str | None:
-    """A question text in `language` that uses the concept, for translation."""
-    return db.scalars(_context_question_select(concept_id, language)).first()
-
-
 async def async_context_question(
     db: AsyncSession, concept_id: int, language: str
 ) -> str | None:
@@ -193,18 +188,10 @@ async def async_context_question(
     return (await db.scalars(_context_question_select(concept_id, language))).first()
 
 
-def link_many(db: Session, question_id: int, concept_ids: list[int]) -> None:
-    """Link a question to several concepts with one existence check."""
-    existing = set(get_concept_ids_for_question(db, question_id))
-    new = [cid for cid in dict.fromkeys(concept_ids) if cid not in existing]
-    db.add_all(QuestionConcept(question_id=question_id, concept_id=cid) for cid in new)
-    db.flush()
-
-
 async def async_link_many(
     db: AsyncSession, question_id: int, concept_ids: list[int]
 ) -> None:
-    """As `link_many` ([91])."""
+    """Link a question to several concepts with one existence check."""
     existing = set(await async_get_concept_ids_for_question(db, question_id))
     new = [cid for cid in dict.fromkeys(concept_ids) if cid not in existing]
     db.add_all(QuestionConcept(question_id=question_id, concept_id=cid) for cid in new)

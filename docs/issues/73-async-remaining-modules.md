@@ -56,7 +56,7 @@ traffic first, then by which sync functions can be deleted soonest.
 | 15c | [105] | Nightly review_pending CLI on the async executor; delete the sync run code | done 2026-11-16 |
 | 15d | [106] | Prompt eval on the async reviewer; delete the sync reviewer | done 2026-11-16 |
 | 16 | [88] | Delete the sync engine, sync LLM clients and remaining sync twins (umbrella, split 2026-11-16) | open |
-| 16a | [107] | Sync rate limiter and dead sync functions | open |
+| 16a | [107] | Sync rate limiter and dead sync functions | done 2026-11-16 |
 | 16b | [108] | Sync RAG path and sync LLM clients | open |
 | 16c | [109] | Seed export, init_db and maintenance CLIs on the async engine | open |
 | 16d | [110] | Sync engine, SessionLocal, get_db, background_session, transaction() | open |

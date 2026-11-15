@@ -114,7 +114,7 @@ wait for the slowest endpoint from "whole answer" to "first words".
        4. ~~[106] Prompt eval on the async reviewer; one ai_review_service~~ done 2026-11-16
    15. [88] Delete the sync engine, sync LLM clients and remaining sync twins -
        split 2026-11-16 into six slices:
-       1. [107] Sync rate limiter and dead sync functions
+       1. ~~[107] Sync rate limiter and dead sync functions~~ done 2026-11-16
        2. [108] Sync RAG path and sync LLM clients
        3. [109] Seed export, init_db and maintenance CLIs on the async engine
        4. [110] Sync engine, SessionLocal, get_db, background_session, transaction()

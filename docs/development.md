@@ -322,9 +322,10 @@ enforced by `tests/test_architecture.py`:
   and return what a strict response left out as `TranslationNeeds`; the
   router hands those to the background translator in one call. List
   filters travel as one `QuestionFilters` object from router to repository.
-- **Background tasks** open their session with `background_session()`
+- **Background tasks** open their session with `async_background_session()`
   (`database/session.py`); tests point that one helper at the test
-  database. CLIs keep their own `SessionLocal`.
+  database. CLIs open `AsyncSessionLocal` and run through `asyncio.run`
+  (all of them since [109]).
 - **Background work is claimed in the database** ([75]). A worker takes a
   `background_claims` row before starting and deletes it in a `finally`;
   the unique `(kind, key)` means exactly one worker can win, and an

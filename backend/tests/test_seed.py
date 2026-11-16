@@ -1,7 +1,7 @@
 """The seed rebuilds a disposable database offline, and the exports round-trip."""
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import Session
 
 from physics_ai_tutor.cli import export_seed, export_seed_embeddings
@@ -86,23 +86,30 @@ def test_seed_builds_embeddings_and_concepts_from_the_files(seeded):
     assert embedding_service._preloaded == {}
 
 
-def test_export_seed_reproduces_the_seed_file(seeded):
+@pytest.mark.anyio
+async def test_export_seed_reproduces_the_seed_file(seeded):
     entries = _seed_file_entries()
 
-    exported, notes = export_seed.build_entries(
-        seeded, [entry["question_ja"] for entry in entries]
-    )
+    # Not `async_db`: that fixture would empty the module's seeded tables.
+    async with AsyncSession(async_engine, expire_on_commit=False) as session:
+        exported, notes = await export_seed.build_entries(
+            session, [entry["question_ja"] for entry in entries]
+        )
 
     assert exported == entries
     assert notes == []
 
 
-def test_export_seed_embeddings_reproduces_the_vectors(seeded):
+@pytest.mark.anyio
+async def test_export_seed_embeddings_reproduces_the_vectors(seeded):
     stored = seed_embeddings.read(
         seed_embeddings.EMBEDDINGS_FILE, settings.embedding_model
     )
 
-    exported = export_seed_embeddings.collect(seeded, settings.embedding_model)
+    async with AsyncSession(async_engine, expire_on_commit=False) as session:
+        exported = await export_seed_embeddings.collect(
+            session, settings.embedding_model
+        )
 
     assert exported.keys() == stored.keys()
     # pgvector prints float32 as short decimals; compare at float32 precision.

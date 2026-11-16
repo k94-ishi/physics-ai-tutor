@@ -17,7 +17,8 @@ import asyncio
 import sys
 from dataclasses import dataclass
 
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.cli.review_pending import (
     EXIT_FAILED,
@@ -28,7 +29,7 @@ from physics_ai_tutor.cli.review_pending import (
 )
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.text import normalize_key
-from physics_ai_tutor.database.database import AsyncSessionLocal, SessionLocal
+from physics_ai_tutor.database.database import AsyncSessionLocal
 from physics_ai_tutor.models import Concept, Question, QuestionConcept
 from physics_ai_tutor.schemas.concept import ConceptExtractionResult
 from physics_ai_tutor.services import question_write_service
@@ -49,15 +50,17 @@ def _uses_a_word(question: Question, concept: Concept) -> bool:
     return any(term.normalized in haystack for term in concept.terms_in(language))
 
 
-def find_suspect_links(db: Session) -> list[SuspectLink]:
+async def find_suspect_links(db: AsyncSession) -> list[SuspectLink]:
     """Links whose question never uses the sense's words in its own language."""
+    # `Concept.terms` loads eagerly (selectin), so the checks below need no IO.
     rows = (
-        db.query(Question, Concept)
-        .join(QuestionConcept, QuestionConcept.question_id == Question.id)
-        .join(Concept, Concept.id == QuestionConcept.concept_id)
-        .order_by(Question.id, Concept.id)
-        .all()
-    )
+        await db.execute(
+            select(Question, Concept)
+            .join(QuestionConcept, QuestionConcept.question_id == Question.id)
+            .join(Concept, Concept.id == QuestionConcept.concept_id)
+            .order_by(Question.id, Concept.id)
+        )
+    ).all()
     suspects = []
     for question, concept in rows:
         if not concept.terms_in(question.original_language):
@@ -101,40 +104,47 @@ async def _reextract(question_ids: list[int]) -> list[ConceptExtractionResult]:
         )
 
 
+async def _suspects() -> list[SuspectLink]:
+    """A short read; its session closes before any DeepSeek call ([82])."""
+    async with AsyncSessionLocal() as db:
+        return await find_suspect_links(db)
+
+
 def main(dry_run: bool = False, limit: int = 50, force: bool = False) -> int:
-    db = SessionLocal()
-    try:
-        suspects = find_suspect_links(db)
-        question_ids = list(dict.fromkeys(s.question_id for s in suspects))
-        for suspect in suspects:
-            print(
-                f"q{suspect.question_id} {suspect.question[:40]!r} -> "
-                f"concept {suspect.concept_id} {suspect.concept_words}"
-            )
-        print(f"{len(suspects)} suspect links on {len(question_ids)} questions")
+    return asyncio.run(_run(dry_run, limit, force))
 
-        if dry_run or not question_ids:
-            return EXIT_OK
-        if not force and not within_offpeak(
-            _now(), settings.ai_review_offpeak_start, settings.ai_review_offpeak_end
-        ):
-            print(
-                "Refusing to re-extract outside the DeepSeek off-peak window; "
-                "use --force or --dry-run.",
-                file=sys.stderr,
-            )
-            return EXIT_OUTSIDE_WINDOW
 
-        results = asyncio.run(_reextract(question_ids[:limit]))
-        failed = sum(1 for result in results if not result.success)
-        remaining = len(question_ids) - len(results)
+async def _run(dry_run: bool, limit: int, force: bool) -> int:
+    """Async since [109]; one event loop for the whole command."""
+    suspects = await _suspects()
+    question_ids = list(dict.fromkeys(s.question_id for s in suspects))
+    for suspect in suspects:
         print(
-            f"Re-extracted {len(results) - failed} questions ({failed} failed)"
-            + (f"; {remaining} remain - re-run to continue" if remaining else "")
+            f"q{suspect.question_id} {suspect.question[:40]!r} -> "
+            f"concept {suspect.concept_id} {suspect.concept_words}"
         )
-        return EXIT_OK if failed == 0 else EXIT_FAILED
-    finally:
-        db.close()
+    print(f"{len(suspects)} suspect links on {len(question_ids)} questions")
+
+    if dry_run or not question_ids:
+        return EXIT_OK
+    if not force and not within_offpeak(
+        _now(), settings.ai_review_offpeak_start, settings.ai_review_offpeak_end
+    ):
+        print(
+            "Refusing to re-extract outside the DeepSeek off-peak window; "
+            "use --force or --dry-run.",
+            file=sys.stderr,
+        )
+        return EXIT_OUTSIDE_WINDOW
+
+    results = await _reextract(question_ids[:limit])
+    failed = sum(1 for result in results if not result.success)
+    remaining = len(question_ids) - len(results)
+    print(
+        f"Re-extracted {len(results) - failed} questions ({failed} failed)"
+        + (f"; {remaining} remain - re-run to continue" if remaining else "")
+    )
+    return EXIT_OK if failed == 0 else EXIT_FAILED
 
 
 if __name__ == "__main__":

@@ -3,13 +3,11 @@ public payload, and the backfill CLI."""
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker
-from sqlalchemy.orm import sessionmaker
 
 from physics_ai_tutor.cli import backfill_levels as backfill_cli
 from physics_ai_tutor.models import Question
 from tests.conftest import (
     async_engine,
-    engine,
     fake_generation,
     patch_extract_concept_names,
     patch_generation,
@@ -84,8 +82,6 @@ def test_levels_are_validated_on_update(admin_client):
 def test_backfill_cli_is_restartable_and_window_guarded(admin_client, db, monkeypatch):
     from datetime import UTC, datetime
 
-    factory = sessionmaker(bind=engine, expire_on_commit=False)
-    monkeypatch.setattr(backfill_cli, "SessionLocal", factory)
     monkeypatch.setattr(
         backfill_cli,
         "AsyncSessionLocal",

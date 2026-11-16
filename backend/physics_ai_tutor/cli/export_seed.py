@@ -9,14 +9,16 @@ command reports them so nothing is lost silently.
 """
 
 import argparse
+import asyncio
 import sys
 from pathlib import Path
 
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.core.text import concept_line
 from physics_ai_tutor.database import seed_file
-from physics_ai_tutor.database.database import SessionLocal
+from physics_ai_tutor.database.database import AsyncSessionLocal
 from physics_ai_tutor.models import Concept, Question, QuestionConcept
 from physics_ai_tutor.schemas.language import TextProvenance
 
@@ -41,21 +43,28 @@ def _entry(question: Question, tags: list[str]) -> dict:
     return entry
 
 
-def build_entries(db: Session, order: list[str]) -> tuple[list[dict], list[str]]:
+async def build_entries(
+    db: AsyncSession, order: list[str]
+) -> tuple[list[dict], list[str]]:
     """Seed entries in `order` (Japanese texts), plus notes on lost detail."""
-    questions = (
-        db.query(Question)
-        .filter(Question.status == "APPROVED")
-        .order_by(Question.id)
-        .all()
+    questions = list(
+        (
+            await db.scalars(
+                select(Question)
+                .where(Question.status == "APPROVED")
+                .order_by(Question.id)
+            )
+        ).all()
     )
+    # `Concept.terms` loads eagerly (selectin), so reading it needs no IO.
     links = (
-        db.query(QuestionConcept.question_id, Concept)
-        .join(Concept, Concept.id == QuestionConcept.concept_id)
-        .filter(QuestionConcept.question_id.in_([q.id for q in questions]))
-        .order_by(QuestionConcept.question_id, Concept.id)
-        .all()
-    )
+        await db.execute(
+            select(QuestionConcept.question_id, Concept)
+            .join(Concept, Concept.id == QuestionConcept.concept_id)
+            .where(QuestionConcept.question_id.in_([q.id for q in questions]))
+            .order_by(QuestionConcept.question_id, Concept.id)
+        )
+    ).all()
     tags: dict[int, list[str]] = {}
     notes: set[str] = set()
     for question_id, concept in links:
@@ -73,6 +82,12 @@ def build_entries(db: Session, order: list[str]) -> tuple[list[dict], list[str]]
     return entries, sorted(notes)
 
 
+async def _build(order: list[str]) -> tuple[list[dict], list[str]]:
+    """Async since [109]; the CLI opens its own session."""
+    async with AsyncSessionLocal() as db:
+        return await build_entries(db, order)
+
+
 def main(out: Path) -> int:
     order: list[str] = []
     if SEED_FILE.exists():
@@ -81,11 +96,7 @@ def main(out: Path) -> int:
             for e in seed_file.read_entries(SEED_FILE)
         ]
 
-    db = SessionLocal()
-    try:
-        entries, notes = build_entries(db, order)
-    finally:
-        db.close()
+    entries, notes = asyncio.run(_build(order))
 
     seed_file.write_entries(entries, out)
     for note in notes:

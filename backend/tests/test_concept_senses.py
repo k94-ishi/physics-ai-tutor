@@ -7,7 +7,6 @@ from physics_ai_tutor.models import Concept, ConceptTerm, Question, QuestionConc
 from tests.conftest import (
     async_engine,
     attach_concepts,
-    engine,
     patch_create_embeddings,
     patch_extract_concept_names,
 )
@@ -313,14 +312,10 @@ def test_split_cli_reattaches_glued_questions_to_their_own_sense(
     db, monkeypatch, capsys
 ):
     from sqlalchemy.ext.asyncio import async_sessionmaker
-    from sqlalchemy.orm import sessionmaker
 
     from physics_ai_tutor.cli import split_merged_concepts as cli
 
     # The CLI opens its own sessions against the test database.
-    monkeypatch.setattr(
-        cli, "SessionLocal", sessionmaker(bind=engine, expire_on_commit=False)
-    )
     monkeypatch.setattr(
         cli,
         "AsyncSessionLocal",
@@ -347,4 +342,6 @@ def test_split_cli_reattaches_glued_questions_to_their_own_sense(
     assert links[matter_q.id] != merged.id
     assert db.get(Concept, links[matter_q.id]).name_ja == "相"
     # Nothing suspect is left.
-    assert cli.find_suspect_links(db) == []
+    capsys.readouterr()
+    assert cli.main(dry_run=True) == 0
+    assert "0 suspect links on 0 questions" in capsys.readouterr().out

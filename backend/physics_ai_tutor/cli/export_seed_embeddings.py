@@ -7,15 +7,17 @@ pair, the text the seed asks for when it creates the tag. No API calls.
 """
 
 import argparse
+import asyncio
 import sys
 from pathlib import Path
 
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.text import concept_pair_text
 from physics_ai_tutor.database import seed_embeddings
-from physics_ai_tutor.database.database import SessionLocal
+from physics_ai_tutor.database.database import AsyncSessionLocal
 from physics_ai_tutor.models import (
     Concept,
     Question,
@@ -25,18 +27,19 @@ from physics_ai_tutor.models import (
 from physics_ai_tutor.services.embedding_service import vector_key
 
 
-def collect(db: Session, model: str) -> dict[str, list[float]]:
+async def collect(db: AsyncSession, model: str) -> dict[str, list[float]]:
     vectors: dict[str, list[float]] = {}
     rows = (
-        db.query(QuestionEmbedding, Question)
-        .join(Question, Question.id == QuestionEmbedding.question_id)
-        .filter(
-            Question.status == "APPROVED",
-            QuestionEmbedding.model == model,
-            QuestionEmbedding.chunk_index.is_(None),
+        await db.execute(
+            select(QuestionEmbedding, Question)
+            .join(Question, Question.id == QuestionEmbedding.question_id)
+            .where(
+                Question.status == "APPROVED",
+                QuestionEmbedding.model == model,
+                QuestionEmbedding.chunk_index.is_(None),
+            )
         )
-        .all()
-    )
+    ).all()
     for embedding, question in rows:
         text = question.text(embedding.language)
         if text is None:
@@ -44,18 +47,19 @@ def collect(db: Session, model: str) -> dict[str, list[float]]:
         embedded = text[0] if embedding.type == "question" else text[1]
         vectors[vector_key(model, embedded)] = list(embedding.embedding)
 
-    concepts = (
-        db.query(Concept)
-        .filter(
-            Concept.embedding_model == model,
-            Concept.id.in_(
-                db.query(QuestionConcept.concept_id)
-                .join(Question, Question.id == QuestionConcept.question_id)
-                .filter(Question.status == "APPROVED")
-            ),
-        )
-        .all()
+    approved_concepts = (
+        select(QuestionConcept.concept_id)
+        .join(Question, Question.id == QuestionConcept.question_id)
+        .where(Question.status == "APPROVED")
     )
+    concepts = (
+        await db.scalars(
+            select(Concept).where(
+                Concept.embedding_model == model,
+                Concept.id.in_(approved_concepts),
+            )
+        )
+    ).all()
     for concept in concepts:
         vectors[
             vector_key(model, concept_pair_text(concept.name_ja, concept.name_en))
@@ -63,12 +67,14 @@ def collect(db: Session, model: str) -> dict[str, list[float]]:
     return vectors
 
 
+async def _collect(model: str) -> dict[str, list[float]]:
+    """Async since [109]; the CLI opens its own session."""
+    async with AsyncSessionLocal() as db:
+        return await collect(db, model)
+
+
 def main(out: Path) -> int:
-    db = SessionLocal()
-    try:
-        vectors = collect(db, settings.embedding_model)
-    finally:
-        db.close()
+    vectors = asyncio.run(_collect(settings.embedding_model))
     seed_embeddings.write(out, settings.embedding_model, vectors)
     print(f"Wrote {len(vectors)} vectors to {out}")
     return 0

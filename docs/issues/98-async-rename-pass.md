@@ -23,7 +23,7 @@ One small slice of [73]: one mechanical rename. No behaviour change.
 
 ## Dependencies
 
-- Blocked by: [88] (its slices [111]/[112] remove the sync names the rename would collide with)
+- Blocked by: [88] (done 2026-11-16; no sync name is left to collide with)
 - Blocks: [99]
 
 ## Rules (all [73] slices)

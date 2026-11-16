@@ -1,7 +1,6 @@
 from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from physics_ai_tutor.models import Question, QuestionEmbedding
 
@@ -24,25 +23,6 @@ def _new_embedding(
     )
 
 
-def create_embedding(
-    db: Session,
-    question_id: int,
-    embedding: list[float],
-    embedding_type: str,
-    model: str,
-    chunk_index: int | None = None,
-    language: str = "ja",
-) -> QuestionEmbedding:
-    db_embedding = _new_embedding(
-        question_id, embedding, embedding_type, model, chunk_index, language
-    )
-
-    db.add(db_embedding)
-    db.flush()
-
-    return db_embedding
-
-
 async def async_create_embedding(
     db: AsyncSession,
     question_id: int,
@@ -60,19 +40,6 @@ async def async_create_embedding(
     await db.flush()
 
     return db_embedding
-
-
-def create_embeddings(
-    db: Session,
-    embeddings: list[dict],
-) -> list[QuestionEmbedding]:
-
-    db_embeddings = [QuestionEmbedding(**emb) for emb in embeddings]
-
-    db.add_all(db_embeddings)
-    db.flush()
-
-    return db_embeddings
 
 
 def _similar_embeddings_select(
@@ -160,16 +127,6 @@ def _delete_by_question_id_statement(question_id: int, language: str | None):
         statement = statement.where(QuestionEmbedding.language == language)
 
     return statement
-
-
-def delete_by_question_id(
-    db: Session,
-    question_id: int,
-    language: str | None = None,
-) -> None:
-    db.execute(_delete_by_question_id_statement(question_id, language))
-
-    db.flush()
 
 
 async def async_delete_by_question_id(

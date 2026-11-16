@@ -55,13 +55,13 @@ traffic first, then by which sync functions can be deleted soonest.
 | 15b | [104] | Asynchronize starting an AI review run (POST /admin/ai-review/runs) | done 2026-11-16 |
 | 15c | [105] | Nightly review_pending CLI on the async executor; delete the sync run code | done 2026-11-16 |
 | 15d | [106] | Prompt eval on the async reviewer; delete the sync reviewer | done 2026-11-16 |
-| 16 | [88] | Delete the sync engine, sync LLM clients and remaining sync twins (umbrella, split 2026-11-16) | open |
+| 16 | [88] | Delete the sync engine, sync LLM clients and remaining sync twins (umbrella, split 2026-11-16) | done 2026-11-16 |
 | 16a | [107] | Sync rate limiter and dead sync functions | done 2026-11-16 |
 | 16b | [108] | Sync RAG path and sync LLM clients | done 2026-11-16 |
 | 16c | [109] | Seed export, init_db and maintenance CLIs on the async engine | done 2026-11-16 |
 | 16d | [110] | Sync engine, SessionLocal, get_db, background_session, transaction() | done 2026-11-16 |
 | 16e | [111] | Test-only sync helpers in question_repository | done 2026-11-16 |
-| 16f | [112] | Test-only sync helpers in the concept and embedding repositories | open |
+| 16f | [112] | Test-only sync helpers in the concept and embedding repositories | done 2026-11-16 |
 | 17 | [98] | Rename pass: drop the async_ prefixes | open |
 | 18 | [99] | Async end state: architecture test, docs, connection budget (closes [73]) | open |
 
@@ -70,12 +70,14 @@ recommended before [86].
 
 ## Acceptance criteria (the end state, ticked by [88])
 
-- [ ] No route resolves a sync `Session`; `rg "SessionLocal"` outside
-      `database/`, `alembic/`, `tests/` finds nothing app-side.
+- [x] No route resolves a sync `Session`; `rg "SessionLocal"` outside
+      `database/`, `alembic/`, `tests/` finds nothing app-side. ([88])
 - [ ] One engine, one pool at runtime; pool settings documented.
 - [ ] Architecture test enforces the end state.
-- [ ] Behaviour identical: strict-language rule ([53]), admin fallback,
+- [x] Behaviour identical: strict-language rule ([53]), admin fallback,
       review history, bulk actions, exports — existing tests are the net.
+      (Suite green after every slice; the one intended change is the
+      nightly run's concurrency, owner-approved in [105].)
 
 ## Out of scope
 

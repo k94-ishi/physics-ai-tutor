@@ -8,10 +8,7 @@ from physics_ai_tutor.core.exceptions import (
     DuplicateQuestionError,
     EmbeddingGenerationError,
 )
-from physics_ai_tutor.models import Question, QuestionEmbedding
-from physics_ai_tutor.repositories import (
-    question_concept_repository,
-)
+from physics_ai_tutor.models import Concept, Question, QuestionEmbedding
 from physics_ai_tutor.schemas.question import (
     QuestionCreate,
     QuestionFilters,
@@ -29,6 +26,7 @@ from physics_ai_tutor.services import (
 from tests.conftest import (
     async_create_user,
     async_engine,
+    concepts_for_question,
     create_question,
     patch_create_embeddings,
     patch_extract_concept_names,
@@ -181,7 +179,7 @@ async def test_create_question_duplicate_rejected(db, async_db):
 def test_create_question_attaches_concepts(db):
     created = _create(db)
 
-    concepts = question_concept_repository.get_concepts_for_question(db, created.id)
+    concepts = concepts_for_question(db, created.id)
 
     assert {c.name for c in concepts} == {"概念A", "概念B"}
 
@@ -195,7 +193,7 @@ def test_create_question_concept_extraction_failure_is_non_fatal(db, monkeypatch
     created = _create(db)
 
     assert created.id is not None
-    assert question_concept_repository.get_concepts_for_question(db, created.id) == []
+    assert concepts_for_question(db, created.id) == []
 
 
 @pytest.mark.anyio
@@ -203,7 +201,6 @@ async def test_import_creates_a_new_sense_once_for_rows_sharing_it(
     db, async_db, monkeypatch
 ):
     """Rows of one import share the concept index, as the sync code did ([94])."""
-    from physics_ai_tutor.models import Concept
 
     patch_extract_concept_names(
         monkeypatch, lambda question, answer, language="ja": ["新概念 | new concept"]
@@ -223,7 +220,7 @@ async def test_import_creates_a_new_sense_once_for_rows_sharing_it(
     senses = db.query(Concept).filter(Concept.name_ja == "新概念").all()
     assert len(senses) == 1
     for question in created:
-        linked = question_concept_repository.get_concepts_for_question(db, question.id)
+        linked = concepts_for_question(db, question.id)
         assert [c.id for c in linked] == [senses[0].id]
 
 
@@ -663,7 +660,7 @@ def test_create_question_unreviewed_skips_concept_extraction(db, monkeypatch):
     )
 
     assert calls == []
-    assert question_concept_repository.get_concepts_for_question(db, created.id) == []
+    assert concepts_for_question(db, created.id) == []
 
 
 def test_create_question_approved_extracts_concepts(db, monkeypatch):
@@ -673,7 +670,7 @@ def test_create_question_approved_extracts_concepts(db, monkeypatch):
     created = _create(db)
 
     assert len(calls) == 1
-    assert question_concept_repository.get_concepts_for_question(db, created.id) != []
+    assert concepts_for_question(db, created.id) != []
 
 
 @pytest.mark.anyio
@@ -693,9 +690,7 @@ async def test_import_questions_unreviewed_skips_concept_extraction(
     db.expire_all()
 
     assert calls == []
-    assert (
-        question_concept_repository.get_concepts_for_question(db, created[0].id) == []
-    )
+    assert concepts_for_question(db, created[0].id) == []
 
 
 @pytest.mark.anyio
@@ -717,9 +712,7 @@ async def test_import_questions_approved_extracts_concepts(db, async_db, monkeyp
 
     assert len(calls) == 2
     for question in created:
-        assert (
-            question_concept_repository.get_concepts_for_question(db, question.id) != []
-        )
+        assert concepts_for_question(db, question.id) != []
 
 
 @pytest.mark.anyio
@@ -747,7 +740,7 @@ async def test_review_question_approve_extracts_concepts(db, async_db, monkeypat
     db.expire_all()
 
     assert len(calls) == 1
-    assert question_concept_repository.get_concepts_for_question(db, created.id) != []
+    assert concepts_for_question(db, created.id) != []
 
 
 @pytest.mark.anyio
@@ -847,7 +840,7 @@ async def test_save_ai_question_does_not_extract_concepts(db, async_db, monkeypa
     )
 
     assert calls == []
-    assert question_concept_repository.get_concepts_for_question(db, saved.id) == []
+    assert concepts_for_question(db, saved.id) == []
 
 
 @pytest.mark.anyio
@@ -956,7 +949,7 @@ async def test_reextract_concepts_for_questions_replaces_existing_links(
     db, async_db, monkeypatch
 ):
     created = await _acreate(db)
-    assert question_concept_repository.get_concepts_for_question(db, created.id) != []
+    assert concepts_for_question(db, created.id) != []
 
     patch_extract_concept_names(
         monkeypatch, lambda question, answer, language="ja": ["新概念"]
@@ -969,7 +962,7 @@ async def test_reextract_concepts_for_questions_replaces_existing_links(
     assert results[0].success is True
     assert results[0].concepts == ["新概念"]
     db.expire_all()
-    concepts = question_concept_repository.get_concepts_for_question(db, created.id)
+    concepts = concepts_for_question(db, created.id)
     assert [c.name for c in concepts] == ["新概念"]
 
 
@@ -1005,7 +998,7 @@ async def test_reextract_concepts_for_questions_partial_failure_continues(
     results_by_id = {r.question_id: r for r in results}
     assert results_by_id[q1.id].success is False
     assert results_by_id[q2.id].success is True
-    assert question_concept_repository.get_concepts_for_question(db, q2.id) != []
+    assert concepts_for_question(db, q2.id) != []
 
 
 @pytest.mark.anyio

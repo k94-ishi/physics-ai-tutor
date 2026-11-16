@@ -112,14 +112,14 @@ wait for the slowest endpoint from "whole answer" to "first words".
        2. ~~[104] Starting a run (POST /admin/ai-review/runs)~~ done 2026-11-16
        3. ~~[105] Nightly review_pending CLI on the async executor~~ done 2026-11-16
        4. ~~[106] Prompt eval on the async reviewer; one ai_review_service~~ done 2026-11-16
-   15. [88] Delete the sync engine, sync LLM clients and remaining sync twins -
-       split 2026-11-16 into six slices:
+   15. ~~[88] Delete the sync engine, sync LLM clients and remaining sync twins~~ -
+       split 2026-11-16 into six slices, all done 2026-11-16:
        1. ~~[107] Sync rate limiter and dead sync functions~~ done 2026-11-16
        2. ~~[108] Sync RAG path and sync LLM clients~~ done 2026-11-16
        3. ~~[109] Seed export, init_db and maintenance CLIs on the async engine~~ done 2026-11-16
        4. ~~[110] Sync engine, SessionLocal, get_db, background_session, transaction()~~ done 2026-11-16
        5. ~~[111] Test-only sync helpers in question_repository~~ done 2026-11-16
-       6. [112] Test-only sync helpers in the concept and embedding repositories
+       6. ~~[112] Test-only sync helpers in the concept and embedding repositories~~ done 2026-11-16
    16. [98] Rename pass: drop the async_ prefixes
    17. [99] Async end state: architecture test, docs, connection budget (closes [73])
    Re-split 2026-11-13 into ~10-test slices; [87] can run beside the concept chain.

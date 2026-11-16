@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from physics_ai_tutor.core.exceptions import ConceptExtractionError
-from physics_ai_tutor.repositories import concept_repository
+from physics_ai_tutor.models import Concept
 from physics_ai_tutor.services import (
     concept_service,
 )
@@ -63,7 +63,7 @@ def test_attach_concepts_to_question_creates_new_concepts(db):
 
     attach_concepts(db, question.id, ["加速度", "速度"])
 
-    concepts = concept_repository.list_all(db)
+    concepts = db.query(Concept).all()
 
     assert {c.name for c in concepts} == {"加速度", "速度"}
     for c in concepts:
@@ -96,7 +96,7 @@ def test_attach_concepts_to_question_reuses_existing_concept_by_name(db):
     attach_concepts(db, question1.id, ["加速度"])
     attach_concepts(db, question2.id, ["加速度"])
 
-    concepts = concept_repository.list_all(db)
+    concepts = db.query(Concept).all()
 
     assert len(concepts) == 1
 
@@ -107,7 +107,7 @@ def test_attach_concepts_to_question_dedupes_within_same_call(db):
     concepts = attach_concepts(db, question.id, ["加速度", "加速度"])
 
     assert len(concepts) == 1
-    assert len(concept_repository.list_all(db)) == 1
+    assert len(db.query(Concept).all()) == 1
 
 
 LEVELS_LINE = "LEVELS: physics=1 math=1"
@@ -143,7 +143,7 @@ def test_levels_line_is_metadata_not_a_concept(db):
 
     attach_concepts(db, question.id, ["加速度 | acceleration", LEVELS_LINE])
 
-    names = {c.name for c in concept_repository.list_all(db)}
+    names = {c.name for c in db.query(Concept).all()}
     assert names == {"加速度"}, "the levels line must never become a concept"
 
 

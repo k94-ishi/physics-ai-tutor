@@ -1,27 +1,9 @@
 from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from physics_ai_tutor.models import Concept, Question, QuestionConcept
 from physics_ai_tutor.schemas.question import QuestionStatus
-
-
-def link(db: Session, question_id: int, concept_id: int) -> None:
-    exists = (
-        db.query(QuestionConcept)
-        .filter(
-            QuestionConcept.question_id == question_id,
-            QuestionConcept.concept_id == concept_id,
-        )
-        .first()
-    )
-
-    if exists is not None:
-        return
-
-    db.add(QuestionConcept(question_id=question_id, concept_id=concept_id))
-    db.flush()
 
 
 def _concepts_for_question_select(question_id: int):
@@ -32,14 +14,10 @@ def _concepts_for_question_select(question_id: int):
     )
 
 
-def get_concepts_for_question(db: Session, question_id: int) -> list[Concept]:
-    return list(db.scalars(_concepts_for_question_select(question_id)).all())
-
-
 async def async_get_concepts_for_question(
     db: AsyncSession, question_id: int
 ) -> list[Concept]:
-    """As `get_concepts_for_question` ([83])."""
+    """The concepts linked to one question."""
     return list((await db.scalars(_concepts_for_question_select(question_id))).all())
 
 
@@ -89,14 +67,10 @@ def _concept_ids_select(question_id: int):
     )
 
 
-def get_concept_ids_for_question(db: Session, question_id: int) -> list[int]:
-    return list(db.scalars(_concept_ids_select(question_id)).all())
-
-
 async def async_get_concept_ids_for_question(
     db: AsyncSession, question_id: int
 ) -> list[int]:
-    """As `get_concept_ids_for_question` ([83])."""
+    """The ids of the concepts linked to one question."""
     return list((await db.scalars(_concept_ids_select(question_id))).all())
 
 
@@ -139,20 +113,11 @@ async def approved_links_sharing_concepts(
 
 
 async def async_delete_by_question_id(db: AsyncSession, question_id: int) -> None:
-    """As `delete_by_question_id` ([91])."""
+    """Remove every concept link of one question."""
     await db.execute(
         sql_delete(QuestionConcept).where(QuestionConcept.question_id == question_id)
     )
     await db.flush()
-
-
-def delete_by_question_id(db: Session, question_id: int) -> None:
-    (
-        db.query(QuestionConcept)
-        .filter(QuestionConcept.question_id == question_id)
-        .delete()
-    )
-    db.flush()
 
 
 def _context_question_select(concept_id: int, language: str):

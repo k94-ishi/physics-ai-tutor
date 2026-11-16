@@ -1,19 +1,20 @@
 import pytest
 
-from physics_ai_tutor.repositories import (
-    concept_repository,
-    embedding_repository,
-    question_concept_repository,
-)
 from physics_ai_tutor.schemas.question_review import QuestionReviewAction
 from physics_ai_tutor.services import question_review_service, recommendation_service
-from tests.conftest import async_create_user, create_question
+from tests.conftest import (
+    async_create_user,
+    create_concept,
+    create_embedding,
+    create_question,
+    link_concept,
+)
 
 
 def _create_question_with_embedding(db, question, answer, vector):
     q = create_question(db, question=question, answer=answer)
     db.flush()
-    embedding_repository.create_embedding(
+    create_embedding(
         db,
         question_id=q.id,
         embedding=vector,
@@ -24,7 +25,7 @@ def _create_question_with_embedding(db, question, answer, vector):
 
 
 def _create_concept(db, name, vector):
-    return concept_repository.create(
+    return create_concept(
         db,
         name=name,
         embedding=vector,
@@ -143,10 +144,8 @@ async def test_get_related_questions_includes_concept_sharing_candidate(db, asyn
     )
 
     concept = _create_concept(db, "共有概念", vector)
-    question_concept_repository.link(db, question_id=source.id, concept_id=concept.id)
-    question_concept_repository.link(
-        db, question_id=concept_sharing.id, concept_id=concept.id
-    )
+    link_concept(db, question_id=source.id, concept_id=concept.id)
+    link_concept(db, question_id=concept_sharing.id, concept_id=concept.id)
 
     db.commit()
     result = (
@@ -192,12 +191,8 @@ async def test_get_related_questions_includes_candidate_via_rag_reference_concep
     )
 
     concept = _create_concept(db, "参照経由の概念", close_vector)
-    question_concept_repository.link(
-        db, question_id=reference.id, concept_id=concept.id
-    )
-    question_concept_repository.link(
-        db, question_id=candidate.id, concept_id=concept.id
-    )
+    link_concept(db, question_id=reference.id, concept_id=concept.id)
+    link_concept(db, question_id=candidate.id, concept_id=concept.id)
 
     db.commit()
     result = (

@@ -2,8 +2,13 @@ import json
 from enum import StrEnum
 
 from physics_ai_tutor.core.exceptions import EmbeddingGenerationError
-from physics_ai_tutor.models import Question, QuestionEmbedding
-from tests.conftest import create_question, patch_create_embeddings
+from physics_ai_tutor.models import Concept, Question, QuestionEmbedding
+from tests.conftest import (
+    create_concept,
+    create_question,
+    link_concept,
+    patch_create_embeddings,
+)
 
 PATH = "/api/v1/questions"
 IMPORT_PATH = f"{PATH}/import"
@@ -1006,14 +1011,10 @@ def test_ids_filter_combines_with_the_status_filter(admin_client):
 
 
 def _link_concept(db, question_id: int, name_ja: str, name_en: str) -> None:
-    from physics_ai_tutor.repositories import (
-        concept_repository,
-        question_concept_repository,
-    )
 
-    concept = concept_repository.get_by_name(db, name_ja, language="ja")
+    concept = db.query(Concept).filter(Concept.name_ja == name_ja).first()
     if concept is None:
-        concept = concept_repository.create(
+        concept = create_concept(
             db,
             name_ja=name_ja,
             name_en=name_en,
@@ -1022,7 +1023,7 @@ def _link_concept(db, question_id: int, name_ja: str, name_en: str) -> None:
             embedding_model="mock",
             extraction_prompt_version="v4",
         )
-    question_concept_repository.link(db, question_id=question_id, concept_id=concept.id)
+    link_concept(db, question_id=question_id, concept_id=concept.id)
     db.commit()
 
 

@@ -325,6 +325,71 @@ def create_question(
     return row
 
 
+def create_concept(
+    db,
+    embedding,
+    extraction_model,
+    embedding_model,
+    extraction_prompt_version,
+    name_ja=None,
+    name_en=None,
+    name=None,
+):
+    """Arrange a concept sense from a sync test ([112]).
+
+    The app creates senses through `concept_sense_service`; this keeps the
+    legacy single-name form (`name=` means Japanese). Flushes only.
+    """
+    from physics_ai_tutor.repositories.concept_repository import build
+
+    concept = build(
+        embedding,
+        extraction_model,
+        embedding_model,
+        extraction_prompt_version,
+        name_ja=name if name is not None else name_ja,
+        name_en=name_en,
+    )
+    db.add(concept)
+    db.flush()
+
+    return concept
+
+
+def link_concept(db, question_id, concept_id):
+    """Arrange a question-concept link from a sync test; idempotent ([112])."""
+    from physics_ai_tutor.models import QuestionConcept
+
+    exists = db.get(QuestionConcept, (question_id, concept_id))
+    if exists is None:
+        db.add(QuestionConcept(question_id=question_id, concept_id=concept_id))
+        db.flush()
+
+
+def create_embedding(
+    db, question_id, embedding, embedding_type, model, chunk_index=None, language="ja"
+):
+    """Arrange a question embedding from a sync test ([112])."""
+    from physics_ai_tutor.repositories.embedding_repository import _new_embedding
+
+    row = _new_embedding(
+        question_id, embedding, embedding_type, model, chunk_index, language
+    )
+    db.add(row)
+    db.flush()
+
+    return row
+
+
+def concepts_for_question(db, question_id):
+    """Read a question's concepts from a sync test ([112])."""
+    from physics_ai_tutor.repositories.question_concept_repository import (
+        _concepts_for_question_select,
+    )
+
+    return list(db.scalars(_concepts_for_question_select(question_id)).all())
+
+
 def create_ai_review(db, review):
     """Arrange an AI review row from a sync test ([106]).
 

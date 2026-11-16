@@ -25,14 +25,14 @@ green. This issue stays open until all six are closed.
 | 3 | [109] | `export_seed`, `export_seed_embeddings`, `init_db`, `split_merged_concepts`, `backfill_levels` onto the async engine | done 2026-11-16 |
 | 4 | [110] | Sync `engine`, `SessionLocal`, `get_db`, `background_session`, `transaction()` | done 2026-11-16 |
 | 5 | [111] | Test-only sync helpers in `question_repository` | done 2026-11-16 |
-| 6 | [112] | Test-only sync helpers in the concept and embedding repositories | open |
+| 6 | [112] | Test-only sync helpers in the concept and embedding repositories | done 2026-11-16 |
 
 Chain: [107]→[108]→[109]→[110]→[111]→[112]→[98].
 
 ## Acceptance criteria (ticked when [112] closes)
 
-- [ ] `rg "SessionLocal|get_db"` matches only `database/`, `alembic/`, `tests/`.
-- [ ] No sync LLM client; no app module takes a sync `Session`.
+- [x] `rg "SessionLocal|get_db"` matches only `database/`, `alembic/`, `tests/`.
+- [x] No sync LLM client; no app module takes a sync `Session`.
 
 ## Dependencies
 
@@ -40,6 +40,16 @@ Chain: [107]→[108]→[109]→[110]→[111]→[112]→[98].
 - Blocks: [98]
 
 ## Log
+
+### 2026-11-16 — all six slices done; closed
+
+[107] rate limiter and dead code, [108] sync RAG and LLM clients, [109]
+CLIs, [110] the engine plumbing, [111]/[112] test-only repository
+helpers. Both criteria verified by search and an AST scan (see [112]).
+The app has one engine, one pool, and no sync session anywhere; tests
+keep their own sync engine and arrange rows through `conftest` helpers.
+[98] (drop the `async_` prefixes) is unblocked: no sync name is left
+for a renamed function to collide with.
 
 ### 2026-11-16 — split into [107]-[112]
 
@@ -74,5 +84,5 @@ Owner found [83] (22 files, 35 tests) too big. The earlier, wider version of thi
 
 ## Definition of done
 
-- [ ] [107]-[112] closed
-- [ ] Log entry in this file; `status.md`, [67] and [73] updated
+- [x] [107]-[112] closed
+- [x] Log entry in this file; `status.md`, [67] and [73] updated

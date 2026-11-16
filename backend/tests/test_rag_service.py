@@ -1,15 +1,13 @@
 import pytest
 
 from physics_ai_tutor.core import prompts
-from physics_ai_tutor.repositories import (
-    concept_repository,
-    embedding_repository,
-    question_concept_repository,
-)
 from physics_ai_tutor.services import rag_service
 from tests.conftest import (
+    create_concept,
+    create_embedding,
     create_question,
     fake_generation,
+    link_concept,
     patch_create_embeddings,
     patch_generation,
 )
@@ -28,7 +26,7 @@ def _create_question(db, question="質問", answer="回答", status="APPROVED"):
 
 
 def _embed_question(db, question, vector):
-    embedding_repository.create_embedding(
+    create_embedding(
         db,
         question_id=question.id,
         embedding=vector,
@@ -84,7 +82,7 @@ async def test_retrieve_context_includes_concepts(async_db, db, monkeypatch):
     question = _create_question(db, "質問", "回答")
     _embed_question(db, question, _vector(0))
 
-    concept = concept_repository.create(
+    concept = create_concept(
         db,
         name="力学",
         embedding=_vector(2),
@@ -92,7 +90,7 @@ async def test_retrieve_context_includes_concepts(async_db, db, monkeypatch):
         embedding_model="test-model",
         extraction_prompt_version="v1",
     )
-    question_concept_repository.link(db, question_id=question.id, concept_id=concept.id)
+    link_concept(db, question_id=question.id, concept_id=concept.id)
 
     _stub_query_embedding(monkeypatch, _vector(0))
 
@@ -231,7 +229,7 @@ async def test_load_context_by_ids_caps_at_top_k(async_db, db):
 @pytest.mark.anyio
 async def test_load_context_by_ids_includes_concepts(async_db, db):
     question = _create_question(db, "質問", "回答")
-    concept = concept_repository.create(
+    concept = create_concept(
         db,
         name="力学",
         embedding=_vector(2),
@@ -239,7 +237,7 @@ async def test_load_context_by_ids_includes_concepts(async_db, db):
         embedding_model="test-model",
         extraction_prompt_version="v1",
     )
-    question_concept_repository.link(db, question_id=question.id, concept_id=concept.id)
+    link_concept(db, question_id=question.id, concept_id=concept.id)
 
     db.commit()
 

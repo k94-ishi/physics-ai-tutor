@@ -222,7 +222,11 @@ Conventions:
 - A test that calls converted (async) code is `async def`, marked
   `pytest.mark.anyio`, and takes `async_db`. Arrange rows through the
   sync `db` and `db.commit()` them - the async session is another
-  connection and only sees committed rows. Inside an async test use
+  connection and only sees committed rows. The app's repositories are
+  async only since [111]/[112], so sync arrangement goes through the
+  `conftest` helpers (`create_question`, `create_concept`,
+  `link_concept`, `create_embedding`, `create_ai_review`,
+  `concepts_for_question` to read back). Inside an async test use
   `async_create_user`, not `create_user`: the sync bridge runs its own
   event loop and cannot nest ([83]).
 - A coroutine that is never awaited fails the suite: `pyproject.toml`

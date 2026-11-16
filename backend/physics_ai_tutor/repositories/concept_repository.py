@@ -1,14 +1,9 @@
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import aliased
 
 from physics_ai_tutor.core.text import normalize_key
 from physics_ai_tutor.models import Concept, ConceptTerm, QuestionConcept
-
-
-def get_by_name(db: Session, name: str, language: str = "ja") -> Concept | None:
-    column = Concept.name_ja if language == "ja" else Concept.name_en
-    return db.query(Concept).filter(column == name).first()
 
 
 def build(
@@ -40,39 +35,6 @@ def build(
                 )
             )
     return concept
-
-
-def create(
-    db: Session,
-    embedding: list[float],
-    extraction_model: str,
-    embedding_model: str,
-    extraction_prompt_version: str,
-    name_ja: str | None = None,
-    name_en: str | None = None,
-    name: str | None = None,
-) -> Concept:
-    """A new sense, saved; see `build`."""
-    # Legacy single-name form means Japanese.
-    if name is not None:
-        name_ja = name
-
-    concept = build(
-        embedding,
-        extraction_model,
-        embedding_model,
-        extraction_prompt_version,
-        name_ja=name_ja,
-        name_en=name_en,
-    )
-    db.add(concept)
-    db.flush()
-
-    return concept
-
-
-def list_all(db: Session) -> list[Concept]:
-    return db.query(Concept).all()
 
 
 async def average_concept_similarity(

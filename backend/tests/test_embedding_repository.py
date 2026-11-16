@@ -2,7 +2,7 @@ import pytest
 
 from physics_ai_tutor.models import QuestionEmbedding
 from physics_ai_tutor.repositories import embedding_repository
-from tests.conftest import create_question
+from tests.conftest import create_embedding, create_question
 
 DIM = 1536
 
@@ -17,11 +17,13 @@ def _create_question(db, question: str = "テスト質問", answer: str = "テ�
     return create_question(db, question=question, answer=answer)
 
 
-def test_create_embedding_persists(db):
+@pytest.mark.anyio
+async def test_create_embedding_persists(db, async_db):
     question = _create_question(db)
+    db.commit()
 
-    created = embedding_repository.create_embedding(
-        db,
+    created = await embedding_repository.async_create_embedding(
+        async_db,
         question_id=question.id,
         embedding=_vector(0),
         embedding_type="question",
@@ -40,21 +42,21 @@ async def test_search_similar_embeddings_orders_by_distance(async_db, db):
     near = _create_question(db, "近い質問", "近い回答")
     orthogonal = _create_question(db, "遠い質問", "遠い回答")
 
-    embedding_repository.create_embedding(
+    create_embedding(
         db,
         question_id=identical.id,
         embedding=_vector(0),
         embedding_type="question",
         model="text-embedding-3-small",
     )
-    embedding_repository.create_embedding(
+    create_embedding(
         db,
         question_id=near.id,
         embedding=[0.9, 0.1] + [0.0] * (DIM - 2),
         embedding_type="question",
         model="text-embedding-3-small",
     )
-    embedding_repository.create_embedding(
+    create_embedding(
         db,
         question_id=orthogonal.id,
         embedding=_vector(1),
@@ -87,14 +89,14 @@ async def test_search_similar_embeddings_orders_by_distance(async_db, db):
 async def test_search_similar_embeddings_filters_by_type(async_db, db):
     question = _create_question(db)
 
-    embedding_repository.create_embedding(
+    create_embedding(
         db,
         question_id=question.id,
         embedding=_vector(1),
         embedding_type="question",
         model="text-embedding-3-small",
     )
-    embedding_repository.create_embedding(
+    create_embedding(
         db,
         question_id=question.id,
         embedding=_vector(0),
@@ -125,21 +127,21 @@ async def test_search_similar_embeddings_respects_limit(async_db, db):
     near = _create_question(db, "近い質問", "近い回答")
     orthogonal = _create_question(db, "遠い質問", "遠い回答")
 
-    embedding_repository.create_embedding(
+    create_embedding(
         db,
         question_id=identical.id,
         embedding=_vector(0),
         embedding_type="question",
         model="text-embedding-3-small",
     )
-    embedding_repository.create_embedding(
+    create_embedding(
         db,
         question_id=near.id,
         embedding=[0.9, 0.1] + [0.0] * (DIM - 2),
         embedding_type="question",
         model="text-embedding-3-small",
     )
-    embedding_repository.create_embedding(
+    create_embedding(
         db,
         question_id=orthogonal.id,
         embedding=_vector(1),
@@ -162,25 +164,28 @@ async def test_search_similar_embeddings_respects_limit(async_db, db):
     assert ordered_question_ids == [identical.id, near.id]
 
 
-def test_delete_by_question_id_removes_only_target_question_embeddings(db):
+@pytest.mark.anyio
+async def test_delete_by_question_id_removes_only_target_question_embeddings(
+    db, async_db
+):
     target = _create_question(db, "対象質問", "対象回答")
     other = _create_question(db, "他の質問", "他の回答")
 
-    embedding_repository.create_embedding(
+    create_embedding(
         db,
         question_id=target.id,
         embedding=_vector(0),
         embedding_type="question",
         model="text-embedding-3-small",
     )
-    embedding_repository.create_embedding(
+    create_embedding(
         db,
         question_id=target.id,
         embedding=_vector(0),
         embedding_type="answer",
         model="text-embedding-3-small",
     )
-    embedding_repository.create_embedding(
+    create_embedding(
         db,
         question_id=other.id,
         embedding=_vector(0),
@@ -188,49 +193,12 @@ def test_delete_by_question_id_removes_only_target_question_embeddings(db):
         model="text-embedding-3-small",
     )
 
-    embedding_repository.delete_by_question_id(db, target.id)
+    db.commit()
+
+    await embedding_repository.async_delete_by_question_id(async_db, target.id)
+    await async_db.commit()
 
     remaining = db.query(QuestionEmbedding).all()
 
     assert len(remaining) == 1
     assert remaining[0].question_id == other.id
-
-
-def test_create_embeddings_bulk_persists_multiple_rows(db):
-    question1 = _create_question(db, "質問1", "回答1")
-    question2 = _create_question(db, "質問2", "回答2")
-
-    records = [
-        {
-            "question_id": question1.id,
-            "type": "question",
-            "embedding": _vector(0),
-            "model": "text-embedding-3-small",
-        },
-        {
-            "question_id": question1.id,
-            "type": "answer",
-            "embedding": _vector(0),
-            "model": "text-embedding-3-small",
-        },
-        {
-            "question_id": question2.id,
-            "type": "question",
-            "embedding": _vector(1),
-            "model": "text-embedding-3-small",
-        },
-    ]
-
-    created = embedding_repository.create_embeddings(db, records)
-
-    assert len(created) == 3
-    assert all(e.id is not None for e in created)
-    assert [e.question_id for e in created] == [
-        question1.id,
-        question1.id,
-        question2.id,
-    ]
-    assert [e.type for e in created] == ["question", "answer", "question"]
-
-    persisted = db.query(QuestionEmbedding).all()
-    assert len(persisted) == 3

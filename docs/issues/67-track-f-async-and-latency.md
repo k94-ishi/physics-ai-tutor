@@ -117,7 +117,7 @@ wait for the slowest endpoint from "whole answer" to "first words".
        1. ~~[107] Sync rate limiter and dead sync functions~~ done 2026-11-16
        2. ~~[108] Sync RAG path and sync LLM clients~~ done 2026-11-16
        3. ~~[109] Seed export, init_db and maintenance CLIs on the async engine~~ done 2026-11-16
-       4. [110] Sync engine, SessionLocal, get_db, background_session, transaction()
+       4. ~~[110] Sync engine, SessionLocal, get_db, background_session, transaction()~~ done 2026-11-16
        5. [111] Test-only sync helpers in question_repository
        6. [112] Test-only sync helpers in the concept and embedding repositories
    16. [98] Rename pass: drop the async_ prefixes

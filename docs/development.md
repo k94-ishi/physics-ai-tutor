@@ -190,7 +190,7 @@ Layout of `backend/tests/`:
 | `test_seed.py` | One offline seed per module (OpenAI and DeepSeek forbidden), then read-only checks and export round trips |
 | `test_security.py` | Production password hashing parameters (the test hasher is cheaper) |
 | `test_comment_style.py` | Comments are English (Japanese only as quoted data) ([65]) |
-| `test_architecture.py` | Layering rules: routers call services only; only the two `transaction()` helpers commit; sessions come from `database/`; async code never uses the sync helper ([69]) |
+| `test_architecture.py` | Layering rules: routers call services only; only `async_transaction()` commits; sessions come from `database/`; async code never uses the sync helper ([69]) |
 | `test_async_foundation.py` | Async engine, session, `async_transaction` commit/rollback, pool sizing ([69]) |
 | `test_async_hot_path.py` | A pending generation does not hold the server; concurrent generations overlap ([70]) |
 | `test_llm_connection_discipline.py` | No transaction is open at the moment any LLM seam is called ([82]) |
@@ -291,14 +291,14 @@ enforced by `tests/test_architecture.py`:
   domain errors to HTTP. They never import `repositories`, open a session,
   or call `db.query/get/add/commit/...`.
 - **Services** own the use case and its transaction. Wrap the writes of a
-  use case in `with transaction(db, "operation"):`
+  use case in `async with async_transaction(db, "operation"):`
   (`database/transaction.py`): it commits on success, and on any error
   rolls back, logs `Rolling back transaction: operation=...` and re-raises.
-  For best-effort work, put the `with` inside your own `try/except`. It is
-  the only code that calls `commit()` or `rollback()`.
+  For best-effort work, put the `async with` inside your own `try/except`.
+  It is the only code that calls `commit()` or `rollback()`.
 - **Repositories** query and flush; they never commit.
-- **No transaction waits on an LLM** ([82]). A `transaction()` /
-  `async_transaction()` block must not contain a call to OpenAI or
+- **No transaction waits on an LLM** ([82]). An `async_transaction()`
+  block must not contain a call to OpenAI or
   DeepSeek: the block holds a pooled connection, and a connection parked
   behind a 20-second network call is what capped the backend at ~15
   concurrent operations once threads no longer did. Structure such code
@@ -347,6 +347,9 @@ enforced by `tests/test_architecture.py`:
   which is the same trade-off as before concurrency.
 
 ### Two stacks during the async migration ([69])
+
+> **Since [110] only the async stack exists in the app.** The sync
+> column below is history; [99] removes this section.
 
 Track F ([67]) converts the backend to async one vertical slice at a
 time, so a sync and an async stack coexist until [73] retires the sync

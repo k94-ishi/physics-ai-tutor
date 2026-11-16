@@ -20,16 +20,15 @@ import asyncio
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from physics_ai_tutor.api import dependencies
-from physics_ai_tutor.database.dependency import get_async_db, get_db
+from physics_ai_tutor.database.dependency import get_async_db
 from physics_ai_tutor.main import app
 from physics_ai_tutor.models import Question
 from physics_ai_tutor.schemas.language import TextProvenance
 from physics_ai_tutor.schemas.question import QuestionSource, QuestionStatus
 from physics_ai_tutor.services import deepseek_service, embedding_service
-from tests.conftest import async_engine, engine, fake_generation, reset_database
+from tests.conftest import async_engine, fake_generation, reset_database
 
 pytestmark = pytest.mark.anyio
 
@@ -45,15 +44,10 @@ async def async_client_app():
     """The app over an in-process async transport, on the test database."""
     reset_database()
 
-    def override_get_db():
-        with Session(engine) as session:
-            yield session
-
     async def override_get_async_db():
         async with AsyncSession(async_engine, expire_on_commit=False) as session:
             yield session
 
-    app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_async_db] = override_get_async_db
 
     transport = ASGITransport(app=app)

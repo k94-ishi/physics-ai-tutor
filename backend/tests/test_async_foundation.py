@@ -76,14 +76,14 @@ async def test_attributes_are_readable_after_commit(async_db):
     assert user.id is not None
 
 
-def test_both_engines_point_at_the_same_database():
-    assert database.async_engine.url.database == database.engine.url.database
+def test_the_app_has_one_engine_and_it_is_async():
+    """One engine, one pool at runtime ([110])."""
     assert database.async_engine.dialect.is_async
-    assert not database.engine.dialect.is_async
+    for sync_name in ("engine", "SessionLocal"):
+        assert not hasattr(database, sync_name), sync_name
 
 
-def test_pools_are_sized_explicitly():
-    # Two stacks share one connection limit until [73] retires the sync one.
-    for engine in (database.engine, database.async_engine):
-        assert engine.pool.size() == database.POOL_SIZE
-        assert engine.pool._max_overflow == database.MAX_OVERFLOW
+def test_the_pool_is_sized_explicitly():
+    pool = database.async_engine.pool
+    assert pool.size() == database.POOL_SIZE
+    assert pool._max_overflow == database.MAX_OVERFLOW

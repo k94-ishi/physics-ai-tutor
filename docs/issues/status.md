@@ -130,7 +130,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 107 | closed | 107-delete-sync-rate-limiter-and-dead-code.md | Delete the sync rate limiter and the dead sync repository functions | — (file-era issue) |
 | 108 | closed | 108-delete-sync-rag-and-llm-clients.md | Delete the sync RAG path and the sync LLM clients | — (file-era issue) |
 | 109 | closed | 109-async-seed-export-and-maintenance-clis.md | Seed export, init_db and the maintenance CLIs on the async engine | — (file-era issue) |
-| 110 | open | 110-delete-sync-engine-from-app.md | Delete the sync engine, SessionLocal, get_db, background_session and transaction() from the app | — (file-era issue) |
+| 110 | closed | 110-delete-sync-engine-from-app.md | Delete the sync engine, SessionLocal, get_db, background_session and transaction() from the app | — (file-era issue) |
 | 111 | open | 111-question-repository-test-helpers-out-of-app.md | Test-only sync helpers in question_repository move out of the app | — (file-era issue) |
 | 112 | open | 112-concept-embedding-test-helpers-out-of-app.md | Test-only sync helpers in the concept and embedding repositories move out of the app | — (file-era issue) |
 

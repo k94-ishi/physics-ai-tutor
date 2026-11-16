@@ -14,13 +14,13 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 from alembic import command
 from physics_ai_tutor.core import security
 from physics_ai_tutor.database import session as session_module
 from physics_ai_tutor.database.base import Base
-from physics_ai_tutor.database.dependency import get_async_db, get_db
+from physics_ai_tutor.database.dependency import get_async_db
 from physics_ai_tutor.main import app
 from physics_ai_tutor.models.user import User
 from physics_ai_tutor.services import (
@@ -322,9 +322,7 @@ def _mock_translate(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _background_translation_uses_test_db(monkeypatch):
-    factory = sessionmaker(bind=engine, expire_on_commit=False)
     # Every background task opens its session through one helper ([59]).
-    monkeypatch.setattr(session_module, "SessionLocal", factory)
     async_factory = async_sessionmaker(bind=async_engine, expire_on_commit=False)
     monkeypatch.setattr(session_module, "AsyncSessionLocal", async_factory)
 
@@ -335,17 +333,13 @@ def _background_translation_uses_test_db(monkeypatch):
 
 @pytest.fixture
 def client(db):
-    def override_get_db():
-        yield db
-
     async def override_get_async_db():
-        # A converted route gets its own session, as in production: it
-        # cannot share the sync `db` object, and committed rows are what
-        # a real request would see anyway.
+        # Each request gets its own session, as in production: it cannot
+        # share the sync `db` object, and committed rows are what a real
+        # request would see anyway.
         async with AsyncSession(async_engine, expire_on_commit=False) as session:
             yield session
 
-    app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_async_db] = override_get_async_db
 
     with TestClient(app) as test_client:

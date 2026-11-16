@@ -14,7 +14,9 @@ One small slice of [73]: closing the migration. No behaviour change.
 ## Scope
 
 - `test_architecture.py` forbids sync `Session` and `sessionmaker`
-  outside `database/`, `alembic/`, `tests/`; obsolete checks removed.
+  outside `database/`, `alembic/`, `tests/`; obsolete checks removed
+  (at least `test_async_code_never_uses_the_sync_transaction_helper`,
+  whose helper [110] deleted).
 - `docs/development.md`: drop the two-stack section; one pool per worker.
 - Re-measure connections per worker ([75] table) on a quiet machine.
 

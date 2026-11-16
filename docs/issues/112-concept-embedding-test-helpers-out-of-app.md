@@ -75,7 +75,8 @@ finds no app function that takes a sync `Session` and no app import of
 `oak` session was now loading the settings file created in [108]. That
 run was left alone. Checks from here use a script that exports the
 settings in-process and picks a random database name per run, so no
-file or name can be shared.
+file or name can be shared. Superseded by [113]: the suite now starts
+its own database and needs no settings at all.
 
 **Results:** 614 passed (615 minus the dead bulk-create test), `ruff
 check`, `ruff format --check`, `mypy` clean. Frontend untouched.

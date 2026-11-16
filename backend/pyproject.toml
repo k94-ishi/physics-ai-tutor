@@ -44,6 +44,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "pytest>=9.1.1",
     "ruff>=0.16.1",
+    "testcontainers[postgres]>=4.15.0",
 ]
 
 [tool.pytest.ini_options]
@@ -82,6 +83,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Prompt texts are prose; long Japanese lines are expected there.
 "physics_ai_tutor/core/prompts.py" = ["E501"]
+# conftest isolates the settings before importing the app ([113]).
+"tests/conftest.py" = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -133,6 +133,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 110 | closed | 110-delete-sync-engine-from-app.md | Delete the sync engine, SessionLocal, get_db, background_session and transaction() from the app | — (file-era issue) |
 | 111 | closed | 111-question-repository-test-helpers-out-of-app.md | Test-only sync helpers in question_repository move out of the app | — (file-era issue) |
 | 112 | closed | 112-concept-embedding-test-helpers-out-of-app.md | Test-only sync helpers in the concept and embedding repositories move out of the app | — (file-era issue) |
+| 113 | closed | 113-self-contained-test-database.md | Self-contained tests: a temporary database per run, settings isolated from .env | — (file-era issue) |
 
 ## Notes on the archive column
 

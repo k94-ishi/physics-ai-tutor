@@ -133,6 +133,10 @@ wait for the slowest endpoint from "whole answer" to "first words".
 12. [100] Reuse sense embeddings in concept matching (fewer OpenAI calls
     per extraction). Independent; best after [95].
 
+13. ~~[113] Self-contained tests: a temporary database per run, settings
+    isolated from `.env`~~ done 2026-11-16 (owner's request; found while
+    sessions kept sharing test databases).
+
 [74], [76] and [77] touch no async plumbing and can be picked up
 whenever there is a gap, as long as [68] is in place to measure them.
 

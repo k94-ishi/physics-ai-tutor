@@ -1,6 +1,10 @@
+from tests import isolated_environment
+
+# Before any app import: the settings are read once, at import ([113]).
+TEST_DATABASE_URL = isolated_environment.prepare()
+
 import asyncio
 import hashlib
-import os
 from pathlib import Path
 
 import pytest
@@ -38,20 +42,6 @@ ADMIN_PASSWORD = "adminpass123"
 USER_EMAIL = "user@example.com"
 USER_PASSWORD = "userpass123"
 
-
-def _default_test_database_url() -> str:
-    # Derive the database name from the checkout path so worktrees sharing
-    # one postgres-test container cannot wipe each other's test schema.
-    repo_root = Path(__file__).resolve().parents[2]
-    suffix = hashlib.sha256(str(repo_root).encode()).hexdigest()[:8]
-
-    return (
-        "postgresql+psycopg://physics:physics@localhost:5433"
-        f"/physics_ai_tutor_test_{suffix}"
-    )
-
-
-TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL") or _default_test_database_url()
 
 ALEMBIC_INI = Path(__file__).resolve().parents[1] / "alembic.ini"
 
@@ -161,6 +151,9 @@ def _migrate_test_database():
     yield
 
     lock_connection.close()
+    engine.dispose()
+    # Removed here, while pytest's logging still works ([113]).
+    isolated_environment.stop()
 
 
 # The real hasher, captured before the session fixture swaps it for tests.

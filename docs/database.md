@@ -605,7 +605,7 @@ Rules from `AGENTS.md` that apply here:
 | Service | Database | Host port | Purpose |
 | --- | --- | --- | --- |
 | `postgres` | `physics_ai_tutor` | 5432 | Development data, persisted in the `postgres_data` volume |
-| `postgres-test` | `physics_ai_tutor_test` | 5433 | Ephemeral database used by `pytest` |
+| `postgres-test` | `physics_ai_tutor_test` | 5433 | Test database for `docker compose exec backend uv run pytest`; a host run starts its own container instead ([113]) |
 
 Both use user `physics` / password `physics`.
 
@@ -618,7 +618,8 @@ DATABASE_URL=postgresql+psycopg://physics:physics@localhost:5432/physics_ai_tuto
 # Development (from inside the backend container)
 DATABASE_URL=postgresql+psycopg://physics:physics@postgres:5432/physics_ai_tutor
 
-# Tests (default in tests/conftest.py, override with TEST_DATABASE_URL)
+# Tests: not needed on the host, where each run starts its own container.
+# Set it to use an existing database instead, e.g. compose's postgres-test:
 TEST_DATABASE_URL=postgresql+psycopg://physics:physics@localhost:5433/physics_ai_tutor_test
 ```
 
@@ -760,10 +761,11 @@ locally, not only in CI.
 The test database is wiped on every run, so isolation is handled
 automatically:
 
-- Unless `TEST_DATABASE_URL` is set, the database name is derived from the
-  checkout path (`physics_ai_tutor_test_<hash>`), so several worktrees can
-  share one `postgres-test` container without touching each other's data.
-- The database is created on first use; no manual `CREATE DATABASE` needed.
+- Unless `TEST_DATABASE_URL` is set, every run starts its own temporary
+  PostgreSQL + pgvector container and removes it at the end ([113]), so
+  no two runs ever share a database.
+- With `TEST_DATABASE_URL`, the database is created on first use; no
+  manual `CREATE DATABASE` needed.
 - A PostgreSQL advisory lock is held for the whole session. A second pytest
   run against the same database aborts immediately instead of corrupting
   the first one.

@@ -132,8 +132,10 @@ pull request. Run them locally before pushing.
 
 ### Backend (pytest)
 
-Run from the `backend/` directory. Tests need the `postgres-test` container
-(port 5433) started by Docker Compose; OpenAI and DeepSeek calls are mocked.
+Run from the `backend/` directory. The suite is self-contained ([113]): it
+starts its own temporary PostgreSQL + pgvector container (Docker must be
+running; nothing needs to be started first) and needs no environment
+variables. OpenAI and DeepSeek calls are mocked.
 
 ```bash
 cd backend
@@ -153,10 +155,20 @@ docker compose exec backend uv run pytest
 
 How the database is handled:
 
-- Each checkout gets its own auto-created test database
-  (`physics_ai_tutor_test_<hash>` derived from the path), so several
-  worktrees can share one `postgres-test` container. Set `TEST_DATABASE_URL`
-  to override.
+- Each run starts a fresh `pgvector/pgvector:pg17` container (the image
+  of compose's `postgres-test`; a test pins the two together) and removes
+  it when the run ends, so runs in different checkouts or sessions never
+  share a database. A run killed before it could clean up leaves its
+  container behind; the next run on the same machine removes it, and
+  never touches a container whose run is still alive.
+- `TEST_DATABASE_URL` switches this off and uses that database instead.
+  CI sets it to its service container, and `docker compose exec backend`
+  to the in-network `postgres-test`.
+- Before the app is imported, `tests/isolated_environment.py` forces
+  `DATABASE_URL` to the test database and the OpenAI/DeepSeek keys and
+  base URLs to harmless values. Environment variables win over
+  `backend/.env`, so a real database or API key in that file cannot reach
+  a test run (`tests/test_isolated_environment.py`).
 - The schema is built once per session with `alembic upgrade head`, so
   model/migration drift fails the suite (`tests/test_migrations.py`).
 - Every test that uses `db` starts from empty tables: `reset_database()`
@@ -179,6 +191,8 @@ Layout of `backend/tests/`:
 | File | Covers |
 | --- | --- |
 | `conftest.py` | Database lifecycle, `client` / `admin_client` / `user_client` fixtures, mocks for embeddings and concept extraction |
+| `isolated_environment.py` | Not a test: run first by `conftest.py`; starts the temporary database and forces safe settings ([113]) |
+| `test_isolated_environment.py` | The app engine uses the test database, LLM clients hold fake keys and a dead address, and the container image matches compose ([113]) |
 | `test_questions.py`, `test_users.py`, `test_auth.py`, `test_ai.py`, `test_health.py` | HTTP API, one file per router: status codes, auth rules, validation |
 | `test_rate_limit.py` | Postgres-backed rate limiter: window counting, pruning, check/record split |
 | `test_review_workflow.py` | End-to-end review flow: AI answer saved as unreviewed, hidden from students, approved / edited / rejected by an admin, history recorded |

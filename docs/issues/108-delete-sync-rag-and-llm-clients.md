@@ -32,12 +32,57 @@ behaviour change.
 
 ## Acceptance criteria
 
-- [ ] No sync `OpenAI` client and no sync call to either provider.
+- [x] No sync `OpenAI` client and no sync call to either provider.
 
 ## Dependencies
 
 - Blocked by: [107]
 - Blocks: [110]
+
+## Log
+
+### 2026-11-16 — done
+
+**Deleted from the app:** the sync `rag_service.retrieve_context`,
+`load_context_by_ids`, `generate_rag_answer`; `embedding_service`
+`create_embeddings`, `_request_embeddings`, `embed_query`,
+`search_similar_questions`; `deepseek_service._request`,
+`chat_completion`, `generate_answer`; `query_embedding_repository.get` /
+`create` / `touch`; `embedding_repository.search_similar_embeddings`;
+`question_repository.get_questions_by_ids`;
+`question_concept_repository.get_concepts_for_questions`. `core/openai.py`
+and `core/deepseek.py` now hold only `async_client`. Surviving async
+functions whose docstrings said "As `<deleted>`" carry the originals'
+wording; comments about statements "shared by both variants" were
+reworded, since there is one variant now.
+
+**Tests (no test deleted):** none of the 13 sync tests in
+`test_rag_service.py` had an async twin - the async RAG functions were
+covered only through `/ai/ask` - so all 13 now exercise the async
+functions, arranging rows with `db` and committing first. Also moved:
+three vector-search tests in `test_embedding_repository.py`, three in
+`test_embedding_service.py` (the OpenAI-error test now fakes
+`async_client`), and the two `get_concepts_for_questions` tests in
+`test_question_concept_repository.py`. `conftest` helpers install stubs
+on the async seam only; `test_seed.py` guards the one remaining OpenAI
+request. The architecture test that pinned the two sync-client users
+is now `test_no_sync_llm_client_exists`; a planted `from openai import
+OpenAI` was confirmed to fail it, then removed. `docs/development.md`'s
+test conventions name the async seams.
+
+**Found while testing: a shared test-settings file.** A suite run aborted
+with "Another test run is using this database". The other run belonged
+to a session in the `oak` checkout, which was using - and rewriting with
+`sed` - the test-settings file this work had created in a scratchpad
+during [87]. The suite's advisory lock did its job and aborted the
+second run rather than let them share a database. From this slice on,
+this work uses its own settings file and database name
+(`physics_ai_tutor_test_elm_s108`). Earlier results stay valid: every
+reported run completed fully, and a clash aborts at once instead of
+passing.
+
+**Results:** 622 passed (same count; nothing deleted), `ruff check`,
+`ruff format --check`, `mypy` clean. Frontend untouched.
 
 ## Rules (all [73] slices)
 
@@ -50,5 +95,5 @@ behaviour change.
 
 ## Definition of done
 
-- [ ] Backend: `pytest`, `ruff check`, `mypy` pass
-- [ ] Log entry in this file; `status.md`, [67], [73] and [88] updated
+- [x] Backend: `pytest`, `ruff check`, `mypy` pass
+- [x] Log entry in this file; `status.md`, [67], [73] and [88] updated

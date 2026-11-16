@@ -92,9 +92,8 @@ def _similar_embeddings_select(
     ORDER BY question_embeddings.embedding <=> '[...vector...]'
     LIMIT 10;
 
-    One statement shared by the sync and async variants, so the filters -
-    including the status filter that keeps unapproved rows away from
-    students - cannot drift between them.
+    The status filter here is what keeps unapproved rows away from
+    students, so every vector search goes through this one statement.
     """
     distance = QuestionEmbedding.embedding.cosine_distance(embedding)
 
@@ -114,28 +113,6 @@ def _similar_embeddings_select(
         query = query.where(Question.status.notin_(exclude_statuses))
 
     return query.order_by(distance).limit(limit)
-
-
-def search_similar_embeddings(
-    db: Session,
-    embedding: list[float],
-    embedding_type: str = "question",
-    limit: int = 10,
-    exclude_question_ids: list[int] | None = None,
-    exclude_statuses: list[str] | None = None,
-    language: str | None = "ja",
-) -> list[tuple[QuestionEmbedding, Question, float]]:
-    query = _similar_embeddings_select(
-        embedding,
-        embedding_type,
-        limit,
-        exclude_question_ids,
-        exclude_statuses,
-        language,
-    )
-
-    # Unpacked rather than list(...) so the declared tuple type is true.
-    return [(e, question, d) for e, question, d in db.execute(query).all()]
 
 
 async def async_search_similar_embeddings(

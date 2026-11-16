@@ -136,42 +136,28 @@ def test_async_code_never_uses_the_sync_transaction_helper():
     assert offenders == {}
 
 
-def test_the_sync_llm_clients_are_only_used_by_unconverted_code():
-    """Pin who still calls OpenAI or DeepSeek synchronously ([70]).
+def test_no_sync_llm_client_exists():
+    """OpenAI and DeepSeek are called only through `AsyncOpenAI` ([108]).
 
     A sync SDK call inside an `async def` would block the event loop -
     worse than the thread it used to occupy, because it stops every other
-    request too. This list may only shrink; [73] empties it.
+    request too. Until [108] this pinned the two modules that still did.
     """
-    # Exactly these two, so a new sync caller anywhere fails the test and
-    # removing one is a deliberate edit here. Modules that call the *sync
-    # service functions* (concept extraction, run grading, the eval) are
-    # not listed: they are unconverted callers, not SDK users.
-    expected = {
-        "services/deepseek_service.py",
-        "services/embedding_service.py",
-    }
     users = set()
     for path in sorted(PACKAGE.rglob("*.py")):
         source = path.read_text()
-        tree = ast.parse(source)
-        names = _imports(tree)
+        names = _imports(ast.parse(source))
+        imports_sync_sdk = any(name == "openai.OpenAI" for name in names)
         imports_sync_client = any(
             name.endswith((".deepseek.client", ".openai.client")) for name in names
-        ) or any(
-            name.endswith((".deepseek", ".openai"))
-            and "client" in source
-            and "async_client" not in source
-            for name in names
         )
-        # The services reach the clients through their own module import.
-        if imports_sync_client or re.search(r"\bclient\.(chat|embeddings)\b", source):
+        calls_sync_client = re.search(
+            r"(?<!async_)\bclient\.(chat|embeddings)\b", source
+        )
+        if imports_sync_sdk or imports_sync_client or calls_sync_client:
             users.add(str(path.relative_to(PACKAGE)))
 
-    assert users == expected, (
-        f"new sync LLM caller(s): {sorted(users - expected)}; "
-        f"no longer sync: {sorted(expected - users)}"
-    )
+    assert users == set(), f"sync LLM client in: {sorted(users)}"
 
 
 def test_the_checks_catch_a_violation():

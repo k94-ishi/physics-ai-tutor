@@ -53,7 +53,8 @@ def test_get_concepts_for_question_empty(db):
     assert question_concept_repository.get_concepts_for_question(db, question.id) == []
 
 
-def test_get_concepts_for_questions_groups_by_question(db):
+@pytest.mark.anyio
+async def test_get_concepts_for_questions_groups_by_question(db, async_db):
     q1 = _create_question(db, "質問1", "回答1")
     q2 = _create_question(db, "質問2", "回答2")
     q3 = _create_question(db, "質問3", "回答3")
@@ -65,8 +66,10 @@ def test_get_concepts_for_questions_groups_by_question(db):
     question_concept_repository.link(db, question_id=q1.id, concept_id=c2.id)
     question_concept_repository.link(db, question_id=q2.id, concept_id=c1.id)
 
-    result = question_concept_repository.get_concepts_for_questions(
-        db, [q1.id, q2.id, q3.id]
+    db.commit()
+
+    result = await question_concept_repository.async_get_concepts_for_questions(
+        async_db, [q1.id, q2.id, q3.id]
     )
 
     assert set(result[q1.id]) == {"概念A", "概念B"}
@@ -74,8 +77,13 @@ def test_get_concepts_for_questions_groups_by_question(db):
     assert result[q3.id] == []
 
 
-def test_get_concepts_for_questions_empty_ids_returns_empty_dict(db):
-    assert question_concept_repository.get_concepts_for_questions(db, []) == {}
+@pytest.mark.anyio
+async def test_get_concepts_for_questions_empty_ids_returns_empty_dict(async_db):
+    result = await question_concept_repository.async_get_concepts_for_questions(
+        async_db, []
+    )
+
+    assert result == {}
 
 
 @pytest.mark.anyio

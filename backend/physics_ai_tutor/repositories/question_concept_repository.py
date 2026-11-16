@@ -43,8 +43,8 @@ async def async_get_concepts_for_question(
     return list((await db.scalars(_concepts_for_question_select(question_id))).all())
 
 
-def get_concepts_for_questions(
-    db: Session,
+async def async_get_concepts_for_questions(
+    db: AsyncSession,
     question_ids: list[int],
     language: str = "ja",
     strict: bool = False,
@@ -54,21 +54,6 @@ def get_concepts_for_questions(
     Falls back to the other language unless `strict` is set, in
     which case concepts without a name in `language` are skipped.
     """
-    if not question_ids:
-        return {}
-
-    rows = db.execute(_concepts_for_questions_select(question_ids)).all()
-
-    return _names_by_question(rows, question_ids, language, strict)
-
-
-async def async_get_concepts_for_questions(
-    db: AsyncSession,
-    question_ids: list[int],
-    language: str = "ja",
-    strict: bool = False,
-) -> dict[int, list[str]]:
-    """As `get_concepts_for_questions` ([70])."""
     if not question_ids:
         return {}
 
@@ -88,7 +73,7 @@ def _concepts_for_questions_select(question_ids: list[int]):
 def _names_by_question(
     rows, question_ids: list[int], language: str, strict: bool
 ) -> dict[int, list[str]]:
-    """The strict-vs-fallback naming rule, shared by both variants ([53])."""
+    """The strict-vs-fallback naming rule ([53])."""
     result: dict[int, list[str]] = {question_id: [] for question_id in question_ids}
     for question_id, concept in rows:
         name = concept.name_in(language) if strict else concept.display_name(language)

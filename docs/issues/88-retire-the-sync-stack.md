@@ -21,7 +21,7 @@ green. This issue stays open until all six are closed.
 | # | Issue | What goes | Status |
 | --- | --- | --- | --- |
 | 1 | [107] | Sync rate limiter; dead sync repository functions | done 2026-11-16 |
-| 2 | [108] | Sync RAG path; sync OpenAI and DeepSeek clients | open |
+| 2 | [108] | Sync RAG path; sync OpenAI and DeepSeek clients | done 2026-11-16 |
 | 3 | [109] | `export_seed`, `export_seed_embeddings`, `init_db`, `split_merged_concepts`, `backfill_levels` onto the async engine | open |
 | 4 | [110] | Sync `engine`, `SessionLocal`, `get_db`, `background_session`, `transaction()` | open |
 | 5 | [111] | Test-only sync helpers in `question_repository` | open |

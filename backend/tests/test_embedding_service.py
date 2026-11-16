@@ -6,7 +6,7 @@ from physics_ai_tutor.models import Question
 from physics_ai_tutor.schemas.embedding import SimilarQuestionResponse
 from physics_ai_tutor.services import embedding_service
 from physics_ai_tutor.services.embedding_service import (
-    create_embeddings as real_create_embeddings,
+    async_create_embeddings as real_create_embeddings,
 )
 from tests.conftest import patch_create_embeddings
 
@@ -15,7 +15,14 @@ class _FakeOpenAIError(OpenAIError):
     pass
 
 
-def test_search_similar_questions_calls_create_embeddings_with_query(db, monkeypatch):
+async def _no_results(**kwargs):
+    return []
+
+
+@pytest.mark.anyio
+async def test_search_similar_questions_calls_create_embeddings_with_query(
+    async_db, monkeypatch
+):
     calls = []
 
     def fake_create_embeddings(texts):
@@ -24,28 +31,25 @@ def test_search_similar_questions_calls_create_embeddings_with_query(db, monkeyp
 
     patch_create_embeddings(monkeypatch, fake_create_embeddings)
     monkeypatch.setattr(
-        embedding_service,
-        "search_similar_embeddings",
-        lambda **kwargs: [],
+        embedding_service, "async_search_similar_embeddings", _no_results
     )
 
-    embedding_service.search_similar_questions(db, "類似質問", limit=3)
+    await embedding_service.async_search_similar_questions(
+        async_db, "類似質問", limit=3
+    )
 
     assert calls == [["類似質問"]]
 
 
-def test_search_similar_questions_returns_response_schema(db, monkeypatch):
+@pytest.mark.anyio
+async def test_search_similar_questions_returns_response_schema(async_db, monkeypatch):
     fake_vector = [0.1] * 1536
 
-    monkeypatch.setattr(
-        embedding_service,
-        "create_embeddings",
-        lambda texts: [fake_vector],
-    )
+    patch_create_embeddings(monkeypatch, lambda texts: [fake_vector])
 
     search_calls = []
 
-    def fake_search_similar_embeddings(**kwargs):
+    async def fake_search_similar_embeddings(**kwargs):
         search_calls.append(kwargs)
         return [
             (None, Question(id=1, question_ja="質問1", answer_ja="回答1"), 0.1),
@@ -54,15 +58,17 @@ def test_search_similar_questions_returns_response_schema(db, monkeypatch):
 
     monkeypatch.setattr(
         embedding_service,
-        "search_similar_embeddings",
+        "async_search_similar_embeddings",
         fake_search_similar_embeddings,
     )
 
-    result = embedding_service.search_similar_questions(db, "類似質問", limit=3)
+    result = await embedding_service.async_search_similar_questions(
+        async_db, "類似質問", limit=3
+    )
 
     assert search_calls == [
         {
-            "db": db,
+            "db": async_db,
             "embedding": fake_vector,
             "embedding_type": "question",
             "limit": 3,
@@ -81,18 +87,19 @@ def test_search_similar_questions_returns_response_schema(db, monkeypatch):
     ]
 
 
-def test_create_embeddings_wraps_openai_error(monkeypatch):
+@pytest.mark.anyio
+async def test_create_embeddings_wraps_openai_error(monkeypatch):
     class _FakeEmbeddings:
-        def create(self, **kwargs):
+        async def create(self, **kwargs):
             raise _FakeOpenAIError("boom")
 
     class _FakeClient:
         embeddings = _FakeEmbeddings()
 
-    monkeypatch.setattr(embedding_service, "client", _FakeClient())
+    monkeypatch.setattr(embedding_service, "async_client", _FakeClient())
 
     with pytest.raises(EmbeddingGenerationError):
-        real_create_embeddings(["テキスト"])
+        await real_create_embeddings(["テキスト"])
 
 
 # --- batching ([76]) ----------------------------------------------------------

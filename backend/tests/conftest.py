@@ -251,8 +251,6 @@ def _mock_create_embeddings(monkeypatch):
     async def _fake_async(texts):
         return _fake(texts)
 
-    monkeypatch.setattr(embedding_service, "create_embeddings", _fake)
-    # Both seams, so a converted caller is mocked too ([70]).
     monkeypatch.setattr(embedding_service, "async_create_embeddings", _fake_async)
 
 
@@ -404,15 +402,12 @@ def fake_generation(answer: str):
 
 
 def patch_generation(monkeypatch, generate) -> None:
-    """Install one sync stub on both DeepSeek seams ([70]).
+    """Install a plain sync stub on the DeepSeek generation seam ([70]).
 
-    Converted callers await `async_generate_answer` while runs, the eval
-    and concept extraction still call `generate_answer`, so a test that
-    patches only one of them silently reaches the real API. Stubs stay
+    The app only awaits `async_generate_answer` since [108]. Stubs stay
     plain sync callables; the adapter forwards arguments and lets
-    exceptions through unchanged. [73] drops the sync line here.
+    exceptions through unchanged.
     """
-    monkeypatch.setattr(deepseek_service, "generate_answer", generate)
 
     async def _async_generate(*args, **kwargs):
         return generate(*args, **kwargs)
@@ -431,7 +426,6 @@ def patch_translate_qa(monkeypatch, translate) -> None:
 
 def patch_create_embeddings(monkeypatch, create) -> None:
     """As `patch_generation`, for the embedding seam ([70])."""
-    monkeypatch.setattr(embedding_service, "create_embeddings", create)
 
     async def _async_create(*args, **kwargs):
         return create(*args, **kwargs)
@@ -441,7 +435,6 @@ def patch_create_embeddings(monkeypatch, create) -> None:
 
 def patch_rag_answer(monkeypatch, generate) -> None:
     """As `patch_generation`, for the RAG generation seam ([70])."""
-    monkeypatch.setattr(rag_service, "generate_rag_answer", generate)
 
     async def _async_generate(*args, **kwargs):
         return generate(*args, **kwargs)
@@ -465,7 +458,6 @@ def patch_exchange_code(monkeypatch, exchange) -> None:
 
 def patch_chat_completion(monkeypatch, complete) -> None:
     """As `patch_generation`, for the plain-text completion seam ([70])."""
-    monkeypatch.setattr(deepseek_service, "chat_completion", complete)
 
     async def _async_complete(*args, **kwargs):
         return complete(*args, **kwargs)

@@ -219,13 +219,6 @@ async def async_get_question(
     return (await db.scalars(_question_select(question_id, exclude_statuses))).first()
 
 
-def get_questions_by_ids(db: Session, ids: list[int]) -> list[Question]:
-    if not ids:
-        return []
-
-    return list(db.scalars(select(Question).where(Question.id.in_(ids))).all())
-
-
 async def async_get_questions_by_ids(
     db: AsyncSession, ids: list[int]
 ) -> list[Question]:

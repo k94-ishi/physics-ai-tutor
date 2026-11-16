@@ -89,6 +89,12 @@ were not kept. Three later full runs (45-62 s) and five repeated runs of
 the machine at load ~4.8 from other sessions. Recorded in case it
 shows up again.
 
+**Later note (2026-11-16, [108]):** another session in the `oak`
+checkout was found sharing this work's test-settings file and
+rewriting its database name. Two suites on one database is a
+plausible cause of that slow run; not proven, since its output was
+not kept.
+
 ## Rules (all [73] slices)
 
 - Twins only while an unconverted caller needs the sync version; delete a

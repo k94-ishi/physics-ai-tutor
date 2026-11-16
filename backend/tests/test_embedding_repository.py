@@ -33,7 +33,8 @@ def test_create_embedding_persists(db):
     assert created.model == "text-embedding-3-small"
 
 
-def test_search_similar_embeddings_orders_by_distance(db):
+@pytest.mark.anyio
+async def test_search_similar_embeddings_orders_by_distance(async_db, db):
     identical = _create_question(db, "同一質問", "同一回答")
     near = _create_question(db, "近い質問", "近い回答")
     orthogonal = _create_question(db, "遠い質問", "遠い回答")
@@ -60,8 +61,10 @@ def test_search_similar_embeddings_orders_by_distance(db):
         model="text-embedding-3-small",
     )
 
-    results = embedding_repository.search_similar_embeddings(
-        db,
+    db.commit()
+
+    results = await embedding_repository.async_search_similar_embeddings(
+        async_db,
         embedding=_vector(0),
         embedding_type="question",
         limit=10,
@@ -79,7 +82,8 @@ def test_search_similar_embeddings_orders_by_distance(db):
     assert distances[0] < distances[1] < distances[2]
 
 
-def test_search_similar_embeddings_filters_by_type(db):
+@pytest.mark.anyio
+async def test_search_similar_embeddings_filters_by_type(async_db, db):
     question = _create_question(db)
 
     embedding_repository.create_embedding(
@@ -97,8 +101,10 @@ def test_search_similar_embeddings_filters_by_type(db):
         model="text-embedding-3-small",
     )
 
-    results = embedding_repository.search_similar_embeddings(
-        db,
+    db.commit()
+
+    results = await embedding_repository.async_search_similar_embeddings(
+        async_db,
         embedding=_vector(0),
         embedding_type="question",
         limit=10,
@@ -112,7 +118,8 @@ def test_search_similar_embeddings_filters_by_type(db):
     assert distance == pytest.approx(1.0, abs=1e-3)
 
 
-def test_search_similar_embeddings_respects_limit(db):
+@pytest.mark.anyio
+async def test_search_similar_embeddings_respects_limit(async_db, db):
     identical = _create_question(db, "同一質問", "同一回答")
     near = _create_question(db, "近い質問", "近い回答")
     orthogonal = _create_question(db, "遠い質問", "遠い回答")
@@ -139,8 +146,10 @@ def test_search_similar_embeddings_respects_limit(db):
         model="text-embedding-3-small",
     )
 
-    results = embedding_repository.search_similar_embeddings(
-        db,
+    db.commit()
+
+    results = await embedding_repository.async_search_similar_embeddings(
+        async_db,
         embedding=_vector(0),
         embedding_type="question",
         limit=2,

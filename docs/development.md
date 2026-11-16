@@ -208,17 +208,17 @@ Conventions:
 - API tests use the `client` fixtures and assert on HTTP responses; service
   and repository tests take the `db` session directly.
 - Anything that calls OpenAI or DeepSeek must be mocked. `conftest.py`
-  already patches `embedding_service.create_embeddings`,
-  `concept_service.extract_concept_names` and
-  `translation_service.translate_qa` (which returns `"[en] <text>"` style
-  markers so tests can assert on translations).
+  already patches `embedding_service.async_create_embeddings`,
+  `concept_service.async_extract_concept_names` and
+  `translation_service.async_translate_qa` (which returns `"[en] <text>"`
+  style markers so tests can assert on translations).
 - Patch LLM seams through the `conftest` helpers, never with a bare
   `monkeypatch.setattr` ([70]): `patch_generation`,
   `patch_chat_completion`, `patch_create_embeddings`,
-  `patch_extract_concept_names` and `patch_rag_answer` each install one plain sync stub on *both* the sync
-  and the `async_` function. Patching only one of them leaves the other
-  pointing at the real API, which fails with an authentication error
-  rather than an obvious one.
+  `patch_extract_concept_names` and `patch_rag_answer` each take a plain
+  sync stub and install it on the `async_` function the app awaits. A
+  sync function there would be awaited and fail with a confusing
+  `TypeError`. Since [108] the app has no sync seam left to patch.
 - A test that calls converted (async) code is `async def`, marked
   `pytest.mark.anyio`, and takes `async_db`. Arrange rows through the
   sync `db` and `db.commit()` them - the async session is another

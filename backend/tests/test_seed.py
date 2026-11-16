@@ -34,9 +34,7 @@ def seeded():
             "AsyncSessionLocal",
             async_sessionmaker(bind=async_engine, expire_on_commit=False),
         )
-        # Both sides of every seam: import is async since [94], and a
-        # guard on the sync side alone would pass without guarding.
-        patch.setattr(embedding_service, "_request_embeddings", _forbidden)
+        # The only path to OpenAI since [108]; any request fails the seed.
         patch.setattr(embedding_service, "_async_request_embeddings", _forbidden)
         patch.setattr(concept_service, "async_extract_concept_names", _forbidden)
         patch.setattr(translation_service, "async_translate_qa", _forbidden)

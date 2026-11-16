@@ -3,10 +3,9 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core import prompts, timing
-from physics_ai_tutor.database.transaction import async_transaction, transaction
+from physics_ai_tutor.database.transaction import async_transaction
 from physics_ai_tutor.repositories import (
     question_concept_repository,
     question_repository,
@@ -28,81 +27,6 @@ class RetrievedQuestion:
     answer: str
     concepts: list[str]
     score: float
-
-
-def retrieve_context(
-    db: Session, query: str, language: Language = Language.JA
-) -> list[RetrievedQuestion]:
-    """Reuse the existing similarity search + concept lookup to gather
-    grounding context for a RAG answer. Only APPROVED questions are used
-    as grounding, and only those above RAG_MIN_SCORE similarity.
-    """
-    results = embedding_service.search_similar_questions(
-        db,
-        query=query,
-        limit=RAG_TOP_K,
-        exclude_statuses=["UNREVIEWED", "REJECTED"],
-        language=language,
-    )
-
-    scored = _scored(results)
-
-    concepts_by_id = question_concept_repository.get_concepts_for_questions(
-        db, [result.id for result, _ in scored], language=language.value
-    )
-
-    return [
-        RetrievedQuestion(
-            id=result.id,
-            question=result.question,
-            answer=result.answer,
-            concepts=concepts_by_id.get(result.id, []),
-            score=score,
-        )
-        for result, score in scored
-    ]
-
-
-def load_context_by_ids(
-    db: Session, ids: list[int], language: Language = Language.JA
-) -> list[RetrievedQuestion]:
-    """Build grounding context from client-selected question IDs (e.g. the
-    results the user already saw from a prior similarity search), skipping
-    a fresh embedding search. IDs are capped to RAG_TOP_K and filtered down
-    to APPROVED questions only - the IDs come from the client, so this
-    re-checks status server-side rather than trusting them as-is.
-    """
-    capped_ids = ids[:RAG_TOP_K]
-    questions_by_id = {
-        question.id: question
-        for question in question_repository.get_questions_by_ids(db, capped_ids)
-        if question.status == QuestionStatus.APPROVED
-    }
-    ordered_questions = [
-        questions_by_id[question_id]
-        for question_id in capped_ids
-        if question_id in questions_by_id
-    ]
-
-    concepts_by_id = question_concept_repository.get_concepts_for_questions(
-        db, [question.id for question in ordered_questions], language=language.value
-    )
-
-    context = []
-    for question in ordered_questions:
-        # Prefer the student's language; the LLM copes with mixed context.
-        text = question.text(language) or question.original_text()
-        context.append(
-            RetrievedQuestion(
-                id=question.id,
-                question=text[0],
-                answer=text[1],
-                concepts=concepts_by_id.get(question.id, []),
-                score=1.0,
-            )
-        )
-
-    return context
 
 
 def build_context_prompt(
@@ -128,41 +52,6 @@ def build_context_prompt(
     )
 
 
-def generate_rag_answer(
-    db: Session,
-    question: str,
-    retrieved_question_ids: list[int] | None = None,
-    language: Language | str = Language.JA,
-) -> tuple[deepseek_service.GenerationResult, list[int]]:
-    lang = Language(language)
-
-    with timing.stage("rag_context") as stage:
-        # Commit the retrieval reads so no connection waits out the
-        # generation call below ([82]).
-        with transaction(db, "rag_context_read"):
-            if retrieved_question_ids:
-                stage.note(source="client_ids")
-                context = load_context_by_ids(db, retrieved_question_ids, lang)
-            else:
-                stage.note(source="search")
-                context = retrieve_context(db, question, lang)
-        stage.note(count=len(context))
-
-    user_prompt = build_context_prompt(question, context, lang)
-
-    result = deepseek_service.generate_answer(
-        prompts.RAG_SYSTEM_PROMPTS[lang], user_prompt
-    )
-
-    logger.info(
-        "RAG answer generated: question_length=%d context_count=%d",
-        len(question),
-        len(context),
-    )
-
-    return result, [item.id for item in context]
-
-
 def _scored(results) -> list[tuple]:
     """Keep only results above the grounding threshold, with their score."""
     return [
@@ -175,7 +64,10 @@ def _scored(results) -> list[tuple]:
 async def async_retrieve_context(
     db: AsyncSession, query: str, language: Language = Language.JA
 ) -> list[RetrievedQuestion]:
-    """As `retrieve_context`, on the event loop ([70])."""
+    """Reuse the existing similarity search + concept lookup to gather
+    grounding context for a RAG answer. Only APPROVED questions are used
+    as grounding, and only those above RAG_MIN_SCORE similarity.
+    """
     results = await embedding_service.async_search_similar_questions(
         db,
         query=query,
@@ -205,7 +97,12 @@ async def async_retrieve_context(
 async def async_load_context_by_ids(
     db: AsyncSession, ids: list[int], language: Language = Language.JA
 ) -> list[RetrievedQuestion]:
-    """As `load_context_by_ids`; still re-checks status server-side ([70])."""
+    """Build grounding context from client-selected question IDs (e.g. the
+    results the user already saw from a prior similarity search), skipping
+    a fresh embedding search. IDs are capped to RAG_TOP_K and filtered down
+    to APPROVED questions only - the IDs come from the client, so this
+    re-checks status server-side rather than trusting them as-is.
+    """
     capped_ids = ids[:RAG_TOP_K]
     questions_by_id = {
         question.id: question
@@ -247,7 +144,7 @@ async def async_generate_rag_answer(
     retrieved_question_ids: list[int] | None = None,
     language: Language | str = Language.JA,
 ) -> tuple[deepseek_service.GenerationResult, list[int]]:
-    """As `generate_rag_answer`, on the event loop ([70])."""
+    """Ground the question in approved Q&A, then generate the answer."""
     lang = Language(language)
 
     with timing.stage("rag_context") as stage:

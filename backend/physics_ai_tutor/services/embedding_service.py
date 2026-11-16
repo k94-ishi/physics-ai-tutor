@@ -4,18 +4,16 @@ import logging
 from openai import OpenAIError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core import timing
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.exceptions import EmbeddingGenerationError
-from physics_ai_tutor.core.openai import async_client, client
+from physics_ai_tutor.core.openai import async_client
 from physics_ai_tutor.core.text import normalize_text
-from physics_ai_tutor.database.transaction import async_transaction, transaction
+from physics_ai_tutor.database.transaction import async_transaction
 from physics_ai_tutor.repositories import query_embedding_repository
 from physics_ai_tutor.repositories.embedding_repository import (
     async_search_similar_embeddings,
-    search_similar_embeddings,
 )
 from physics_ai_tutor.schemas.embedding import SimilarQuestionResponse
 from physics_ai_tutor.schemas.language import Language
@@ -82,112 +80,10 @@ async def async_embed_many(texts: list[str]) -> list[list[float]]:
     return vectors
 
 
-def create_embeddings(texts: list[str]) -> list[list[float]]:
-    """Embeddings for `texts`; preloaded vectors first, OpenAI for the rest."""
-    keys = [vector_key(settings.embedding_model, text) for text in texts]
-    missing = [
-        text for text, key in zip(texts, keys, strict=True) if key not in _preloaded
-    ]
-    fetched = iter(_request_embeddings(missing) if missing else [])
-    return [_preloaded[key] if key in _preloaded else next(fetched) for key in keys]
-
-
-def _request_embeddings(texts: list[str]) -> list[list[float]]:
-    logger.debug("Generating embeddings: count=%d", len(texts))
-
-    try:
-        with timing.stage("openai_embeddings", count=len(texts)):
-            response = client.embeddings.create(
-                model=settings.embedding_model,
-                input=texts,
-            )
-    except OpenAIError as exc:
-        logger.warning("OpenAI embedding generation failed: %s", type(exc).__name__)
-        raise EmbeddingGenerationError(
-            "Failed to generate embeddings via OpenAI API."
-        ) from exc
-
-    logger.info(
-        "Generated embeddings: count=%d model=%s", len(texts), settings.embedding_model
-    )
-
-    return [item.embedding for item in response.data]
-
-
-def embed_query(db: Session, text: str) -> list[float]:
-    """Embed a search query through the cache ([49]).
-
-    Keyed by (hash of the normalised text, model): a repeated search - a
-    retried phrasing, a shared ?similar= link, a re-asked question - costs
-    no OpenAI call. A model change misses the cache by construction.
-    """
-    normalized = normalize_text(text)
-    text_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-    model = settings.embedding_model
-
-    with timing.stage("embed_query") as stage:
-        # The lookup commits so the connection is back in the pool before
-        # the OpenAI call a miss triggers ([82]).
-        with transaction(db, "query_embedding_lookup"):
-            cached = query_embedding_repository.get(db, text_hash, model)
-
-        if cached is not None:
-            stage.note(cache="hit")
-            try:
-                with transaction(db, "touch_query_embedding"):
-                    query_embedding_repository.touch(db, cached)
-            except Exception:
-                # Hit bookkeeping must never break a search.
-                logger.warning("query embedding touch failed", exc_info=True)
-            return list(cached.embedding)
-
-        stage.note(cache="miss")
-        embedding = create_embeddings([normalized])[0]
-
-    try:
-        with transaction(db, "cache_query_embedding"):
-            row = query_embedding_repository.create(
-                db, text_hash, normalized, model, embedding
-            )
-    except IntegrityError:
-        # Two identical searches raced; the other one won and that is fine.
-        existing = query_embedding_repository.get(db, text_hash, model)
-        assert existing is not None
-        return list(existing.embedding)
-
-    return list(row.embedding)
-
-
-def search_similar_questions(
-    db: Session,
-    query: str,
-    limit: int = 10,
-    exclude_statuses: list[str] | None = None,
-    language: Language | str = Language.JA,
-) -> list[SimilarQuestionResponse]:
-    lang = Language(language)
-    query_embedding = embed_query(db, query)
-
-    # Same-language search only: every row is embedded in each language it
-    # has text for, so cross-language scoring is not needed.
-    with timing.stage("vector_search", limit=limit) as stage:
-        results = search_similar_embeddings(
-            db=db,
-            embedding=query_embedding,
-            embedding_type="question",
-            limit=limit,
-            exclude_statuses=exclude_statuses,
-            language=lang.value,
-        )
-        stage.note(results=len(results))
-
-    return _similar_responses(results, lang, len(query), limit)
-
-
 def _similar_responses(
     results, lang: Language, query_length: int, limit: int
 ) -> list[SimilarQuestionResponse]:
-    """Shape search rows into responses; shared by both variants ([70])."""
+    """Shape search rows into responses."""
     logger.info(
         "Similar question search completed: query_length=%d limit=%d results=%d",
         query_length,
@@ -213,7 +109,7 @@ def _similar_responses(
 
 
 async def async_create_embeddings(texts: list[str]) -> list[list[float]]:
-    """As `create_embeddings`; preloaded vectors first, OpenAI for the rest."""
+    """Embeddings for `texts`; preloaded vectors first, OpenAI for the rest."""
     keys = [vector_key(settings.embedding_model, text) for text in texts]
     missing = [
         text for text, key in zip(texts, keys, strict=True) if key not in _preloaded
@@ -245,7 +141,12 @@ async def _async_request_embeddings(texts: list[str]) -> list[list[float]]:
 
 
 async def async_embed_query(db: AsyncSession, text: str) -> list[float]:
-    """As `embed_query`, through the same cache ([49], [70])."""
+    """Embed a search query through the cache ([49]).
+
+    Keyed by (hash of the normalised text, model): a repeated search - a
+    retried phrasing, a shared ?similar= link, a re-asked question - costs
+    no OpenAI call. A model change misses the cache by construction.
+    """
     normalized = normalize_text(text)
     text_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
     model = settings.embedding_model
@@ -290,7 +191,7 @@ async def async_search_similar_questions(
     exclude_statuses: list[str] | None = None,
     language: Language | str = Language.JA,
 ) -> list[SimilarQuestionResponse]:
-    """As `search_similar_questions`, on the event loop ([70])."""
+    """Questions whose embedding in `language` is closest to the query."""
     lang = Language(language)
     query_embedding = await async_embed_query(db, query)
 

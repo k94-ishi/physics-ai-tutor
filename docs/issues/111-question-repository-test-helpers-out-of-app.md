@@ -24,12 +24,42 @@ tests call. No behaviour change.
 
 ## Acceptance criteria
 
-- [ ] No sync function left in `question_repository`.
+- [x] No sync function left in `question_repository`.
 
 ## Dependencies
 
 - Blocked by: [110]
 - Blocks: [98] (the rename would collide with the sync names)
+
+## Log
+
+### 2026-11-16 — done (no further split needed: most sites were one-line swaps)
+
+**The seven sync functions fell into three groups:**
+
+- **Arrangement (`create_question`).** Moved to
+  `tests/conftest.create_question`, same signature including the legacy
+  single-language `question=/answer=` form, built on the repository's
+  shared `_new_question`. Eight test files swapped
+  `question_repository.create_question(` for the helper; that covered
+  most of the ~30 touched tests.
+- **Readers with async twins** (`get_question`, `get_by_exact_text`,
+  `update_status`). Their tests in `test_question_repository.py` moved
+  to `async_get_question` / `async_get_by_exact_text` (8 tests,
+  unchanged assertions); the two `create_question` behaviour tests moved
+  to `async_create_question`. The one `update_status` arrangement call
+  became a plain attribute set.
+- **Dead code** (`update`, `update_content_and_status`,
+  `create_questions`): no async twin and no production caller - the
+  write service sets text and status directly since [93]. Deleted with
+  their seven tests, which tested nothing the app runs; the three
+  arrangement uses of `update_content_and_status` became attribute sets.
+
+`question_repository` now imports only `AsyncSession`; its stale
+"As `<sync twin>`" docstrings were rewritten.
+
+**Results:** 615 passed (622 - the 7 dead-code tests), `ruff check`,
+`ruff format --check`, `mypy` clean. Frontend untouched.
 
 ## Rules (all [73] slices)
 
@@ -42,5 +72,5 @@ tests call. No behaviour change.
 
 ## Definition of done
 
-- [ ] Backend: `pytest`, `ruff check`, `mypy` pass
-- [ ] Log entry in this file; `status.md`, [67], [73] and [88] updated
+- [x] Backend: `pytest`, `ruff check`, `mypy` pass
+- [x] Log entry in this file; `status.md`, [67], [73] and [88] updated

@@ -23,6 +23,7 @@ from physics_ai_tutor.database.base import Base
 from physics_ai_tutor.database.dependency import get_async_db
 from physics_ai_tutor.main import app
 from physics_ai_tutor.models.user import User
+from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.services import (
     concept_service,
     deepseek_service,
@@ -287,6 +288,41 @@ def attach_concepts(db, question_id: int, names: list[str], language: str = "ja"
             return [concept.id for concept in concepts]
 
     return [db.get(Concept, concept_id) for concept_id in asyncio.run(_attach())]
+
+
+def create_question(
+    db,
+    texts=None,
+    original_language=Language.JA,
+    status="APPROVED",
+    source="MANUAL",
+    retrieved_question_ids=None,
+    provenances=None,
+    question=None,
+    answer=None,
+    language=Language.JA,
+):
+    """Arrange a question row from a sync test ([111]).
+
+    The app writes only through `async_create_question`; this keeps the
+    many sync tests on their `db` fixture, including the legacy
+    single-language `question=/answer=` form. Flushes; the caller commits.
+    """
+    from physics_ai_tutor.repositories.question_repository import _new_question
+
+    if texts is None:
+        if question is None or answer is None:
+            raise ValueError("Either texts or question and answer are required")
+        texts = {Language(language): (question, answer)}
+        original_language = language
+
+    row = _new_question(
+        texts, original_language, status, source, retrieved_question_ids, provenances
+    )
+    db.add(row)
+    db.flush()
+
+    return row
 
 
 def create_ai_review(db, review):

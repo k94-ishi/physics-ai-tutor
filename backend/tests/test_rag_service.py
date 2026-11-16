@@ -5,10 +5,14 @@ from physics_ai_tutor.repositories import (
     concept_repository,
     embedding_repository,
     question_concept_repository,
-    question_repository,
 )
 from physics_ai_tutor.services import rag_service
-from tests.conftest import fake_generation, patch_create_embeddings, patch_generation
+from tests.conftest import (
+    create_question,
+    fake_generation,
+    patch_create_embeddings,
+    patch_generation,
+)
 
 DIM = 1536
 
@@ -20,9 +24,7 @@ def _vector(index: int, value: float = 1.0) -> list[float]:
 
 
 def _create_question(db, question="質問", answer="回答", status="APPROVED"):
-    return question_repository.create_question(
-        db, question=question, answer=answer, status=status
-    )
+    return create_question(db, question=question, answer=answer, status=status)
 
 
 def _embed_question(db, question, vector):

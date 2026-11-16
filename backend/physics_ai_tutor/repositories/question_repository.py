@@ -1,6 +1,5 @@
 from sqlalchemy import func, nullslast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from physics_ai_tutor.core.text import normalize_key
 from physics_ai_tutor.models import (
@@ -13,9 +12,7 @@ from physics_ai_tutor.models import (
 )
 from physics_ai_tutor.schemas.language import Language, TextProvenance
 from physics_ai_tutor.schemas.question import (
-    QuestionCreate,
     QuestionFilters,
-    QuestionUpdate,
 )
 
 
@@ -202,20 +199,12 @@ def _question_select(question_id: int, exclude_statuses: list[str] | None):
     return _filter_by_status(query, None, exclude_statuses)
 
 
-def get_question(
-    db: Session,
-    question_id: int,
-    exclude_statuses: list[str] | None = None,
-) -> Question | None:
-    return db.scalars(_question_select(question_id, exclude_statuses)).first()
-
-
 async def async_get_question(
     db: AsyncSession,
     question_id: int,
     exclude_statuses: list[str] | None = None,
 ) -> Question | None:
-    """As `get_question` ([83]); the sync one serves the admin writers."""
+    """One question by id, optionally hiding the given statuses."""
     return (await db.scalars(_question_select(question_id, exclude_statuses))).first()
 
 
@@ -238,17 +227,6 @@ def _exact_text_select(
     return select(Question).where(
         column == question_text, *_status_conditions(None, exclude_statuses)
     )
-
-
-def get_by_exact_text(
-    db: Session,
-    question_text: str,
-    language: Language | str = Language.JA,
-    exclude_statuses: list[str] | None = None,
-) -> Question | None:
-    query = _exact_text_select(question_text, language, exclude_statuses)
-
-    return db.scalars(query).first()
 
 
 async def async_get_by_exact_text(
@@ -313,35 +291,6 @@ def _new_question(
     return question
 
 
-def create_question(
-    db: Session,
-    texts: dict[Language, tuple[str, str]] | None = None,
-    original_language: Language | str = Language.JA,
-    status: str = "APPROVED",
-    source: str = "MANUAL",
-    retrieved_question_ids: list[int] | None = None,
-    provenances: dict[Language, str] | None = None,
-    question: str | None = None,
-    answer: str | None = None,
-    language: Language | str = Language.JA,
-) -> Question:
-    # Legacy single-language form: question=/answer=/language=.
-    if texts is None:
-        if question is None or answer is None:
-            raise ValueError("Either texts or question and answer are required")
-        texts = {Language(language): (question, answer)}
-        original_language = language
-
-    db_question = _new_question(
-        texts, original_language, status, source, retrieved_question_ids, provenances
-    )
-
-    db.add(db_question)
-    db.flush()
-
-    return db_question
-
-
 async def async_create_question(
     db: AsyncSession,
     texts: dict[Language, tuple[str, str]],
@@ -350,7 +299,7 @@ async def async_create_question(
     source: str = "MANUAL",
     retrieved_question_ids: list[int] | None = None,
 ) -> Question:
-    """As `create_question`, without the legacy single-language form ([70])."""
+    """Create one question; tests keep the legacy single-language form."""
     db_question = _new_question(
         texts, original_language, status, source, retrieved_question_ids, None
     )
@@ -359,29 +308,6 @@ async def async_create_question(
     await db.flush()
 
     return db_question
-
-
-def create_questions(
-    db: Session,
-    rows: list[tuple[dict[Language, tuple[str, str]], Language] | QuestionCreate],
-    status: str = "APPROVED",
-    source: str = "MANUAL",
-) -> list[Question]:
-    normalised = [
-        (row.texts(), row.original_language())
-        if isinstance(row, QuestionCreate)
-        else row
-        for row in rows
-    ]
-    db_questions = [
-        _new_question(texts, original, status, source, None, None)
-        for texts, original in normalised
-    ]
-
-    db.add_all(db_questions)
-    db.flush()
-
-    return db_questions
 
 
 async def delete(db: AsyncSession, question_id: int) -> bool:
@@ -399,7 +325,7 @@ async def delete(db: AsyncSession, question_id: int) -> bool:
 async def async_update_status(
     db: AsyncSession, question_id: int, status: str
 ) -> Question | None:
-    """As `update_status` ([85])."""
+    """Set one question's status."""
     db_question = await db.get(Question, question_id)
 
     if not db_question:
@@ -407,72 +333,5 @@ async def async_update_status(
 
     db_question.status = status
     await db.flush()
-
-    return db_question
-
-
-def update_status(db: Session, question_id: int, status: str) -> Question | None:
-    db_question = db.query(Question).filter(Question.id == question_id).first()
-
-    if not db_question:
-        return None
-
-    db_question.status = status
-    db.flush()
-
-    return db_question
-
-
-def update(
-    db: Session,
-    question_id: int,
-    question_data: QuestionUpdate,
-) -> Question | None:
-    """Replace the given languages' text (human-provided)."""
-    db_question = db.query(Question).filter(Question.id == question_id).first()
-
-    if not db_question:
-        return None
-
-    for lang, (q, a) in question_data.texts().items():
-        provenance = (
-            TextProvenance.ORIGINAL
-            if lang == db_question.original_language
-            else TextProvenance.HUMAN
-        )
-        db_question.set_text(lang, q, a, provenance)
-
-    db.flush()
-
-    return db_question
-
-
-def update_content_and_status(
-    db: Session,
-    question_id: int,
-    status: str,
-    question: str | None = None,
-    answer: str | None = None,
-    language: Language | str | None = None,
-) -> Question | None:
-    """Set status and optionally replace one language's text."""
-    db_question = db.query(Question).filter(Question.id == question_id).first()
-
-    if not db_question:
-        return None
-
-    if question is not None and answer is not None:
-        lang = (
-            Language(language) if language else Language(db_question.original_language)
-        )
-        provenance = (
-            TextProvenance.ORIGINAL
-            if lang == db_question.original_language
-            else TextProvenance.HUMAN
-        )
-        db_question.set_text(lang, question, answer, provenance)
-
-    db_question.status = status
-    db.flush()
 
     return db_question

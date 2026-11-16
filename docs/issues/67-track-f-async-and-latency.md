@@ -118,7 +118,7 @@ wait for the slowest endpoint from "whole answer" to "first words".
        2. ~~[108] Sync RAG path and sync LLM clients~~ done 2026-11-16
        3. ~~[109] Seed export, init_db and maintenance CLIs on the async engine~~ done 2026-11-16
        4. ~~[110] Sync engine, SessionLocal, get_db, background_session, transaction()~~ done 2026-11-16
-       5. [111] Test-only sync helpers in question_repository
+       5. ~~[111] Test-only sync helpers in question_repository~~ done 2026-11-16
        6. [112] Test-only sync helpers in the concept and embedding repositories
    16. [98] Rename pass: drop the async_ prefixes
    17. [99] Async end state: architecture test, docs, connection budget (closes [73])

@@ -11,7 +11,6 @@ from physics_ai_tutor.core.exceptions import (
 from physics_ai_tutor.models import Question, QuestionEmbedding
 from physics_ai_tutor.repositories import (
     question_concept_repository,
-    question_repository,
 )
 from physics_ai_tutor.schemas.question import (
     QuestionCreate,
@@ -30,6 +29,7 @@ from physics_ai_tutor.services import (
 from tests.conftest import (
     async_create_user,
     async_engine,
+    create_question,
     patch_create_embeddings,
     patch_extract_concept_names,
 )
@@ -619,7 +619,7 @@ async def test_edit_approve_embedding_failure_writes_nothing(db, async_db, monke
     assert not async_db.dirty
 
     db.expire_all()
-    row = question_repository.get_question(db, created.id)
+    row = db.get(Question, created.id)
     assert (row.question, row.status) == ("元の質問", QuestionStatus.UNREVIEWED)
     history = await question_review_service.fetch_question_reviews(async_db, created.id)
     assert history == []
@@ -1010,13 +1010,9 @@ async def test_reextract_concepts_for_questions_partial_failure_continues(
 
 @pytest.mark.anyio
 async def test_attach_retrieved_questions_resolves_ids_to_summaries(db, async_db):
-    referenced1 = question_repository.create_question(
-        db, question="参照質問1", answer="回答1"
-    )
-    referenced2 = question_repository.create_question(
-        db, question="参照質問2", answer="回答2"
-    )
-    rag_question = question_repository.create_question(
+    referenced1 = create_question(db, question="参照質問1", answer="回答1")
+    referenced2 = create_question(db, question="参照質問2", answer="回答2")
+    rag_question = create_question(
         db,
         question="RAG質問",
         answer="RAG回答",
@@ -1037,7 +1033,7 @@ async def test_attach_retrieved_questions_resolves_ids_to_summaries(db, async_db
 
 @pytest.mark.anyio
 async def test_attach_retrieved_questions_skips_missing_ids(db, async_db):
-    rag_question = question_repository.create_question(
+    rag_question = create_question(
         db, question="RAG質問", answer="RAG回答", retrieved_question_ids=[999999]
     )
 

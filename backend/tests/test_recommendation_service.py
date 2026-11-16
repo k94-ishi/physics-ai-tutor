@@ -4,15 +4,14 @@ from physics_ai_tutor.repositories import (
     concept_repository,
     embedding_repository,
     question_concept_repository,
-    question_repository,
 )
 from physics_ai_tutor.schemas.question_review import QuestionReviewAction
 from physics_ai_tutor.services import question_review_service, recommendation_service
-from tests.conftest import async_create_user
+from tests.conftest import async_create_user, create_question
 
 
 def _create_question_with_embedding(db, question, answer, vector):
-    q = question_repository.create_question(db, question=question, answer=answer)
+    q = create_question(db, question=question, answer=answer)
     db.flush()
     embedding_repository.create_embedding(
         db,
@@ -79,7 +78,8 @@ async def test_get_related_questions_excludes_unreviewed_by_default(db, async_db
     vector = [0.1] * 1536
     source = _create_question_with_embedding(db, "元質問", "元回答", vector)
     other = _create_question_with_embedding(db, "他の質問", "他の回答", vector)
-    question_repository.update_content_and_status(db, other.id, status="UNREVIEWED")
+    other.status = "UNREVIEWED"
+    db.flush()
 
     db.commit()
     result = (
@@ -96,7 +96,8 @@ async def test_get_related_questions_includes_unreviewed_when_allowed(db, async_
     vector = [0.1] * 1536
     source = _create_question_with_embedding(db, "元質問", "元回答", vector)
     other = _create_question_with_embedding(db, "他の質問", "他の回答", vector)
-    question_repository.update_content_and_status(db, other.id, status="UNREVIEWED")
+    other.status = "UNREVIEWED"
+    db.flush()
 
     db.commit()
     result = (
@@ -157,7 +158,7 @@ async def test_get_related_questions_includes_concept_sharing_candidate(db, asyn
 
 @pytest.mark.anyio
 async def test_get_related_questions_returns_empty_when_no_embedding(db, async_db):
-    q = question_repository.create_question(db, question="埋め込みなし", answer="回答")
+    q = create_question(db, question="埋め込みなし", answer="回答")
     db.flush()
 
     db.commit()
@@ -181,9 +182,7 @@ async def test_get_related_questions_includes_candidate_via_rag_reference_concep
     rag_question = _create_question_with_embedding(
         db, "RAG質問", "RAG回答", close_vector
     )
-    question_repository.update_content_and_status(
-        db, rag_question.id, status="UNREVIEWED"
-    )
+    rag_question.status = "UNREVIEWED"
     rag_question.retrieved_question_ids = [reference.id]
     db.flush()
 

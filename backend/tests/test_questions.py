@@ -3,8 +3,7 @@ from enum import StrEnum
 
 from physics_ai_tutor.core.exceptions import EmbeddingGenerationError
 from physics_ai_tutor.models import Question, QuestionEmbedding
-from physics_ai_tutor.repositories import question_repository
-from tests.conftest import patch_create_embeddings
+from tests.conftest import create_question, patch_create_embeddings
 
 PATH = "/api/v1/questions"
 IMPORT_PATH = f"{PATH}/import"
@@ -914,10 +913,8 @@ def test_create_question_has_empty_retrieved_questions(admin_client):
 
 
 def test_get_question_detail_includes_retrieved_questions(admin_client, db):
-    referenced = question_repository.create_question(
-        db, question="参照質問", answer="参照回答"
-    )
-    rag_question = question_repository.create_question(
+    referenced = create_question(db, question="参照質問", answer="参照回答")
+    rag_question = create_question(
         db,
         question="RAG質問",
         answer="RAG回答",
@@ -938,10 +935,8 @@ def test_get_question_detail_includes_retrieved_questions(admin_client, db):
 
 
 def test_get_questions_list_includes_retrieved_questions(admin_client, db):
-    referenced = question_repository.create_question(
-        db, question="参照質問2", answer="参照回答2"
-    )
-    question_repository.create_question(
+    referenced = create_question(db, question="参照質問2", answer="参照回答2")
+    create_question(
         db,
         question="RAG質問2",
         answer="RAG回答2",

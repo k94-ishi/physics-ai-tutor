@@ -3,12 +3,13 @@ import asyncio
 import pytest
 
 from physics_ai_tutor.core.exceptions import ConceptExtractionError
-from physics_ai_tutor.repositories import concept_repository, question_repository
+from physics_ai_tutor.repositories import concept_repository
 from physics_ai_tutor.services import (
     concept_service,
 )
 from tests.conftest import (
     attach_concepts,
+    create_question,
     patch_chat_completion,
     patch_create_embeddings,
 )
@@ -22,7 +23,7 @@ def real_extract_concept_names(*args, **kwargs):
 
 
 def _create_question(db, question="質問", answer="回答"):
-    q = question_repository.create_question(db, question=question, answer=answer)
+    q = create_question(db, question=question, answer=answer)
     # Committed: concepts are attached through the async service's session.
     db.commit()
     return q

@@ -24,7 +24,7 @@ green. This issue stays open until all six are closed.
 | 2 | [108] | Sync RAG path; sync OpenAI and DeepSeek clients | done 2026-11-16 |
 | 3 | [109] | `export_seed`, `export_seed_embeddings`, `init_db`, `split_merged_concepts`, `backfill_levels` onto the async engine | done 2026-11-16 |
 | 4 | [110] | Sync `engine`, `SessionLocal`, `get_db`, `background_session`, `transaction()` | done 2026-11-16 |
-| 5 | [111] | Test-only sync helpers in `question_repository` | open |
+| 5 | [111] | Test-only sync helpers in `question_repository` | done 2026-11-16 |
 | 6 | [112] | Test-only sync helpers in the concept and embedding repositories | open |
 
 Chain: [107]→[108]→[109]→[110]→[111]→[112]→[98].

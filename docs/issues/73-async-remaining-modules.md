@@ -60,7 +60,7 @@ traffic first, then by which sync functions can be deleted soonest.
 | 16b | [108] | Sync RAG path and sync LLM clients | done 2026-11-16 |
 | 16c | [109] | Seed export, init_db and maintenance CLIs on the async engine | done 2026-11-16 |
 | 16d | [110] | Sync engine, SessionLocal, get_db, background_session, transaction() | done 2026-11-16 |
-| 16e | [111] | Test-only sync helpers in question_repository | open |
+| 16e | [111] | Test-only sync helpers in question_repository | done 2026-11-16 |
 | 16f | [112] | Test-only sync helpers in the concept and embedding repositories | open |
 | 17 | [98] | Rename pass: drop the async_ prefixes | open |
 | 18 | [99] | Async end state: architecture test, docs, connection budget (closes [73]) | open |

@@ -3,12 +3,12 @@ import pytest
 from physics_ai_tutor.repositories import (
     concept_repository,
     question_concept_repository,
-    question_repository,
 )
+from tests.conftest import create_question
 
 
 def _create_question(db, question="質問", answer="回答"):
-    q = question_repository.create_question(db, question=question, answer=answer)
+    q = create_question(db, question=question, answer=answer)
     db.flush()
     return q
 
@@ -133,7 +133,8 @@ async def test_approved_links_sharing_concepts_skips_self_and_unapproved(db, asy
     current = _create_question(db, "現在の質問", "回答")
     approved = _create_question(db, "承認済み", "回答")
     hidden = _create_question(db, "未レビュー", "回答")
-    question_repository.update_status(db, hidden.id, "UNREVIEWED")
+    hidden.status = "UNREVIEWED"
+    db.flush()
     concept = _create_concept(db, "共有概念")
     for question in (current, approved, hidden):
         question_concept_repository.link(

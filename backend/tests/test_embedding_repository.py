@@ -1,7 +1,8 @@
 import pytest
 
 from physics_ai_tutor.models import QuestionEmbedding
-from physics_ai_tutor.repositories import embedding_repository, question_repository
+from physics_ai_tutor.repositories import embedding_repository
+from tests.conftest import create_question
 
 DIM = 1536
 
@@ -13,7 +14,7 @@ def _vector(index: int, value: float = 1.0) -> list[float]:
 
 
 def _create_question(db, question: str = "テスト質問", answer: str = "テスト回答"):
-    return question_repository.create_question(db, question=question, answer=answer)
+    return create_question(db, question=question, answer=answer)
 
 
 def test_create_embedding_persists(db):

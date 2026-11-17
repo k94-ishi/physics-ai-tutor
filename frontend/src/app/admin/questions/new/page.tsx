@@ -55,7 +55,7 @@ export default function NewQuestionPage() {
 
             showToast(t("questionForm.registered"));
 
-            // フォームを初期化
+            // Reset the form.
             setQuestion("");
             setAnswer("");
         } catch (error) {

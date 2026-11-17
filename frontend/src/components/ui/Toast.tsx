@@ -48,7 +48,7 @@ export default function Toaster() {
     return (
         <div
             className="fixed right-4 z-50 flex flex-col gap-2"
-            // 下部固定の質問バー([43])があるときはその上に出す。
+            // Sit above the sticky ask bar when it is shown ([43]).
             style={{ bottom: "calc(1rem + var(--ask-bar-height, 0px))" }}
         >
             {items.map((item) => (

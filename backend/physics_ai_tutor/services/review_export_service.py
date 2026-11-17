@@ -1,10 +1,10 @@
 import hashlib
 import hmac
 import json
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterable
 from datetime import UTC, date, datetime
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.repositories import (
@@ -71,24 +71,24 @@ def default_since() -> datetime:
     return datetime.combine(REVIEW_DATA_CUTOFF, datetime.min.time(), tzinfo=UTC)
 
 
-def iter_export_rows(
-    db: Session,
+async def iter_export_rows(
+    db: AsyncSession,
     since: datetime | None,
-) -> Iterator[dict]:
+) -> AsyncIterator[dict]:
     """One dict per review, oldest first. `since=None` means everything."""
-    rows = question_review_repository.list_with_questions_since(db, since)
+    rows = await question_review_repository.list_with_questions_since(db, since)
 
     # Concept names per question in the language the review was done in.
     concepts_by_language: dict[str, dict[int, list[str]]] = {}
     for language in {review.language for review, _ in rows}:
         ids = [question.id for review, question in rows if review.language == language]
-        concepts_by_language[language] = (
-            question_concept_repository.get_concepts_for_questions(
-                db, ids, language=language
-            )
+        concepts_by_language[
+            language
+        ] = await question_concept_repository.get_concepts_for_questions(
+            db, ids, language=language
         )
 
-    ai_by_question = review_metrics_repository.ai_reviews_by_question(
+    ai_by_question = await review_metrics_repository.ai_reviews_by_question(
         db, {question.id for _, question in rows}
     )
 
@@ -125,6 +125,6 @@ def iter_export_rows(
         }
 
 
-def to_jsonl(rows: Iterator[dict]) -> Iterator[str]:
+def to_jsonl(rows: Iterable[dict]) -> Iterable[str]:
     for row in rows:
         yield json.dumps(row, ensure_ascii=False) + "\n"

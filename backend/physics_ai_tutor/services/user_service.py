@@ -1,16 +1,17 @@
 import logging
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.core.security import hash_password, verify_password
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models.user import User
 from physics_ai_tutor.repositories import user_repository
 
 logger = logging.getLogger(__name__)
 
 
-def create_user(
-    db: Session,
+async def create_user(
+    db: AsyncSession,
     email: str,
     password: str,
     role: str = "user",
@@ -24,51 +25,49 @@ def create_user(
         role=role,
     )
 
-    user_repository.create_user(db, user)
-
-    db.commit()
-    db.refresh(user)
+    async with transaction(db, "create_user"):
+        await user_repository.create_user(db, user)
+    await db.refresh(user)
 
     logger.info("User created: user_id=%s role=%s", user.id, user.role)
 
     return user
 
 
-def get_user(
-    db: Session,
+async def get_user(
+    db: AsyncSession,
     user_id: int,
 ) -> User | None:
 
-    return user_repository.get_user_by_id(db, user_id)
+    return await user_repository.get_user_by_id(db, user_id)
 
 
-def list_users(
-    db: Session,
+async def email_registered(db: AsyncSession, email: str) -> bool:
+    return await user_repository.get_user_by_email(db, email) is not None
+
+
+async def list_users(
+    db: AsyncSession,
 ) -> list[User]:
 
-    return user_repository.list_users(db)
+    return await user_repository.list_users(db)
 
 
-def delete_user(
-    db: Session,
+async def delete_user(
+    db: AsyncSession,
     user: User,
 ) -> None:
 
     user_id = user.id
 
-    try:
-        user_repository.delete_user(db, user)
-        db.commit()
+    async with transaction(db, "delete_user"):
+        await user_repository.delete_user(db, user)
 
-        logger.info("User deleted: user_id=%s", user_id)
-    except Exception:
-        logger.warning("Rolling back transaction: operation=delete_user")
-        db.rollback()
-        raise
+    logger.info("User deleted: user_id=%s", user_id)
 
 
-def change_password(
-    db: Session,
+async def change_password(
+    db: AsyncSession,
     user: User,
     current_password: str,
     new_password: str,
@@ -87,14 +86,8 @@ def change_password(
         )
         return False
 
-    try:
+    async with transaction(db, "change_password"):
         user.hashed_password = hash_password(new_password)
-        db.commit()
 
-        logger.info("Password changed: user_id=%s", user.id)
-    except Exception:
-        logger.warning("Rolling back transaction: operation=change_password")
-        db.rollback()
-        raise
-
+    logger.info("Password changed: user_id=%s", user.id)
     return True

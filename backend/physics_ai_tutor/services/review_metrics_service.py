@@ -2,7 +2,7 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable
 from datetime import datetime
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.repositories import review_metrics_repository
 from physics_ai_tutor.repositories.review_metrics_repository import ReviewPair
@@ -167,7 +167,9 @@ def build_report_from_pairs(
     )
 
 
-def build_report(db: Session, since: datetime | None) -> ReviewAgreementResponse:
-    return build_report_from_pairs(
-        review_metrics_repository.list_pairs(db, since), since
-    )
+async def build_report(
+    db: AsyncSession, since: datetime | None
+) -> ReviewAgreementResponse:
+    pairs = await review_metrics_repository.list_pairs(db, since)
+
+    return build_report_from_pairs(pairs, since)

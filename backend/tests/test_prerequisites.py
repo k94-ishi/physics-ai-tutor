@@ -1,10 +1,7 @@
 """Prerequisite block ([38]): ranking, exclusions, and the gap case."""
 
-from physics_ai_tutor.models import Question
-from physics_ai_tutor.repositories import (
-    concept_repository,
-    question_concept_repository,
-)
+from physics_ai_tutor.models import Concept, Question
+from tests.conftest import create_concept, link_concept
 
 QUESTIONS = "/api/v1/questions"
 
@@ -32,9 +29,9 @@ def _make_question(
 
 
 def _link(db, question_id: int, name_ja: str, name_en: str) -> None:
-    concept = concept_repository.get_by_name(db, name_ja, language="ja")
+    concept = db.query(Concept).filter(Concept.name_ja == name_ja).first()
     if concept is None:
-        concept = concept_repository.create(
+        concept = create_concept(
             db,
             name_ja=name_ja,
             name_en=name_en,
@@ -43,7 +40,7 @@ def _link(db, question_id: int, name_ja: str, name_en: str) -> None:
             embedding_model="mock",
             extraction_prompt_version="v6",
         )
-    question_concept_repository.link(db, question_id=question_id, concept_id=concept.id)
+    link_concept(db, question_id=question_id, concept_id=concept.id)
     db.commit()
 
 

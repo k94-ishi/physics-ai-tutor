@@ -6,16 +6,15 @@ import jwt
 from fastapi import Depends, HTTPException, Request, Response
 from fastapi.security import APIKeyCookie
 from pydantic import ValidationError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.exceptions import RateLimitExceeded
 from physics_ai_tutor.core.jwt import create_access_token, decode_access_token
 from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.models.user import User
-from physics_ai_tutor.repositories import user_repository
 from physics_ai_tutor.schemas.token import JWTPayload, UserRole
-from physics_ai_tutor.services import rate_limit_service
+from physics_ai_tutor.services import rate_limit_service, user_service
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +35,9 @@ def set_access_token_cookie(response: Response, token: str) -> None:
     )
 
 
-def get_current_user(
+async def get_current_user(
     response: Response,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     token: str | None = Depends(cookie_scheme),
 ) -> JWTPayload:
     """Validate the access token cookie and refresh it if expiration is near.
@@ -78,7 +77,7 @@ def get_current_user(
     refresh_threshold_seconds = settings.jwt_refresh_threshold_minutes * 60
 
     if remaining_seconds <= refresh_threshold_seconds:
-        user = user_repository.get_user_by_id(db, int(payload.sub))
+        user = await user_service.get_user(db, int(payload.sub))
 
         if user is None:
             logger.warning(
@@ -128,11 +127,11 @@ def get_current_user_optional(
         return None
 
 
-def get_current_db_user(
+async def get_current_db_user(
     payload: JWTPayload = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> User:
-    user = user_repository.get_user_by_id(db, int(payload.sub))
+    user = await user_service.get_user(db, int(payload.sub))
 
     if user is None:
         raise HTTPException(
@@ -191,28 +190,31 @@ class AiAskRateLimit:
 
     bucket_key: str
 
-    def record(self, db: Session) -> None:
-        rate_limit_service.record(db, AI_ASK_ACTION, self.bucket_key)
+    async def record(self, db: AsyncSession) -> None:
+        await rate_limit_service.record(db, AI_ASK_ACTION, self.bucket_key)
 
 
-def enforce_ai_ask_rate_limit(
-    request: Request,
-    user: JWTPayload | None = Depends(get_current_user_optional),
-    db: Session = Depends(get_db),
-) -> AiAskRateLimit:
+def _ask_bucket_and_limits(
+    request: Request, user: JWTPayload | None
+) -> tuple[str, list[tuple[int, int]]]:
     """Signed-in callers are limited per account; anonymous callers per IP."""
     if user is None:
-        bucket_key = f"ip:{get_client_ip(request)}"
-        limits = ANONYMOUS_AI_ASK_LIMITS
-    elif user.role == UserRole.ADMIN:
-        bucket_key = f"user:{user.sub}"
-        limits = ADMIN_AI_ASK_LIMITS
-    else:
-        bucket_key = f"user:{user.sub}"
-        limits = USER_AI_ASK_LIMITS
+        return f"ip:{get_client_ip(request)}", ANONYMOUS_AI_ASK_LIMITS
+    if user.role == UserRole.ADMIN:
+        return f"user:{user.sub}", ADMIN_AI_ASK_LIMITS
+    return f"user:{user.sub}", USER_AI_ASK_LIMITS
+
+
+async def enforce_ai_ask_rate_limit(
+    request: Request,
+    user: JWTPayload | None = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+) -> AiAskRateLimit:
+    """Check the ask limit; the route records the hit on a cache miss ([70])."""
+    bucket_key, limits = _ask_bucket_and_limits(request, user)
 
     try:
-        rate_limit_service.check(db, AI_ASK_ACTION, bucket_key, limits)
+        await rate_limit_service.check(db, AI_ASK_ACTION, bucket_key, limits)
     except RateLimitExceeded:
         raise HTTPException(
             status_code=429,
@@ -222,14 +224,14 @@ def enforce_ai_ask_rate_limit(
     return AiAskRateLimit(bucket_key=bucket_key)
 
 
-def enforce_login_rate_limit(
+async def enforce_login_rate_limit(
     request: Request,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> None:
     bucket_key = f"ip:{get_client_ip(request)}"
 
     try:
-        rate_limit_service.check(db, LOGIN_ACTION, bucket_key, LOGIN_LIMITS)
+        await rate_limit_service.check(db, LOGIN_ACTION, bucket_key, LOGIN_LIMITS)
     except RateLimitExceeded:
         raise HTTPException(
             status_code=429,
@@ -237,4 +239,9 @@ def enforce_login_rate_limit(
         ) from None
 
     # Every login attempt counts, successful or not.
-    rate_limit_service.record(db, LOGIN_ACTION, bucket_key)
+    await rate_limit_service.record(db, LOGIN_ACTION, bucket_key)
+
+
+def is_admin(current_user: JWTPayload | None) -> bool:
+    """Whether an optional caller is an admin (public routes vary by role)."""
+    return current_user is not None and current_user.role == UserRole.ADMIN

@@ -3,7 +3,7 @@ import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.api.dependencies import (
     ACCESS_TOKEN_COOKIE_NAME,
@@ -31,7 +31,7 @@ GOOGLE_STATE_MAX_AGE_SECONDS = 600
 
 
 @router.get("/providers", response_model=AuthProviders)
-def get_providers():
+async def get_providers():
     return AuthProviders(password=True, google=google_auth_service.is_enabled())
 
 
@@ -40,12 +40,12 @@ def get_providers():
     response_model=CurrentUser,
     dependencies=[Depends(enforce_login_rate_limit)],
 )
-def login(
+async def login(
     data: LoginRequest,
     response: Response,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    user = authenticate_user(db, data.email, data.password)
+    user = await authenticate_user(db, data.email, data.password)
 
     if user is None:
         raise HTTPException(
@@ -63,7 +63,7 @@ def login(
 
 
 @router.post("/logout", status_code=204)
-def logout(response: Response):
+async def logout(response: Response):
     """Clear the access token cookie.
 
     There is no server-side token blacklist, so a raw JWT captured before
@@ -96,7 +96,7 @@ def _login_page_redirect(error: str) -> RedirectResponse:
 
 
 @router.get("/google/login", status_code=302)
-def google_login(_: None = Depends(_require_google_enabled)):
+async def google_login(_: None = Depends(_require_google_enabled)):
     """Send the browser to Google with a fresh anti-CSRF state."""
     state = google_auth_service.generate_state()
 
@@ -118,12 +118,12 @@ def google_login(_: None = Depends(_require_google_enabled)):
 
 
 @router.get("/google/callback", status_code=302)
-def google_callback(
+async def google_callback(
     request: Request,
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     _: None = Depends(_require_google_enabled),
 ):
     """Finish the Google flow and issue the same session cookie as /login."""
@@ -138,8 +138,8 @@ def google_callback(
         return _login_page_redirect("google_failed")
 
     try:
-        identity = google_auth_service.exchange_code(code)
-        user = google_auth_service.login_or_register(db, identity)
+        identity = await google_auth_service.exchange_code(code)
+        user = await google_auth_service.login_or_register(db, identity)
     except GoogleAuthError:
         return _login_page_redirect("google_failed")
     except GoogleAccountConflictError:

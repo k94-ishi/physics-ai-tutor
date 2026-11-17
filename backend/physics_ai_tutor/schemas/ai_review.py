@@ -1,4 +1,3 @@
-from datetime import datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
@@ -29,22 +28,3 @@ class AiReviewCreate(BaseModel):
     prompt_version: str
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
-
-
-class AiReviewResponse(BaseModel):
-    id: int
-    question_id: int
-    language: Language
-    verdict: AiReviewVerdict | None
-    confidence: float | None
-    reasons: list[str]
-    rationale: str | None
-    suggested_answer: str | None
-    rubric: dict[str, int] | None
-    model: str
-    prompt_version: str
-    prompt_tokens: int | None
-    completion_tokens: int | None
-    created_at: datetime
-
-    model_config = {"from_attributes": True}

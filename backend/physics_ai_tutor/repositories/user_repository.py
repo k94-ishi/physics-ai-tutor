@@ -1,54 +1,49 @@
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.models.user import User
 
 
-def get_user_by_email(
-    db: Session,
+async def get_user_by_email(
+    db: AsyncSession,
     email: str,
 ) -> User | None:
+    return (await db.scalars(select(User).where(User.email == email))).first()
 
-    return db.query(User).filter(User.email == email).first()
 
-
-def get_user_by_id(
-    db: Session,
+async def get_user_by_id(
+    db: AsyncSession,
     user_id: int,
 ) -> User | None:
+    return (await db.scalars(select(User).where(User.id == user_id))).first()
 
-    return db.query(User).filter(User.id == user_id).first()
 
-
-def list_users(
-    db: Session,
+async def list_users(
+    db: AsyncSession,
 ) -> list[User]:
+    return list((await db.scalars(select(User).order_by(User.id))).all())
 
-    return db.query(User).order_by(User.id).all()
 
-
-def create_user(
-    db: Session,
+async def create_user(
+    db: AsyncSession,
     user: User,
 ) -> User:
-
     db.add(user)
-    db.flush()
+    await db.flush()
 
     return user
 
 
-def delete_user(
-    db: Session,
+async def delete_user(
+    db: AsyncSession,
     user: User,
 ) -> None:
+    await db.delete(user)
+    await db.flush()
 
-    db.delete(user)
-    db.flush()
 
-
-def get_user_by_google_sub(
-    db: Session,
+async def get_user_by_google_sub(
+    db: AsyncSession,
     google_sub: str,
 ) -> User | None:
-
-    return db.query(User).filter(User.google_sub == google_sub).first()
+    return (await db.scalars(select(User).where(User.google_sub == google_sub))).first()

@@ -7,16 +7,12 @@ type QuestionIdBadgeProps = {
     id: number;
 };
 
-/**
- * 質問IDを `#123` の形で表示し、クリックで数字だけをコピーする。
- * issue・eval・レビュー実行の出力はどれも質問をIDで指すので、一覧・編集・
- * 履歴のどこからでも同じ見た目でIDを確認・コピーできるようにする。
- */
+/** Shows a question id as `#123`; clicking copies the number ([31]). */
 export default function QuestionIdBadge({ id }: QuestionIdBadgeProps) {
     const { t } = useLanguage();
 
     const copy = async (event: React.MouseEvent) => {
-        // カード全体がクリック可能なので、コピーだけを実行する。
+        // The card is clickable too, so only copy here.
         event.stopPropagation();
         event.preventDefault();
 
@@ -24,7 +20,7 @@ export default function QuestionIdBadge({ id }: QuestionIdBadgeProps) {
             await navigator.clipboard.writeText(String(id));
             showToast(t("admin.questionIdCopied", { id }));
         } catch {
-            // クリップボードが使えない環境では表示だけで十分なので黙って無視する。
+            // Without a clipboard, showing the id is enough.
         }
     };
 

@@ -7,14 +7,21 @@ The command refuses to start outside DeepSeek's discounted window
 (AI_REVIEW_OFFPEAK_START/END, UTC) unless --force is given, so bulk runs
 land on the cheap tariff. The nightly job ([26]) uses --scope both to
 review the pending backlog first and stale verdicts after it.
+
+Questions are graded a few at a time (AI_REVIEW_CONCURRENCY). A reviewer
+failure is one failed question; an unexpected crash stops the run and
+exits 1 unless --continue-on-crash is given ([105]).
 """
 
 import argparse
+import asyncio
 import sys
 from datetime import UTC, datetime, time
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from physics_ai_tutor.core.config import settings
-from physics_ai_tutor.database.database import SessionLocal
+from physics_ai_tutor.database.database import AsyncSessionLocal
 from physics_ai_tutor.services import ai_review_service
 
 # Exit codes: 0 = reviewed (or nothing to do), 1 = did not review when it
@@ -69,13 +76,20 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Start even outside the off-peak window (full price).",
     )
+    parser.add_argument(
+        "--continue-on-crash",
+        action="store_true",
+        help="Count a question that crashes as failed and go on. By default "
+        "a crash stops the run and the command exits 1, so the nightly job "
+        "alerts.",
+    )
     return parser.parse_args()
 
 
-def _count_eligible(db, scope: str) -> int:
+async def _count_eligible(db: AsyncSession, scope: str) -> int:
     if scope == "pending":
-        return ai_review_service.count_pending(db)
-    return ai_review_service.count_stale(db)
+        return await ai_review_service.count_pending(db)
+    return await ai_review_service.count_stale(db)
 
 
 def main(
@@ -83,6 +97,7 @@ def main(
     scope: str = "pending",
     trigger: str = "cli",
     force: bool = False,
+    continue_on_crash: bool = False,
 ) -> int:
     """Process exit code: 0 when the work finished, 1 when it did not.
 
@@ -102,17 +117,24 @@ def main(
         return EXIT_OUTSIDE_WINDOW
 
     scopes = ["pending", "stale"] if scope == "both" else [scope]
-    db = SessionLocal()
+
+    return asyncio.run(_review_scopes(scopes, limit, trigger, continue_on_crash))
+
+
+async def _review_scopes(
+    scopes: list[str], limit: int, trigger: str, continue_on_crash: bool
+) -> int:
+    """Async since [105]; one run per scope, stopping at the first failure."""
     reviewed_something = False
 
-    try:
+    async with AsyncSessionLocal() as db:
         for current_scope in scopes:
-            if _count_eligible(db, current_scope) == 0:
+            if await _count_eligible(db, current_scope) == 0:
                 print(f"No {current_scope} questions to review")
                 continue
 
             try:
-                run = ai_review_service.start_run(
+                run = await ai_review_service.start_run(
                     db, scope=current_scope, trigger=trigger, limit=limit
                 )
             except ai_review_service.RunInProgressError:
@@ -124,7 +146,9 @@ def main(
                 # spending none of it on anything is a silent outage.
                 return EXIT_OK if reviewed_something else EXIT_FAILED
 
-            finished = ai_review_service.execute_run(db, run.id)
+            finished = await ai_review_service.execute_run(
+                db, run.id, stop_on_crash=not continue_on_crash
+            )
             assert finished is not None
             run = finished
             print(
@@ -141,11 +165,11 @@ def main(
 
             reviewed_something = True
 
-        return EXIT_OK
-    finally:
-        db.close()
+    return EXIT_OK
 
 
 if __name__ == "__main__":
     args = parse_args()
-    sys.exit(main(args.limit, args.scope, args.trigger, args.force))
+    sys.exit(
+        main(args.limit, args.scope, args.trigger, args.force, args.continue_on_crash)
+    )

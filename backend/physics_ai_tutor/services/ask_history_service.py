@@ -1,7 +1,8 @@
 import logging
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.repositories import question_ask_repository
 from physics_ai_tutor.schemas.ask_history import MyQuestionEntry, MyQuestionsResponse
 from physics_ai_tutor.schemas.language import Language
@@ -10,21 +11,19 @@ from physics_ai_tutor.schemas.question import QuestionStatus
 logger = logging.getLogger(__name__)
 
 
-def record_ask(
-    db: Session,
+async def record_ask(
+    db: AsyncSession,
     question_id: int,
     user_id: int,
     language: Language | str,
     cache_hit: bool,
 ) -> None:
-    """Best-effort: a failed history row must not fail the answer."""
+    """As `record_ask`; still best effort ([70])."""
     try:
-        question_ask_repository.create(
-            db, question_id, user_id, Language(language).value, cache_hit=cache_hit
-        )
-        db.commit()
-
-        logger.info("Ask recorded: question_id=%d user_id=%d", question_id, user_id)
+        async with transaction(db, "record_ask"):
+            await question_ask_repository.create(
+                db, question_id, user_id, Language(language).value, cache_hit=cache_hit
+            )
     except Exception:
         logger.warning(
             "Recording ask failed: question_id=%d user_id=%d",
@@ -32,21 +31,23 @@ def record_ask(
             user_id,
             exc_info=True,
         )
-        db.rollback()
+        return
+
+    logger.info("Ask recorded: question_id=%d user_id=%d", question_id, user_id)
 
 
-def fetch_my_questions(
-    db: Session,
+async def fetch_my_questions(
+    db: AsyncSession,
     user_id: int,
     page: int,
     size: int,
     language: Language | str,
 ) -> MyQuestionsResponse:
     lang = Language(language)
-    rows = question_ask_repository.list_for_user(
+    rows = await question_ask_repository.list_for_user(
         db, user_id, offset=(page - 1) * size, limit=size
     )
-    total = question_ask_repository.count_for_user(db, user_id)
+    total = await question_ask_repository.count_for_user(db, user_id)
 
     items = []
     for ask, question in rows:

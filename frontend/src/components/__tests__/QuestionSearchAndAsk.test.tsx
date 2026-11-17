@@ -28,6 +28,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
         searchQuestions: vi.fn(),
         fetchQuestionByExactText: vi.fn(),
         askAi: vi.fn(),
+        askAiStream: vi.fn(),
     };
 });
 
@@ -62,6 +63,8 @@ beforeEach(() => {
     mocked.fetchQuestionByExactText
         .mockReset()
         .mockRejectedValue(new api.ApiError(404, "not found"));
+    mocked.askAi.mockReset();
+    mocked.askAiStream.mockReset();
 });
 
 describe("?similar= in the URL", () => {
@@ -170,5 +173,100 @@ describe("?similar= in the URL", () => {
         expect(navigation.replace).toHaveBeenCalledWith("/", { scroll: false });
         // Clearing is a URL change only; no search is spent on it.
         expect(mocked.searchQuestions).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("preview of a similarity result ([56])", () => {
+    it("opens the preview instead of leaving the page", async () => {
+        const user = userEvent.setup();
+        navigation.params = new URLSearchParams("similar=斜方投射の運動について");
+        renderSearch();
+
+        await user.click(await screen.findByText("斜方投射とは？"));
+
+        const dialog = screen.getByRole("dialog");
+        expect(dialog).toHaveTextContent("斜めに投げ出した物体の運動です。");
+        expect(
+            screen.getByRole("link", { name: "この質問のページを開く" })
+        ).toHaveAttribute("href", "/questions/7");
+        expect(navigation.push).not.toHaveBeenCalled();
+
+        await user.keyboard("{Escape}");
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+});
+
+describe("streamed answers ([71])", () => {
+    const DONE = {
+        answer: "斜方投射の答えです。",
+        language: "ja" as const,
+        cached: false,
+        question_id: 11,
+        status: "UNREVIEWED" as const,
+    };
+
+    async function searchThenAsk(user: ReturnType<typeof userEvent.setup>) {
+        renderSearch();
+        await user.type(screen.getByRole("textbox"), "斜方投射の運動について");
+        await user.click(screen.getByRole("button", { name: "検索" }));
+        await screen.findByText("斜方投射とは？");
+        await user.click(
+            screen.getByRole("button", { name: "AIによる回答生成を実行" })
+        );
+    }
+
+    it("renders the answer as it arrives, before the stream finishes", async () => {
+        const user = userEvent.setup();
+        let release: (() => void) | undefined;
+        const held = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+
+        mocked.askAiStream.mockImplementation(async (_q, _o, handlers) => {
+            handlers.onDelta("斜方投射の");
+            await held;
+            handlers.onDelta("答えです。");
+            return DONE;
+        });
+
+        await searchThenAsk(user);
+
+        // Visible while the stream is still open.
+        await screen.findByText("斜方投射の");
+
+        release?.();
+
+        await screen.findByText("斜方投射の答えです。");
+        expect(mocked.askAi).not.toHaveBeenCalled();
+    });
+
+    it("falls back to the plain endpoint when streaming fails", async () => {
+        const user = userEvent.setup();
+        mocked.askAiStream.mockRejectedValue(new Error("no stream here"));
+        mocked.askAi.mockResolvedValue(DONE);
+
+        await searchThenAsk(user);
+
+        await screen.findByText("斜方投射の答えです。");
+        expect(mocked.askAi).toHaveBeenCalledTimes(1);
+    });
+
+    it("tries both paths before giving up, and renders no answer", async () => {
+        // The failure toast itself is Toaster plumbing, covered by its own
+        // test; what matters here is that the fallback was attempted and
+        // no half-streamed text is left on screen.
+        const user = userEvent.setup();
+        mocked.askAiStream.mockImplementation(async (_q, _o, handlers) => {
+            handlers.onDelta("途中まで");
+            throw new Error("no stream here");
+        });
+        mocked.askAi.mockRejectedValue(new Error("down"));
+
+        await searchThenAsk(user);
+
+        await waitFor(() => expect(mocked.askAi).toHaveBeenCalledTimes(1));
+        await waitFor(() =>
+            expect(screen.queryByText("途中まで")).not.toBeInTheDocument()
+        );
     });
 });

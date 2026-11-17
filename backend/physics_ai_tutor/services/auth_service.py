@@ -1,6 +1,6 @@
 import logging
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.core.security import verify_password
 from physics_ai_tutor.repositories import user_repository
@@ -8,12 +8,12 @@ from physics_ai_tutor.repositories import user_repository
 logger = logging.getLogger(__name__)
 
 
-def authenticate_user(
-    db: Session,
+async def authenticate_user(
+    db: AsyncSession,
     email: str,
     password: str,
 ):
-    user = user_repository.get_user_by_email(
+    user = await user_repository.get_user_by_email(
         db,
         email,
     )

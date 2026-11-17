@@ -8,10 +8,7 @@ type ReferencedQuestionsProps = {
     items: RetrievedQuestionRef[];
 };
 
-/**
- * RAG生成結果のカード下部に表示する「参考にしたQA」一覧。通常QAとの
- * 差分を示すため、本文とは別フォント(font-serif)で表示する。
- */
+/** The QAs a RAG answer was grounded in, in a serif font to set them apart. */
 export default function ReferencedQuestions({ items }: ReferencedQuestionsProps) {
     const { t } = useLanguage();
 

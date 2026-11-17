@@ -35,7 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const currentUser = await fetchCurrentUser();
             setUser(currentUser);
         } catch (error) {
-            // 未ログイン(401)はエラーではなく通常の状態として扱う
+            // Not logged in (401) is a normal state, not an error.
             if (!(error instanceof ApiError && error.status === 401)) {
                 console.error(error);
             }

@@ -6,6 +6,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from physics_ai_tutor.core.config import settings
+from physics_ai_tutor.core.timing import request_path
 
 access_logger = logging.getLogger("physics_ai_tutor.access")
 
@@ -55,7 +56,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
         start = time.perf_counter()
         try:
-            response = await call_next(request)
+            # Stages logged while serving carry this path ([68]).
+            with request_path(request.url.path):
+                response = await call_next(request)
         except Exception:
             duration_ms = (time.perf_counter() - start) * 1000
             access_logger.error(

@@ -1,14 +1,12 @@
-from physics_ai_tutor.services import deepseek_service
-from tests.conftest import fake_generation
+from tests.conftest import fake_generation, patch_generation
 
 ASK_PATH = "/api/v1/ai/ask"
 QUESTIONS = "/api/v1/questions"
 
 
 def _make_unreviewed(client, monkeypatch, text="理由コードのテスト質問"):
-    monkeypatch.setattr(
-        deepseek_service,
-        "generate_answer",
+    patch_generation(
+        monkeypatch,
         fake_generation("回答"),
     )
     response = client.post(ASK_PATH, json={"question": text})

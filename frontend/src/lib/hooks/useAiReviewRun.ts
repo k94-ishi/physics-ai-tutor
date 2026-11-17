@@ -8,18 +8,13 @@ import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 export const RUN_POLL_INTERVAL_MS = 2500;
 
-/**
- * AIレビュー実行の開始とポーリングをまとめたフック([27][28]で共用)。
- * 409(実行中)と429(日次上限)はトーストにして呼び出し側へはnullを返す。
- * 実行中はRUN_POLL_INTERVAL_MSごとに進捗を取り直し、終わったら
- * onFinishedを一度だけ呼ぶ。
- */
+/** Starts and polls an AI review run; 409 and 429 become toasts ([27], [28]). */
 export function useAiReviewRun(onFinished?: (run: AiReviewRun) => void) {
     const { t } = useLanguage();
     const [run, setRun] = useState<AiReviewRun | null>(null);
     const [starting, setStarting] = useState(false);
 
-    // 毎ポーリングでeffectを張り直さないよう、最新のコールバックだけ持つ。
+    // Keep only the latest callback, so polling does not re-create the effect.
     const onFinishedRef = useRef(onFinished);
     useEffect(() => {
         onFinishedRef.current = onFinished;
@@ -45,7 +40,7 @@ export function useAiReviewRun(onFinished?: (run: AiReviewRun) => void) {
                     onFinishedRef.current?.(next);
                 }
             } catch (error) {
-                // 一時的な取得失敗は次のポーリングに任せる。
+                // A failed poll is retried on the next one.
                 console.error(error);
             }
         }, RUN_POLL_INTERVAL_MS);
@@ -86,7 +81,7 @@ export function useAiReviewRun(onFinished?: (run: AiReviewRun) => void) {
         [t]
     );
 
-    // 他の場所(直近一覧など)で見つけた実行中ランをこのフックに引き継ぐ。
+    // Adopt a running run found elsewhere, such as the recent runs list.
     const adopt = useCallback((existing: AiReviewRun) => {
         setRun((prev) => (prev?.id === existing.id ? prev : existing));
     }, []);

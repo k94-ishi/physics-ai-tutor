@@ -2,17 +2,23 @@ from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime, String, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from physics_ai_tutor.database.base import Base
+from physics_ai_tutor.models.concept_term import ConceptTerm
 
 
 class Concept(Base):
     __tablename__ = "concepts"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name_ja: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
-    name_en: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
+    # Mirrors of the preferred term per language ([55]); not unique any more,
+    # because two senses may share a word. Terms live in concept_terms.
+    name_ja: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    name_en: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Short disambiguation shown when two senses share a label.
+    gloss_ja: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    gloss_en: Mapped[str | None] = mapped_column(String(255), nullable=True)
     embedding: Mapped[list[float]] = mapped_column(Vector(1536), nullable=False)
     extraction_model: Mapped[str] = mapped_column(String, nullable=False)
     embedding_model: Mapped[str] = mapped_column(String, nullable=False)
@@ -28,6 +34,15 @@ class Concept(Base):
         onupdate=func.now(),
         nullable=False,
     )
+    terms: Mapped[list[ConceptTerm]] = relationship(
+        ConceptTerm, lazy="selectin", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+    def gloss_in(self, language: str) -> str | None:
+        return self.gloss_ja if language == "ja" else self.gloss_en
+
+    def terms_in(self, language: str) -> list[ConceptTerm]:
+        return [term for term in self.terms if term.language == language]
 
     def name_in(self, language: str) -> str | None:
         return self.name_ja if language == "ja" else self.name_en

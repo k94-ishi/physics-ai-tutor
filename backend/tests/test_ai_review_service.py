@@ -1,14 +1,20 @@
 import json
+from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from physics_ai_tutor.cli import review_pending as review_pending_cli
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.models import AiReview, Question
-from physics_ai_tutor.services import ai_review_service, deepseek_service
+from physics_ai_tutor.services import ai_review_service
 from physics_ai_tutor.services.deepseek_service import GenerationResult
-from tests.conftest import engine, fake_generation
+from tests.conftest import (
+    async_engine,
+    create_ai_review,
+    fake_generation,
+    patch_generation,
+)
 
 ASK_PATH = "/api/v1/ai/ask"
 
@@ -45,7 +51,7 @@ def _sequenced_generation(monkeypatch, *contents):
             content=content, model="mock-model", prompt_tokens=5, completion_tokens=7
         )
 
-    monkeypatch.setattr(deepseek_service, "generate_answer", _next)
+    patch_generation(monkeypatch, _next)
 
 
 def test_new_ai_answer_gets_exactly_one_review(client, db, monkeypatch, review_enabled):
@@ -82,7 +88,7 @@ def test_cache_hit_triggers_no_review(client, db, monkeypatch, review_enabled):
 
 
 def test_disabled_flag_skips_the_review(client, db, monkeypatch):
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
 
     client.post(ASK_PATH, json={"question": "フラグ無効の質問です"})
 
@@ -113,7 +119,7 @@ def test_reviewer_failure_does_not_break_translation(
             raise RuntimeError("reviewer down")
         return fake_generation("回答")(system_prompt, user_prompt)
 
-    monkeypatch.setattr(deepseek_service, "generate_answer", _answer_then_error)
+    patch_generation(monkeypatch, _answer_then_error)
 
     response = client.post(ASK_PATH, json={"question": "翻訳は守られる質問です"})
     assert response.status_code == 200
@@ -169,7 +175,7 @@ def test_reviewer_prompt_matches_the_questions_language(
             content=content, model="mock-model", prompt_tokens=1, completion_tokens=1
         )
 
-    monkeypatch.setattr(deepseek_service, "generate_answer", _capture)
+    patch_generation(monkeypatch, _capture)
 
     client.post(ASK_PATH, json={"question": "What is momentum here?", "language": "en"})
 
@@ -184,8 +190,9 @@ def test_reviewer_prompt_matches_the_questions_language(
 
 @pytest.fixture
 def _bind_review_cli(monkeypatch, db):
-    factory = sessionmaker(bind=engine, expire_on_commit=False)
-    monkeypatch.setattr(review_pending_cli, "SessionLocal", factory)
+    # The CLI is async since [105]; bind it to the test engine.
+    factory = async_sessionmaker(bind=async_engine, expire_on_commit=False)
+    monkeypatch.setattr(review_pending_cli, "AsyncSessionLocal", factory)
     # Pin the clock inside the off-peak window so these tests do not
     # depend on the wall-clock time they happen to run at.
     from datetime import UTC, datetime
@@ -201,14 +208,13 @@ def test_cli_backfills_only_pending_questions(
     client, db, monkeypatch, _bind_review_cli
 ):
     # Two generations with the reviewer disabled -> no rows yet.
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
     client.post(ASK_PATH, json={"question": "バックフィル質問その1"})
     client.post(ASK_PATH, json={"question": "バックフィル質問その2"})
     assert db.query(AiReview).count() == 0
 
-    monkeypatch.setattr(
-        deepseek_service,
-        "generate_answer",
+    patch_generation(
+        monkeypatch,
         fake_generation(json.dumps(VALID_REVIEW)),
     )
 
@@ -229,15 +235,15 @@ def test_cli_exits_nonzero_when_the_run_fails(
     client, db, monkeypatch, _bind_review_cli
 ):
     """A scheduled run ([26]) can only alert if failure reaches the exit code."""
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
     client.post(ASK_PATH, json={"question": "失敗するはずの質問です"})
 
     from physics_ai_tutor.models import AiReviewRun
     from physics_ai_tutor.services import ai_review_service as service
 
-    def _boom(db_, run_id):
-        run = db_.get(AiReviewRun, run_id)
-        service._finish(db_, run, "failed", "boom")
+    async def _boom(db_, run_id, **kwargs):
+        run = await db_.get(AiReviewRun, run_id)
+        await service._finish(db_, run, "failed", "boom")
         return run
 
     monkeypatch.setattr(service, "execute_run", _boom)
@@ -245,16 +251,17 @@ def test_cli_exits_nonzero_when_the_run_fails(
     assert review_pending_cli.main(limit=1) == 1
 
 
-def test_service_skips_non_ai_and_already_reviewed_questions(
-    admin_client, db, monkeypatch
+@pytest.mark.anyio
+async def test_service_skips_non_ai_and_already_reviewed_questions(
+    async_db, admin_client, db, monkeypatch
 ):
     created = admin_client.post(
         "/api/v1/questions",
         json={"question": "手動の質問です", "answer": "手動の回答"},
     )
-    question = db.get(Question, created.json()["id"])
+    question = await async_db.get(Question, created.json()["id"])
 
-    assert ai_review_service.review_question(db, question) is None
+    assert await ai_review_service.review_question(async_db, question) is None
     assert db.query(AiReview).count() == 0
 
 
@@ -262,7 +269,7 @@ def test_service_skips_non_ai_and_already_reviewed_questions(
 
 
 def _three_pending(client, monkeypatch):
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
     return [
         client.post(ASK_PATH, json={"question": f"ラン対象の質問その{i}"}).json()[
             "question_id"
@@ -271,23 +278,23 @@ def _three_pending(client, monkeypatch):
     ]
 
 
-def test_run_over_pending_questions_counts_and_sums_tokens(
-    client, db, monkeypatch, _bind_review_cli
+@pytest.mark.anyio
+async def test_run_over_pending_questions_counts_and_sums_tokens(
+    async_db, client, db, monkeypatch
 ):
     ids = _three_pending(client, monkeypatch)
-    monkeypatch.setattr(
-        deepseek_service,
-        "generate_answer",
+    patch_generation(
+        monkeypatch,
         fake_generation(json.dumps(VALID_REVIEW)),
     )
 
     from physics_ai_tutor.services import ai_review_service as service
 
-    run = service.start_run(db, scope="pending", trigger="cli")
+    run = await service.start_run(async_db, scope="pending", trigger="cli")
     assert run.requested_count == 3
     assert run.question_ids == ids
 
-    finished = service.execute_run(db, run.id)
+    finished = await service.execute_run(async_db, run.id)
 
     assert finished.status == "done"
     assert finished.reviewed_count == 3
@@ -299,21 +306,29 @@ def test_run_over_pending_questions_counts_and_sums_tokens(
     assert db.query(AiReview).count() == 3
 
 
-def test_second_run_refused_while_one_is_running(client, db, monkeypatch):
+@pytest.mark.anyio
+async def test_second_run_refused_while_one_is_running(
+    async_db, client, db, monkeypatch
+):
     _three_pending(client, monkeypatch)
     from physics_ai_tutor.services import ai_review_service as service
 
-    service.start_run(db, scope="pending", trigger="cli")
+    await service.start_run(async_db, scope="pending", trigger="cli")
 
     with pytest.raises(service.RunInProgressError):
-        service.start_run(db, scope="pending", trigger="cli")
+        await service.start_run(async_db, scope="pending", trigger="cli")
 
     from physics_ai_tutor.models import AiReviewRun
 
     assert db.query(AiReviewRun).count() == 1
 
 
-def test_one_failure_is_counted_and_does_not_stop_the_run(client, db, monkeypatch):
+@pytest.mark.anyio
+async def test_one_failure_is_counted_and_does_not_stop_the_run(
+    async_db, client, db, monkeypatch
+):
+    """A reviewer failure is one failed item, even when crashes stop runs."""
+    monkeypatch.setattr(settings, "ai_review_concurrency", 1)
     ids = _three_pending(client, monkeypatch)
     calls = {"n": 0}
 
@@ -328,11 +343,11 @@ def test_one_failure_is_counted_and_does_not_stop_the_run(client, db, monkeypatc
             completion_tokens=22,
         )
 
-    monkeypatch.setattr(deepseek_service, "generate_answer", _second_fails)
+    patch_generation(monkeypatch, _second_fails)
     from physics_ai_tutor.services import ai_review_service as service
 
-    run = service.start_run(db, scope="pending", trigger="cli")
-    finished = service.execute_run(db, run.id)
+    run = await service.start_run(async_db, scope="pending", trigger="cli")
+    finished = await service.execute_run(async_db, run.id, stop_on_crash=True)
 
     assert finished.status == "done"
     assert finished.reviewed_count == 2
@@ -340,16 +355,18 @@ def test_one_failure_is_counted_and_does_not_stop_the_run(client, db, monkeypatc
     assert sorted(r.question_id for r in db.query(AiReview)) == sorted([ids[0], ids[2]])
 
 
-def test_stale_scope_picks_only_old_prompt_versions(client, db, monkeypatch):
+@pytest.mark.anyio
+async def test_stale_scope_picks_only_old_prompt_versions(
+    async_db, client, db, monkeypatch
+):
     first, second, _ = _three_pending(client, monkeypatch)
-    from physics_ai_tutor.repositories import ai_review_repository
     from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
     from physics_ai_tutor.schemas.language import Language
     from physics_ai_tutor.services import ai_review_service as service
 
     versions = ((first, "r0"), (second, service.REVIEW_PROMPT_VERSION))
     for question_id, version in versions:
-        ai_review_repository.create(
+        create_ai_review(
             db,
             AiReviewCreate(
                 question_id=question_id,
@@ -361,29 +378,30 @@ def test_stale_scope_picks_only_old_prompt_versions(client, db, monkeypatch):
         )
     db.commit()
 
-    assert service.eligible_question_ids(db, "stale") == [first]
+    assert await service.eligible_question_ids(async_db, "stale") == [first]
 
 
-def test_daily_cap_truncates_and_then_refuses(client, db, monkeypatch):
+@pytest.mark.anyio
+async def test_daily_cap_truncates_and_then_refuses(async_db, client, db, monkeypatch):
     _three_pending(client, monkeypatch)
     monkeypatch.setattr(settings, "ai_review_daily_cap", 2)
-    monkeypatch.setattr(
-        deepseek_service,
-        "generate_answer",
+    patch_generation(
+        monkeypatch,
         fake_generation(json.dumps(VALID_REVIEW)),
     )
     from physics_ai_tutor.services import ai_review_service as service
 
-    run = service.start_run(db, scope="pending", trigger="cli")
+    run = await service.start_run(async_db, scope="pending", trigger="cli")
     assert run.requested_count == 2
-    service.execute_run(db, run.id)
+    await service.execute_run(async_db, run.id)
 
     with pytest.raises(service.DailyCapExhaustedError):
-        service.start_run(db, scope="pending", trigger="cli")
+        await service.start_run(async_db, scope="pending", trigger="cli")
 
 
-def test_selected_scope_keeps_only_reviewable_ids(
-    client, admin_client, db, monkeypatch
+@pytest.mark.anyio
+async def test_selected_scope_keeps_only_reviewable_ids(
+    async_db, client, admin_client, db, monkeypatch
 ):
     ids = _three_pending(client, monkeypatch)
     manual = admin_client.post(
@@ -392,74 +410,76 @@ def test_selected_scope_keeps_only_reviewable_ids(
     ).json()["id"]
     from physics_ai_tutor.services import ai_review_service as service
 
-    eligible = service.eligible_question_ids(
-        db, "selected", question_ids=[ids[0], manual, ids[2], 99999]
+    eligible = await service.eligible_question_ids(
+        async_db, "selected", question_ids=[ids[0], manual, ids[2], 99999]
     )
 
     assert eligible == [ids[0], ids[2]]
 
 
-def test_question_reviewed_mid_run_counts_as_skipped_not_failed(
-    client, admin_client, db, monkeypatch
+@pytest.mark.anyio
+async def test_question_reviewed_mid_run_counts_as_skipped_not_failed(
+    async_db, client, admin_client, db, monkeypatch
 ):
     """[28] requires skips to be reported as skips; they are not errors."""
     ids = _three_pending(client, monkeypatch)
     from physics_ai_tutor.models import AiReviewRun
     from physics_ai_tutor.services import ai_review_service as service
 
-    run = service.start_run(db, scope="pending", trigger="cli")
+    run = await service.start_run(async_db, scope="pending", trigger="cli")
+    run_id = run.id
 
     # A teacher approves one of them after the run fixed its id list.
     question = db.get(Question, ids[1])
     question.status = "APPROVED"
     db.commit()
 
-    monkeypatch.setattr(
-        deepseek_service,
-        "generate_answer",
+    patch_generation(
+        monkeypatch,
         fake_generation(json.dumps(VALID_REVIEW)),
     )
-    service.execute_run(db, run.id)
+    await service.execute_run(async_db, run_id)
 
-    finished = db.get(AiReviewRun, run.id)
+    finished = db.get(AiReviewRun, run_id)
     assert finished.reviewed_count == 2
     assert finished.skipped_count == 1
     assert finished.failed_count == 0, "a skip must not be reported as a failure"
 
 
-def test_unparsed_verdict_is_retried_then_given_up_on(client, db, monkeypatch):
+@pytest.mark.anyio
+async def test_unparsed_verdict_is_retried_then_given_up_on(
+    async_db, client, db, monkeypatch
+):
     """A NULL verdict is no verdict, so the question stays pending - but not forever."""
     from physics_ai_tutor.repositories import ai_review_repository
     from physics_ai_tutor.services import ai_review_service as service
 
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
     asked = client.post(ASK_PATH, json={"question": "解析できない判定の質問"})
     question_id = asked.json()["question_id"]
 
-    monkeypatch.setattr(
-        deepseek_service, "generate_answer", fake_generation("not json at all")
-    )
+    patch_generation(monkeypatch, fake_generation("not json at all"))
 
     attempts = ai_review_repository.MAX_PARSE_ATTEMPTS
+    pending_ids = ai_review_repository.list_pending_question_ids
     for attempt in range(attempts):
-        pending = ai_review_repository.list_pending_question_ids(db, 10)
+        pending = await pending_ids(async_db, 10)
         assert question_id in pending, f"unparsed verdict dropped after {attempt}"
-        service.review_question(db, db.get(Question, question_id))
+        question = await async_db.get(Question, question_id)
+        await service.review_question(async_db, question)
 
     assert db.query(AiReview).filter_by(question_id=question_id).count() == attempts
-    assert question_id not in ai_review_repository.list_pending_question_ids(db, 10)
+    assert question_id not in await pending_ids(async_db, 10)
 
     # A readable verdict settles it immediately.
-    monkeypatch.setattr(
-        deepseek_service,
-        "generate_answer",
+    patch_generation(
+        monkeypatch,
         fake_generation(json.dumps(VALID_REVIEW)),
     )
     other = client.post(ASK_PATH, json={"question": "普通に判定できる質問"}).json()
-    service.review_question(db, db.get(Question, other["question_id"]))
-    assert other["question_id"] not in ai_review_repository.list_pending_question_ids(
-        db, 10
-    )
+    other_question = await async_db.get(Question, other["question_id"])
+    await service.review_question(async_db, other_question)
+    assert other["question_id"] not in await pending_ids(async_db, 10)
 
 
 def test_pending_count_is_not_capped_by_the_daily_budget(
@@ -476,21 +496,57 @@ def test_pending_count_is_not_capped_by_the_daily_budget(
     assert body["would_review_pending"] == 2, "what a run started now would touch"
 
 
-def test_timed_out_run_is_failed_and_replaced(client, db, monkeypatch):
+def test_pending_count_reports_stale_and_used_budget(
+    client, admin_client, db, monkeypatch
+):
+    """The async counters ([103]) apply the same rules as the run's scopes."""
+    from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
+    from physics_ai_tutor.schemas.language import Language
+
+    old, current, unparsed = _three_pending(client, monkeypatch)
+    rows = (
+        (old, AiReviewVerdict.APPROVE, "r0"),
+        (current, AiReviewVerdict.APPROVE, ai_review_service.REVIEW_PROMPT_VERSION),
+        (unparsed, None, ai_review_service.REVIEW_PROMPT_VERSION),
+    )
+    for question_id, verdict, version in rows:
+        create_ai_review(
+            db,
+            AiReviewCreate(
+                question_id=question_id,
+                language=Language.JA,
+                verdict=verdict,
+                model="mock",
+                prompt_version=version,
+            ),
+        )
+    db.commit()
+
+    body = admin_client.get("/api/v1/admin/ai-review/pending-count").json()
+
+    # Only the unparsed verdict is retried; only the r0 verdict is stale.
+    assert body["pending"] == 1
+    assert body["stale"] == 1
+    assert body["used_24h"] == 3
+    assert body["remaining"] == settings.ai_review_daily_cap - 3
+
+
+@pytest.mark.anyio
+async def test_timed_out_run_is_failed_and_replaced(async_db, client, db, monkeypatch):
     _three_pending(client, monkeypatch)
     from datetime import UTC, datetime, timedelta
 
     from physics_ai_tutor.models import AiReviewRun
     from physics_ai_tutor.services import ai_review_service as service
 
-    stuck = service.start_run(db, scope="pending", trigger="cli")
+    stuck = await service.start_run(async_db, scope="pending", trigger="cli")
     # Silent for an hour: the heartbeat is what the reaper looks at.
     db.query(AiReviewRun).filter_by(id=stuck.id).update(
         {"heartbeat_at": datetime.now(UTC) - timedelta(hours=1)}
     )
     db.commit()
 
-    fresh = service.start_run(db, scope="pending", trigger="manual")
+    fresh = await service.start_run(async_db, scope="pending", trigger="manual")
 
     stale_row = db.get(AiReviewRun, stuck.id)
     assert stale_row.status == "failed"
@@ -498,7 +554,8 @@ def test_timed_out_run_is_failed_and_replaced(client, db, monkeypatch):
     assert fresh.status == "running"
 
 
-def test_long_but_healthy_run_is_not_reaped(client, db, monkeypatch):
+@pytest.mark.anyio
+async def test_long_but_healthy_run_is_not_reaped(async_db, client, db, monkeypatch):
     """Duration alone must not reap a run; a full-cap run exceeds the timeout."""
     _three_pending(client, monkeypatch)
     from datetime import UTC, datetime, timedelta
@@ -506,7 +563,7 @@ def test_long_but_healthy_run_is_not_reaped(client, db, monkeypatch):
     from physics_ai_tutor.models import AiReviewRun
     from physics_ai_tutor.services import ai_review_service as service
 
-    busy = service.start_run(db, scope="pending", trigger="cli")
+    busy = await service.start_run(async_db, scope="pending", trigger="cli")
     db.query(AiReviewRun).filter_by(id=busy.id).update(
         {
             "started_at": datetime.now(UTC) - timedelta(hours=3),
@@ -515,44 +572,113 @@ def test_long_but_healthy_run_is_not_reaped(client, db, monkeypatch):
     )
     db.commit()
 
+    # Read before the refusal: its rollback expires `busy` ([70]).
+    busy_id = busy.id
     with pytest.raises(service.RunInProgressError):
-        service.start_run(db, scope="pending", trigger="manual")
+        await service.start_run(async_db, scope="pending", trigger="manual")
 
-    assert db.get(AiReviewRun, busy.id).status == "running"
+    assert db.get(AiReviewRun, busy_id).status == "running"
 
 
-def test_reaped_run_executor_stops_instead_of_overlapping(client, db, monkeypatch):
+@pytest.mark.anyio
+async def test_reaped_run_executor_stops_instead_of_overlapping(
+    async_db, client, db, monkeypatch
+):
     """The replaced executor must not keep calling DeepSeek, nor claim 'done'."""
+    monkeypatch.setattr(settings, "ai_review_concurrency", 1)
     _three_pending(client, monkeypatch)
-    from datetime import UTC, datetime, timedelta
+    from datetime import timedelta
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
     from physics_ai_tutor.models import AiReviewRun
     from physics_ai_tutor.services import ai_review_service as service
 
-    stuck = service.start_run(db, scope="pending", trigger="cli")
+    stuck = await service.start_run(async_db, scope="pending", trigger="cli")
     assert stuck.requested_count == 3
+    stuck_id = stuck.id
 
     calls = {"n": 0}
     real_grade = service.grade_answer
 
-    def _grade_then_go_silent(*args, **kwargs):
+    async def _grade_then_go_silent(*args, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
             # Mid-run, a new start reaps this one as silent and takes over.
-            db.query(AiReviewRun).filter_by(id=stuck.id).update(
+            db.query(AiReviewRun).filter_by(id=stuck_id).update(
                 {"heartbeat_at": datetime.now(UTC) - timedelta(hours=1)}
             )
             db.commit()
-            service.start_run(db, scope="selected", trigger="manual", question_ids=[])
-        return real_grade(*args, **kwargs)
+            async with AsyncSession(async_engine, expire_on_commit=False) as other:
+                await service.start_run(
+                    other, scope="selected", trigger="manual", question_ids=[]
+                )
+        return await real_grade(*args, **kwargs)
 
     monkeypatch.setattr(service, "grade_answer", _grade_then_go_silent)
 
-    service.execute_run(db, stuck.id)
+    await service.execute_run(async_db, stuck_id)
 
-    reaped = db.get(AiReviewRun, stuck.id)
+    db.expire_all()
+    reaped = db.get(AiReviewRun, stuck_id)
     assert reaped.status == "failed", "a reaped run must not report itself done"
     assert calls["n"] == 1, "the reaped executor kept spending DeepSeek calls"
+
+
+def _crash_on(monkeypatch, question_id):
+    """Make one item crash outside the review itself, as a bug would."""
+    real = ai_review_service.review_question_with_outcome
+
+    async def _maybe_crash(db_, question):
+        if question.id == question_id:
+            raise RuntimeError("unexpected bug")
+        return await real(db_, question)
+
+    monkeypatch.setattr(ai_review_service, "review_question_with_outcome", _maybe_crash)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("stop_on_crash", [True, False])
+async def test_a_crash_stops_the_run_only_when_asked(
+    async_db, client, db, monkeypatch, stop_on_crash
+):
+    """[105]: the nightly default stops; the admin button keeps going."""
+    monkeypatch.setattr(settings, "ai_review_concurrency", 1)
+    ids = _three_pending(client, monkeypatch)
+    patch_generation(monkeypatch, fake_generation(json.dumps(VALID_REVIEW)))
+    _crash_on(monkeypatch, ids[1])
+
+    run = await ai_review_service.start_run(async_db, scope="pending", trigger="cli")
+    finished = await ai_review_service.execute_run(
+        async_db, run.id, stop_on_crash=stop_on_crash
+    )
+
+    assert finished.failed_count == 1
+    if stop_on_crash:
+        assert finished.status == "failed"
+        assert finished.error == f"question {ids[1]} crashed; see server logs"
+        assert finished.reviewed_count == 1, "no new item starts after a crash"
+    else:
+        assert finished.status == "done"
+        assert finished.error is None
+        assert finished.reviewed_count == 2
+
+
+def test_cli_crash_exits_1_unless_continue_on_crash(
+    client, db, monkeypatch, _bind_review_cli
+):
+    """The nightly alert fires on a crash by default ([26], [105])."""
+    monkeypatch.setattr(settings, "ai_review_concurrency", 1)
+    ids = _three_pending(client, monkeypatch)
+    patch_generation(monkeypatch, fake_generation(json.dumps(VALID_REVIEW)))
+    _crash_on(monkeypatch, ids[1])
+
+    assert review_pending_cli.main(limit=10, scope="both") == 1
+    assert db.query(AiReview).count() == 1, "stopped at the crash"
+
+    # The same night re-run with the flag finishes what is left.
+    assert review_pending_cli.main(limit=10, continue_on_crash=True) == 0
+    assert db.query(AiReview).count() == 2
 
 
 def test_run_endpoints(client, user_client, admin_client, db, monkeypatch):
@@ -562,9 +688,8 @@ def test_run_endpoints(client, user_client, admin_client, db, monkeypatch):
     assert user_client.get(COUNT).status_code == 403
 
     _three_pending(client, monkeypatch)
-    monkeypatch.setattr(
-        deepseek_service,
-        "generate_answer",
+    patch_generation(
+        monkeypatch,
         fake_generation(json.dumps(VALID_REVIEW)),
     )
 
@@ -588,11 +713,14 @@ def test_run_endpoints(client, user_client, admin_client, db, monkeypatch):
     assert admin_client.get(f"{RUNS}/9999").status_code == 404
 
 
-def test_run_endpoint_conflict_returns_409(client, admin_client, db, monkeypatch):
+@pytest.mark.anyio
+async def test_run_endpoint_conflict_returns_409(
+    async_db, client, admin_client, db, monkeypatch
+):
     _three_pending(client, monkeypatch)
     from physics_ai_tutor.services import ai_review_service as service
 
-    service.start_run(db, scope="pending", trigger="cli")
+    await service.start_run(async_db, scope="pending", trigger="cli")
 
     response = admin_client.post(
         "/api/v1/admin/ai-review/runs", json={"scope": "pending"}
@@ -601,7 +729,86 @@ def test_run_endpoint_conflict_returns_409(client, admin_client, db, monkeypatch
     assert response.status_code == 409
 
 
-def test_reviewer_calls_use_the_larger_token_budget(monkeypatch):
+def test_run_endpoint_exhausted_budget_returns_429(admin_client, monkeypatch):
+    monkeypatch.setattr(settings, "ai_review_daily_cap", 0)
+
+    response = admin_client.post(
+        "/api/v1/admin/ai-review/runs", json={"scope": "pending"}
+    )
+
+    assert response.status_code == 429
+
+
+def _silent_running_run(db):
+    from datetime import UTC, datetime, timedelta
+
+    from physics_ai_tutor.models import AiReviewRun
+
+    run = AiReviewRun(
+        trigger="cli",
+        scope="pending",
+        question_ids=[],
+        requested_count=0,
+        status="running",
+        heartbeat_at=datetime.now(UTC) - timedelta(hours=1),
+    )
+    db.add(run)
+    db.commit()
+    return run
+
+
+@pytest.mark.anyio
+async def test_refusing_to_start_also_undoes_the_reaping(async_db, db, monkeypatch):
+    """The reap and the refusal share one transaction, as before ([104])."""
+    from physics_ai_tutor.models import AiReviewRun
+
+    stuck = _silent_running_run(db)
+    monkeypatch.setattr(settings, "ai_review_daily_cap", 0)
+
+    with pytest.raises(ai_review_service.DailyCapExhaustedError):
+        await ai_review_service.start_run(async_db, scope="pending", trigger="manual")
+
+    db.expire_all()
+    assert db.get(AiReviewRun, stuck.id).status == "running"
+
+
+@pytest.mark.anyio
+async def test_losing_the_start_race_reports_a_run_in_progress(
+    async_db, db, monkeypatch
+):
+    """The unique index, not the pre-check, is the real guard ([25])."""
+    from physics_ai_tutor.models import AiReviewRun
+
+    real_eligible = ai_review_service.eligible_question_ids
+
+    async def _rival_starts_first(*args, **kwargs):
+        # A concurrent start commits after our pre-check passed.
+        rival = _silent_running_run(db)
+        rival.heartbeat_at = datetime.now(UTC)
+        db.commit()
+        return await real_eligible(*args, **kwargs)
+
+    monkeypatch.setattr(ai_review_service, "eligible_question_ids", _rival_starts_first)
+
+    with pytest.raises(ai_review_service.RunInProgressError, match="concurrent"):
+        await ai_review_service.start_run(async_db, scope="pending", trigger="manual")
+
+    assert db.query(AiReviewRun).count() == 1
+
+
+@pytest.mark.anyio
+async def test_other_integrity_errors_are_not_reported_as_in_progress(async_db, db):
+    from sqlalchemy.exc import IntegrityError
+
+    # No user 99999: the foreign key fails, which is not a conflict.
+    with pytest.raises(IntegrityError):
+        await ai_review_service.start_run(
+            async_db, scope="pending", trigger="manual", started_by=99999
+        )
+
+
+@pytest.mark.anyio
+async def test_reviewer_calls_use_the_larger_token_budget(monkeypatch):
     from physics_ai_tutor.schemas.language import Language
     from physics_ai_tutor.services import ai_review_service as service
 
@@ -616,9 +823,9 @@ def test_reviewer_calls_use_the_larger_token_budget(monkeypatch):
             completion_tokens=1,
         )
 
-    monkeypatch.setattr(deepseek_service, "generate_answer", _capture)
+    patch_generation(monkeypatch, _capture)
 
-    service.grade_answer("質問", "回答", Language.JA)
+    await service.grade_answer("質問", "回答", Language.JA)
 
     assert seen["max_tokens"] == settings.ai_review_max_tokens
     assert settings.ai_review_max_tokens > settings.deepseek_max_tokens
@@ -710,9 +917,8 @@ def test_cli_refuses_outside_the_window_and_force_overrides(
     from datetime import UTC, datetime
 
     _three_pending(client, monkeypatch)
-    monkeypatch.setattr(
-        deepseek_service,
-        "generate_answer",
+    patch_generation(
+        monkeypatch,
         fake_generation(json.dumps(VALID_REVIEW)),
     )
     # Midday UTC is well outside the 16:30-00:30 window.
@@ -734,13 +940,12 @@ def test_cli_scheduled_both_reviews_pending_then_stale(
 ):
     """[26]: the nightly call records trigger=scheduled and covers both scopes."""
     from physics_ai_tutor.models import AiReviewRun
-    from physics_ai_tutor.repositories import ai_review_repository
     from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
     from physics_ai_tutor.schemas.language import Language
 
     ids = _three_pending(client, monkeypatch)
     # One question already has a verdict from an older prompt: stale.
-    ai_review_repository.create(
+    create_ai_review(
         db,
         AiReviewCreate(
             question_id=ids[0],
@@ -753,9 +958,8 @@ def test_cli_scheduled_both_reviews_pending_then_stale(
     )
     db.commit()
 
-    monkeypatch.setattr(
-        deepseek_service,
-        "generate_answer",
+    patch_generation(
+        monkeypatch,
         fake_generation(json.dumps(VALID_REVIEW)),
     )
 

@@ -1,21 +1,25 @@
+import asyncio
 import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from physics_ai_tutor.cli import review_metrics as metrics_cli
 from physics_ai_tutor.models import AiReview, QuestionReview
-from physics_ai_tutor.repositories import (
-    ai_review_repository,
-    review_metrics_repository,
-)
+from physics_ai_tutor.repositories import review_metrics_repository
 from physics_ai_tutor.repositories.review_metrics_repository import ReviewPair
+from physics_ai_tutor.schemas.admin_stats import ReviewAgreementResponse
 from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
 from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.question_review import QuestionReviewReason
-from physics_ai_tutor.services import deepseek_service, review_metrics_service
-from tests.conftest import engine, fake_generation
+from physics_ai_tutor.services import review_metrics_service
+from tests.conftest import (
+    async_engine,
+    create_ai_review,
+    fake_generation,
+    patch_generation,
+)
 
 ASK_PATH = "/api/v1/ai/ask"
 QUESTIONS = "/api/v1/questions"
@@ -121,14 +125,16 @@ def test_empty_input_yields_null_rates():
 
 # --- pairing against the database ---------------------------------------------
 
+# async_db goes first: it empties the tables before admin_client adds its user.
+
 
 def _ask(client, monkeypatch, text):
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
     return client.post(ASK_PATH, json={"question": text}).json()["question_id"]
 
 
 def _ai_review(db, question_id, verdict, confidence=0.9, created_at=None, version="r1"):
-    row = ai_review_repository.create(
+    row = create_ai_review(
         db,
         AiReviewCreate(
             question_id=question_id,
@@ -155,8 +161,9 @@ def _human_review(admin_client, question_id, action, reason=None):
     assert response.status_code == 200
 
 
-def test_pairs_use_the_latest_ai_review_before_the_human_one(
-    client, admin_client, db, monkeypatch
+@pytest.mark.anyio
+async def test_pairs_use_the_latest_ai_review_before_the_human_one(
+    async_db, client, admin_client, db, monkeypatch
 ):
     question_id = _ask(client, monkeypatch, "ペアリングの質問です")
     earlier = datetime.now(UTC) - timedelta(hours=2)
@@ -171,7 +178,7 @@ def test_pairs_use_the_latest_ai_review_before_the_human_one(
 
     _human_review(admin_client, question_id, "REJECT", "OFF_TOPIC")
 
-    pairs = review_metrics_repository.list_pairs(db, None)
+    pairs = await review_metrics_repository.list_pairs(async_db, None)
 
     assert len(pairs) == 1
     assert pairs[0].ai_verdict == "REJECT"
@@ -179,18 +186,25 @@ def test_pairs_use_the_latest_ai_review_before_the_human_one(
     assert pairs[0].answer_prompt_version is not None
 
 
-def test_human_review_before_any_ai_review_is_excluded(
-    client, admin_client, db, monkeypatch
+@pytest.mark.anyio
+async def test_human_review_before_any_ai_review_is_excluded(
+    async_db, client, admin_client, db, monkeypatch
 ):
     question_id = _ask(client, monkeypatch, "先に人が見た質問です")
     _human_review(admin_client, question_id, "APPROVE")
-    # The AI verdict arrives afterwards (e.g. a later backfill).
+    # The AI verdict arrives afterwards (e.g. a later backfill). End the
+    # test session's open transaction first: now() is the transaction's
+    # start time, so a stale one would stamp the verdict too early.
+    db.commit()
     _ai_review(db, question_id, AiReviewVerdict.APPROVE)
 
-    assert review_metrics_repository.list_pairs(db, None) == []
+    assert await review_metrics_repository.list_pairs(async_db, None) == []
 
 
-def test_pairs_respect_since_and_reviewer_kind(client, admin_client, db, monkeypatch):
+@pytest.mark.anyio
+async def test_pairs_respect_since_and_reviewer_kind(
+    async_db, client, admin_client, db, monkeypatch
+):
     question_id = _ask(client, monkeypatch, "期間フィルタの質問です")
     _ai_review(
         db,
@@ -202,16 +216,19 @@ def test_pairs_respect_since_and_reviewer_kind(client, admin_client, db, monkeyp
     db.query(QuestionReview).update({"created_at": datetime(2026, 1, 2, tzinfo=UTC)})
     db.commit()
 
-    assert len(review_metrics_repository.list_pairs(db, None)) == 1
+    assert len(await review_metrics_repository.list_pairs(async_db, None)) == 1
     later = datetime(2026, 6, 1, tzinfo=UTC)
-    assert review_metrics_repository.list_pairs(db, later) == []
+    assert await review_metrics_repository.list_pairs(async_db, later) == []
 
     db.query(QuestionReview).update({"reviewer_kind": "policy"})
     db.commit()
-    assert review_metrics_repository.list_pairs(db, None) == []
+    assert await review_metrics_repository.list_pairs(async_db, None) == []
 
 
-def test_report_groups_by_prompt_versions(client, admin_client, db, monkeypatch):
+@pytest.mark.anyio
+async def test_report_groups_by_prompt_versions(
+    async_db, client, admin_client, db, monkeypatch
+):
     first = _ask(client, monkeypatch, "r1で判定された質問です")
     second = _ask(client, monkeypatch, "r2で判定された質問です")
     _ai_review(db, first, AiReviewVerdict.APPROVE, version="r1")
@@ -219,7 +236,7 @@ def test_report_groups_by_prompt_versions(client, admin_client, db, monkeypatch)
     _human_review(admin_client, first, "APPROVE")
     _human_review(admin_client, second, "APPROVE")
 
-    report = review_metrics_service.build_report(db, None)
+    report = await review_metrics_service.build_report(async_db, None)
 
     assert report.overall.n == 2
     assert set(report.by_reviewer_prompt_version) == {"r1", "r2"}
@@ -251,8 +268,19 @@ def test_endpoint_is_admin_only_and_returns_the_report(
 
 @pytest.fixture
 def _bind_metrics_cli(monkeypatch, db):
-    factory = sessionmaker(bind=engine, expire_on_commit=False)
-    monkeypatch.setattr(metrics_cli, "SessionLocal", factory)
+    # The CLI is async since [87]; bind it to the test engine.
+    factory = async_sessionmaker(bind=async_engine, expire_on_commit=False)
+    monkeypatch.setattr(metrics_cli, "AsyncSessionLocal", factory)
+
+
+def _report_from_database(since: datetime | None) -> ReviewAgreementResponse:
+    """`build_report` from a sync test; this one drives sync CLIs ([87])."""
+
+    async def _build() -> ReviewAgreementResponse:
+        async with AsyncSession(async_engine, expire_on_commit=False) as session:
+            return await review_metrics_service.build_report(session, since)
+
+    return asyncio.run(_build())
 
 
 def test_cli_prints_tables(
@@ -277,8 +305,8 @@ def test_cli_from_export_file_matches_the_database_report(
     from physics_ai_tutor.cli import export_reviews as export_cli
     from physics_ai_tutor.services import review_export_service
 
-    factory = sessionmaker(bind=engine, expire_on_commit=False)
-    monkeypatch.setattr(export_cli, "SessionLocal", factory)
+    factory = async_sessionmaker(bind=async_engine, expire_on_commit=False)
+    monkeypatch.setattr(export_cli, "AsyncSessionLocal", factory)
 
     agreed = _ask(client, monkeypatch, "ファイル集計の質問1")
     disagreed = _ask(client, monkeypatch, "ファイル集計の質問2")
@@ -297,7 +325,7 @@ def test_cli_from_export_file_matches_the_database_report(
     from_file = review_metrics_service.build_report_from_pairs(
         review_metrics_service.pairs_from_export_rows(rows), None
     )
-    from_db = review_metrics_service.build_report(db, None)
+    from_db = _report_from_database(None)
 
     assert from_file.overall.n == from_db.overall.n == 2
     assert from_file.overall.model_dump() == from_db.overall.model_dump()

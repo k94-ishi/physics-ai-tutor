@@ -1,6 +1,6 @@
 import { Question } from "@/types/question";
 
-/** AIレビューの対象になれるのは未レビューのAI生成回答だけ([28])。 */
+/** Only unreviewed AI answers can be AI-reviewed ([28]). */
 export function isAiReviewable(question: Question): boolean {
     return (
         question.status === "UNREVIEWED" &&
@@ -8,10 +8,7 @@ export function isAiReviewable(question: Question): boolean {
     );
 }
 
-/**
- * 選択された行をAIレビュー対象と対象外に分ける。確認ダイアログが
- * 「2件を判定、1件は対象外」と事前に言えるようにするための分割。
- */
+/** Split a selection into reviewable and skipped rows, for the confirm dialog. */
 export function splitAiReviewSelection(
     questions: Question[],
     selectedIds: Set<number>

@@ -5,7 +5,8 @@ import pytest
 
 from physics_ai_tutor.core.exceptions import EmbeddingGenerationError
 from physics_ai_tutor.core.logging import configure_logging
-from physics_ai_tutor.services import embedding_service, question_service
+from physics_ai_tutor.services import question_read_service
+from tests.conftest import patch_create_embeddings
 
 PATH = "/api/v1/questions"
 
@@ -69,7 +70,7 @@ def test_request_logging_middleware_logs_handled_exception_without_duplicate_err
     def _raise(texts):
         raise EmbeddingGenerationError("boom")
 
-    monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
+    patch_create_embeddings(monkeypatch, _raise)
 
     with caplog.at_level(logging.INFO):
         response = admin_client.post(
@@ -102,7 +103,7 @@ def test_request_logging_middleware_logs_unhandled_exception(
     def _raise(*args, **kwargs):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(question_service, "fetch_questions", _raise)
+    monkeypatch.setattr(question_read_service, "fetch_questions", _raise)
 
     with caplog.at_level(logging.ERROR):
         with pytest.raises(RuntimeError):

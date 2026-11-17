@@ -6,7 +6,7 @@ import jwt as pyjwt
 from physics_ai_tutor.api.dependencies import ACCESS_TOKEN_COOKIE_NAME
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.models.user import User
-from physics_ai_tutor.services.user_service import create_user
+from tests.conftest import create_user
 
 LOGIN_PATH = "/api/v1/auth/login"
 LOGOUT_PATH = "/api/v1/auth/logout"

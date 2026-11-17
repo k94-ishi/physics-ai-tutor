@@ -1,20 +1,21 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy import text
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.database.dependency import get_db
+from physics_ai_tutor.services import health_service
 
 router = APIRouter(tags=["health"])
 
 
+# The operationId typo is public API; renaming it is deferred ([57]).
 @router.get("/health")
-def helath_check():
+async def helath_check():
     return {"status": "ok"}
 
 
 @router.get("/db-health")
-def db_health_check(db: Session = Depends(get_db)):
-    db.execute(text("SELECT 1"))
+async def db_health_check(db: AsyncSession = Depends(get_db)):
+    await health_service.check_database(db)
 
     return {
         "status": "ok",

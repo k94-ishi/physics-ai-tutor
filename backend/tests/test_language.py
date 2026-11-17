@@ -1,13 +1,25 @@
 """Behaviour of the bilingual question rows and the English mode."""
 
+import asyncio
+
 import pytest
 
 from physics_ai_tutor.models import Question, QuestionEmbedding
-from physics_ai_tutor.services import deepseek_service, translation_service
-from physics_ai_tutor.services.translation_service import (
-    translate_qa as real_translate_qa,
+from physics_ai_tutor.services import translation_service
+from tests.conftest import (
+    fake_generation,
+    patch_chat_completion,
+    patch_generation,
+    patch_translate_qa,
 )
-from tests.conftest import fake_generation
+
+# Captured before conftest's autouse mock replaces the seam ([102]).
+_real_async_translate_qa = translation_service.translate_qa
+
+
+def real_translate_qa(*args, **kwargs):
+    return asyncio.run(_real_async_translate_qa(*args, **kwargs))
+
 
 QUESTIONS = "/api/v1/questions"
 REJECT_BODY = {"action": "REJECT", "reason": "PHYSICS_ERROR"}
@@ -84,7 +96,7 @@ def test_create_question_survives_translation_failure(admin_client, monkeypatch)
     def _fail(question, answer, source, target):
         raise translation_service.TranslationError("down")
 
-    monkeypatch.setattr(translation_service, "translate_qa", _fail)
+    patch_translate_qa(monkeypatch, _fail)
 
     response = admin_client.post(
         QUESTIONS, json={"question": "翻訳失敗でも保存", "answer": "回答"}
@@ -132,7 +144,7 @@ def test_public_list_only_shows_rows_with_requested_language(
     def _fail(question, answer, source, target):
         raise translation_service.TranslationError("down")
 
-    monkeypatch.setattr(translation_service, "translate_qa", _fail)
+    patch_translate_qa(monkeypatch, _fail)
     admin_client.post(QUESTIONS, json={"question": "翻訳なし", "answer": "回答"})
 
     public_en = client.get(QUESTIONS, params={"lang": "en"}).json()
@@ -199,9 +211,8 @@ def test_ask_in_english_uses_english_prompt_and_translates_in_background(
         prompts_seen.append(system_prompt)
         return "An answer."
 
-    monkeypatch.setattr(
-        deepseek_service,
-        "generate_answer",
+    patch_generation(
+        monkeypatch,
         lambda s, u: fake_generation(_chat(s, u))(s, u),
     )
 
@@ -232,9 +243,8 @@ def test_ask_serves_cached_answer_including_unreviewed(client, monkeypatch):
         calls.append(user_prompt)
         return "初回の回答"
 
-    monkeypatch.setattr(
-        deepseek_service,
-        "generate_answer",
+    patch_generation(
+        monkeypatch,
         lambda s, u: fake_generation(_chat(s, u))(s, u),
     )
 
@@ -259,9 +269,8 @@ def test_ask_cache_hits_translated_text_of_other_language_row(
     def _chat(system_prompt, user_prompt):
         raise AssertionError("should be served from cache")
 
-    monkeypatch.setattr(
-        deepseek_service,
-        "generate_answer",
+    patch_generation(
+        monkeypatch,
         lambda s, u: fake_generation(_chat(s, u))(s, u),
     )
 
@@ -274,18 +283,14 @@ def test_ask_cache_hits_translated_text_of_other_language_row(
 
 
 def test_ask_does_not_serve_rejected_answer(client, admin_client, monkeypatch):
-    monkeypatch.setattr(
-        deepseek_service, "generate_answer", fake_generation("最初の回答")
-    )
+    patch_generation(monkeypatch, fake_generation("最初の回答"))
     first = client.post(ASK, json={"question": "却下される質問です"}).json()
     admin_client.post(
         f"{QUESTIONS}/{first['question_id']}/review",
         json=REJECT_BODY,
     )
 
-    monkeypatch.setattr(
-        deepseek_service, "generate_answer", fake_generation("二回目の回答")
-    )
+    patch_generation(monkeypatch, fake_generation("二回目の回答"))
     second = client.post(ASK, json={"question": "却下される質問です"}).json()
 
     assert second["cached"] is False
@@ -298,7 +303,7 @@ def test_ask_does_not_serve_rejected_answer(client, admin_client, monkeypatch):
 def test_review_in_english_records_language_and_refreshes_machine_japanese(
     client, admin_client, monkeypatch, db
 ):
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("Answer."))
+    patch_generation(monkeypatch, fake_generation("Answer."))
     asked = client.post(
         ASK, json={"question": "What is work in physics?", "language": "en"}
     ).json()
@@ -382,6 +387,29 @@ def test_translate_endpoint_fills_missing_language(admin_client, db):
     assert {"question_id": 99999, "success": False, "language": None} in results
 
 
+def test_translate_endpoint_reports_a_failed_translation(admin_client, db, monkeypatch):
+    legacy = Question(
+        question_ja="翻訳失敗", answer_ja="回答", ja_provenance="ORIGINAL"
+    )
+    db.add(legacy)
+    db.commit()
+
+    def _fail(question, answer, source, target):
+        raise translation_service.TranslationError("down")
+
+    patch_translate_qa(monkeypatch, _fail)
+
+    response = admin_client.post(
+        f"{QUESTIONS}/translate", json={"question_ids": [legacy.id]}
+    )
+
+    assert response.json()["results"] == [
+        {"question_id": legacy.id, "success": False, "language": None}
+    ]
+    db.expire_all()
+    assert db.get(Question, legacy.id).question_en is None
+
+
 def test_import_accepts_explicit_language_columns(admin_client):
     content = "\n".join(
         [
@@ -405,9 +433,8 @@ def test_import_accepts_explicit_language_columns(admin_client):
 
 
 def test_translator_parses_marked_output(monkeypatch):
-    monkeypatch.setattr(
-        deepseek_service,
-        "chat_completion",
+    patch_chat_completion(
+        monkeypatch,
         lambda s, u: "noise\n=====QUESTION=====\nQ\n=====ANSWER=====\nA\n",
     )
 
@@ -415,7 +442,7 @@ def test_translator_parses_marked_output(monkeypatch):
 
 
 def test_translator_rejects_malformed_output(monkeypatch):
-    monkeypatch.setattr(deepseek_service, "chat_completion", lambda s, u: "garbage")
+    patch_chat_completion(monkeypatch, lambda s, u: "garbage")
 
     with pytest.raises(translation_service.TranslationError):
         real_translate_qa("q", "a", "ja", "en")

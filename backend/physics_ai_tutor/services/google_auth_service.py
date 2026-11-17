@@ -1,4 +1,3 @@
-import json
 import logging
 import secrets
 import time
@@ -7,14 +6,16 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 
+import httpx2
 import jwt
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.exceptions import (
     GoogleAccountConflictError,
     GoogleAuthError,
 )
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models.user import User
 from physics_ai_tutor.repositories import user_repository
 
@@ -62,30 +63,27 @@ def build_authorization_url(state: str) -> str:
     return f"{GOOGLE_AUTHORIZATION_URL}?{urllib.parse.urlencode(params)}"
 
 
-def exchange_code(code: str) -> GoogleIdentity:
-    """Trade the authorization code for an ID token and read the identity."""
-    body = urllib.parse.urlencode(
-        {
-            "code": code,
-            "client_id": settings.google_client_id,
-            "client_secret": settings.google_client_secret,
-            "redirect_uri": settings.google_redirect_uri,
-            "grant_type": "authorization_code",
-        }
-    ).encode()
-    request = urllib.request.Request(
-        GOOGLE_TOKEN_URL,
-        data=body,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        method="POST",
-    )
+async def exchange_code(code: str) -> GoogleIdentity:
+    """Trade the authorization code for an ID token and read the identity.
+
+    Awaited rather than blocking ([73]): on an async server a slow reply
+    from Google would otherwise stall every other request, not just this
+    callback.
+    """
+    form = {
+        "code": code,
+        "client_id": settings.google_client_id,
+        "client_secret": settings.google_client_secret,
+        "redirect_uri": settings.google_redirect_uri,
+        "grant_type": "authorization_code",
+    }
 
     try:
-        with urllib.request.urlopen(
-            request, timeout=TOKEN_REQUEST_TIMEOUT_SECONDS
-        ) as response:
-            payload = json.loads(response.read())
-    except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+        async with httpx2.AsyncClient(timeout=TOKEN_REQUEST_TIMEOUT_SECONDS) as client:
+            response = await client.post(GOOGLE_TOKEN_URL, data=form)
+            response.raise_for_status()
+            payload = response.json()
+    except (httpx2.HTTPError, ValueError) as exc:
         logger.warning("Google token exchange failed: %s", exc)
         raise GoogleAuthError("token exchange failed") from exc
 
@@ -132,18 +130,18 @@ def parse_id_token(id_token: str) -> GoogleIdentity:
     return GoogleIdentity(sub=sub, email=email.lower())
 
 
-def login_or_register(db: Session, identity: GoogleIdentity) -> User:
+async def login_or_register(db: AsyncSession, identity: GoogleIdentity) -> User:
     """Return the Google account for this identity, creating it on first use.
 
     Never links to an existing password account by e-mail; that is rejected.
     """
-    user = user_repository.get_user_by_google_sub(db, identity.sub)
+    user = await user_repository.get_user_by_google_sub(db, identity.sub)
 
     if user is not None:
         logger.info("Google login success: user_id=%s role=%s", user.id, user.role)
         return user
 
-    if user_repository.get_user_by_email(db, identity.email) is not None:
+    if await user_repository.get_user_by_email(db, identity.email) is not None:
         logger.warning("Google login rejected: reason=email_owned_by_password_account")
         raise GoogleAccountConflictError(identity.email)
 
@@ -154,15 +152,10 @@ def login_or_register(db: Session, identity: GoogleIdentity) -> User:
         role="user",
     )
 
-    try:
-        user_repository.create_user(db, user)
-        db.commit()
-        db.refresh(user)
-    except Exception:
-        logger.warning("Rolling back transaction: operation=google_register")
-        db.rollback()
-        raise
+    async with transaction(db, "google_register"):
+        await user_repository.create_user(db, user)
 
+    await db.refresh(user)
     logger.info("Google account created: user_id=%s", user.id)
 
     return user

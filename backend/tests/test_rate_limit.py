@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import func
+from sqlalchemy import func, select
 
 from physics_ai_tutor.core.exceptions import RateLimitExceeded
 from physics_ai_tutor.models import RateLimitHit
@@ -18,8 +18,12 @@ def _old_hit(action: str, bucket_key: str, age_seconds: int) -> RateLimitHit:
     )
 
 
-def test_count_recent_hits_scopes_by_action_bucket_and_window(db):
-    db.add_all(
+# The limiter has one implementation since [107]; these test it directly.
+
+
+@pytest.mark.anyio
+async def test_count_recent_hits_scopes_by_action_bucket_and_window(async_db):
+    async_db.add_all(
         [
             RateLimitHit(action="ai_ask", bucket_key="ip:1.2.3.4"),
             RateLimitHit(action="ai_ask", bucket_key="ip:5.6.7.8"),
@@ -27,47 +31,61 @@ def test_count_recent_hits_scopes_by_action_bucket_and_window(db):
             _old_hit("ai_ask", "ip:1.2.3.4", age_seconds=7200),
         ]
     )
-    db.flush()
+    await async_db.flush()
 
-    count = rate_limit_repository.count_recent_hits(db, "ai_ask", "ip:1.2.3.4", 3600)
+    count = await rate_limit_repository.count_recent_hits(
+        async_db, "ai_ask", "ip:1.2.3.4", 3600
+    )
 
     assert count == 1
 
 
-def test_delete_hits_older_than_removes_only_expired_rows(db):
+@pytest.mark.anyio
+async def test_delete_hits_older_than_removes_only_expired_rows(async_db):
     fresh = RateLimitHit(action="ai_ask", bucket_key="ip:1.2.3.4")
-    db.add_all([fresh, _old_hit("ai_ask", "ip:1.2.3.4", age_seconds=172800)])
-    db.flush()
+    async_db.add_all([fresh, _old_hit("ai_ask", "ip:1.2.3.4", age_seconds=172800)])
+    await async_db.flush()
 
-    deleted = rate_limit_repository.delete_hits_older_than(db, 86400)
+    deleted = await rate_limit_repository.delete_hits_older_than(async_db, 86400)
 
     assert deleted == 1
-    assert db.query(RateLimitHit).one().id == fresh.id
+    remaining = (await async_db.scalars(select(RateLimitHit.id))).all()
+    assert remaining == [fresh.id]
 
 
-def test_check_raises_when_any_window_is_full(db):
+@pytest.mark.anyio
+async def test_check_raises_when_any_window_is_full(async_db):
     for _ in range(3):
-        rate_limit_repository.record_hit(db, "ai_ask", "ip:1.2.3.4")
+        await rate_limit_repository.record_hit(async_db, "ai_ask", "ip:1.2.3.4")
 
     with pytest.raises(RateLimitExceeded):
-        rate_limit_service.check(db, "ai_ask", "ip:1.2.3.4", [(3, 3600), (10, 86400)])
+        await rate_limit_service.check(
+            async_db, "ai_ask", "ip:1.2.3.4", [(3, 3600), (10, 86400)]
+        )
 
 
-def test_check_passes_below_every_limit(db):
-    rate_limit_repository.record_hit(db, "ai_ask", "ip:1.2.3.4")
+@pytest.mark.anyio
+async def test_check_passes_below_every_limit(async_db):
+    await rate_limit_repository.record_hit(async_db, "ai_ask", "ip:1.2.3.4")
 
-    rate_limit_service.check(db, "ai_ask", "ip:1.2.3.4", [(3, 3600), (10, 86400)])
+    await rate_limit_service.check(
+        async_db, "ai_ask", "ip:1.2.3.4", [(3, 3600), (10, 86400)]
+    )
 
 
-def test_record_persists_hit_and_prunes_expired_rows(db, monkeypatch):
-    db.add(_old_hit("ai_ask", "ip:1.2.3.4", age_seconds=172800))
-    db.flush()
+@pytest.mark.anyio
+async def test_record_persists_hit_and_prunes_expired_rows(async_db, monkeypatch):
+    async_db.add(_old_hit("ai_ask", "ip:1.2.3.4", age_seconds=172800))
+    await async_db.flush()
 
     # Force the opportunistic cleanup branch to run.
     monkeypatch.setattr(rate_limit_service.random, "random", lambda: 0.0)
 
-    rate_limit_service.record(db, "ai_ask", "ip:1.2.3.4")
+    await rate_limit_service.record(async_db, "ai_ask", "ip:1.2.3.4")
 
-    hits = db.query(RateLimitHit).all()
+    hits = (await async_db.scalars(select(RateLimitHit))).all()
     assert len(hits) == 1
-    assert rate_limit_repository.count_recent_hits(db, "ai_ask", "ip:1.2.3.4", 60) == 1
+    recent = await rate_limit_repository.count_recent_hits(
+        async_db, "ai_ask", "ip:1.2.3.4", 60
+    )
+    assert recent == 1

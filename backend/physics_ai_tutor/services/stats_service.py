@@ -1,19 +1,22 @@
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.repositories import stats_repository
 from physics_ai_tutor.schemas.admin_stats import AdminStatsResponse, DailyUsage
 
 
-def fetch_usage_stats(db: Session, days: int) -> AdminStatsResponse:
+async def fetch_usage_stats(db: AsyncSession, days: int) -> AdminStatsResponse:
     today = datetime.now(UTC).date()
     since = datetime.now(UTC) - timedelta(days=days - 1)
     since = since.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    generations = stats_repository.generations_per_day(db, since)
-    asks = stats_repository.asks_per_day(db, since)
-    unreviewed_count, median_age = stats_repository.unreviewed_backlog(db)
+    generations = await stats_repository.generations_per_day(db, since)
+    asks = await stats_repository.asks_per_day(db, since)
+    unreviewed_count, median_age = await stats_repository.unreviewed_backlog(db)
+    anonymous_buckets = await stats_repository.anonymous_ip_buckets_since(
+        db, timedelta(days=1)
+    )
 
     daily = []
     for offset in range(days - 1, -1, -1):
@@ -34,7 +37,5 @@ def fetch_usage_stats(db: Session, days: int) -> AdminStatsResponse:
         daily=daily,
         unreviewed_count=unreviewed_count,
         unreviewed_median_age_days=median_age,
-        anonymous_ip_buckets_24h=stats_repository.anonymous_ip_buckets_since(
-            db, timedelta(days=1)
-        ),
+        anonymous_ip_buckets_24h=anonymous_buckets,
     )

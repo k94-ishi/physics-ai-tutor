@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     # API
     openai_api_key: str
     embedding_model: str = "text-embedding-3-small"
+    # Cosine similarity above which an extracted pair joins a sense that
+    # shares only one of its words ([55]); below it a new sense is created.
+    concept_sense_match_threshold: float = 0.75
     deepseek_api_key: str
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_chat_model: str = "deepseek-chat"
@@ -24,6 +27,16 @@ class Settings(BaseSettings):
     # Reviewer output includes a full suggested answer, so it needs more
     # room than a student answer or its JSON gets truncated.
     ai_review_max_tokens: int = 3000
+    # Questions graded at the same time inside one run ([72]). Low by
+    # default: it multiplies the DeepSeek request rate, and a run is
+    # never urgent.
+    ai_review_concurrency: int = 3
+    # Rows translated at the same time by the background task ([72]).
+    translation_concurrency: int = 3
+    # How long a background claim is honoured before another worker may
+    # take the work over ([75]). Long enough for a couple of LLM calls,
+    # short enough that a crashed worker does not park a row for an hour.
+    background_claim_timeout_minutes: int = 15
     # DeepSeek's discounted window, UTC "HH:MM" (JST 01:30-09:30); the
     # window wraps midnight. The review CLI refuses to start outside it
     # unless --force, so bulk runs land on the cheap tariff.

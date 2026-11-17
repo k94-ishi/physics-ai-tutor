@@ -2,12 +2,17 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from physics_ai_tutor.cli import export_reviews as export_cli
 from physics_ai_tutor.models import QuestionReview
-from physics_ai_tutor.services import deepseek_service, review_export_service
-from tests.conftest import engine, fake_generation
+from physics_ai_tutor.services import review_export_service
+from tests.conftest import (
+    async_engine,
+    create_ai_review,
+    fake_generation,
+    patch_generation,
+)
 
 ASK_PATH = "/api/v1/ai/ask"
 QUESTIONS = "/api/v1/questions"
@@ -15,9 +20,7 @@ EXPORT_PATH = "/api/v1/admin/reviews/export"
 
 
 def _ask_and_edit_approve(client, admin_client, monkeypatch, text="輸出テスト質問"):
-    monkeypatch.setattr(
-        deepseek_service, "generate_answer", fake_generation("元の回答")
-    )
+    patch_generation(monkeypatch, fake_generation("元の回答"))
     question_id = client.post(ASK_PATH, json={"question": text}).json()["question_id"]
 
     review = admin_client.post(
@@ -131,8 +134,9 @@ def test_export_requires_admin(client, user_client):
 
 @pytest.fixture
 def _bind_export_cli(monkeypatch, db):
-    factory = sessionmaker(bind=engine, expire_on_commit=False)
-    monkeypatch.setattr(export_cli, "SessionLocal", factory)
+    # The CLI is async since [96]; bind it to the test engine.
+    factory = async_sessionmaker(bind=async_engine, expire_on_commit=False)
+    monkeypatch.setattr(export_cli, "AsyncSessionLocal", factory)
 
 
 def test_cli_writes_jsonl_file(
@@ -173,16 +177,15 @@ def test_cli_parses_arguments():
 def test_export_carries_the_ai_verdict_the_teacher_could_see(
     client, admin_client, db, monkeypatch
 ):
-    from physics_ai_tutor.repositories import ai_review_repository
     from physics_ai_tutor.schemas.ai_review import AiReviewCreate, AiReviewVerdict
     from physics_ai_tutor.schemas.language import Language
     from physics_ai_tutor.schemas.question_review import QuestionReviewReason
 
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
     question_id = client.post(ASK_PATH, json={"question": "AI付き輸出の質問"}).json()[
         "question_id"
     ]
-    ai_review_repository.create(
+    create_ai_review(
         db,
         AiReviewCreate(
             question_id=question_id,

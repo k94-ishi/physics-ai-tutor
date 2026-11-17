@@ -1,42 +1,52 @@
-from sqlalchemy import func, nullslast, or_
-from sqlalchemy.orm import Query, Session
+from sqlalchemy import func, nullslast, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from physics_ai_tutor.core.text import normalize_key
 from physics_ai_tutor.models import (
     AiReview,
     Concept,
+    ConceptTerm,
     Question,
     QuestionAsk,
     QuestionConcept,
 )
 from physics_ai_tutor.schemas.language import Language, TextProvenance
-from physics_ai_tutor.schemas.question import QuestionCreate, QuestionUpdate
+from physics_ai_tutor.schemas.question import (
+    QuestionFilters,
+)
 
 
-def _filter_by_concept(query: Query, db: Session, concept: str | None) -> Query:
-    """Keep questions linked to a concept, matched by either language's name.
+def _filter_by_concept(query, concept: str | None, concept_id: int | None = None):
+    """Keep questions linked to a concept sense ([55]).
 
-    The chip in the student UI only knows the displayed name, so the
-    filter takes a name rather than an id; names are unique per column.
+    `concept_id` names one sense exactly. A `concept` word matches every
+    sense having that word in either language, so a chip or a typed word
+    finds QAs whatever language their concept was first named in.
     """
-    if not concept:
+    if concept_id is not None:
+        senses = select(Concept.id).where(Concept.id == concept_id)
+    elif concept:
+        senses = select(ConceptTerm.concept_id).where(
+            ConceptTerm.normalized == normalize_key(concept)
+        )
+    else:
         return query
 
     linked = (
-        db.query(QuestionConcept.question_id)
-        .join(Concept, Concept.id == QuestionConcept.concept_id)
-        .filter(or_(Concept.name_ja == concept, Concept.name_en == concept))
+        select(QuestionConcept.question_id)
+        .where(QuestionConcept.concept_id.in_(senses.scalar_subquery()))
         .scalar_subquery()
     )
 
-    return query.filter(Question.id.in_(linked))
+    return query.where(Question.id.in_(linked))
 
 
 def _filter_by_keyword(
-    query: Query,
+    query,
     keyword: str | None,
     search_question: bool = True,
     search_answer: bool = True,
-) -> Query:
+):
     if not keyword:
         return query
 
@@ -53,36 +63,51 @@ def _filter_by_keyword(
             conditions.append(Question.answer_en.ilike(pattern))
 
         if conditions:
-            query = query.filter(or_(*conditions))
+            query = query.where(or_(*conditions))
 
     return query
+
+
+def _status_conditions(status: str | None, exclude_statuses: list[str] | None) -> list:
+    """The status predicate, shared by every reader.
+
+    Security-relevant: `exclude_statuses` is what keeps unapproved rows
+    away from students and REJECTED answers out of the ask cache, so every
+    statement must build it from here rather than spelling it out.
+    """
+    conditions = []
+
+    if status is not None:
+        conditions.append(Question.status == status)
+
+    if exclude_statuses:
+        conditions.append(Question.status.notin_(exclude_statuses))
+
+    return conditions
 
 
 def _filter_by_status(
-    query: Query,
+    query,
     status: str | None,
     exclude_statuses: list[str] | None,
-) -> Query:
-    if status is not None:
-        query = query.filter(Question.status == status)
-
-    if exclude_statuses:
-        query = query.filter(Question.status.notin_(exclude_statuses))
+):
+    for condition in _status_conditions(status, exclude_statuses):
+        query = query.where(condition)
 
     return query
 
 
-def _filter_by_language(query: Query, language: Language | str | None) -> Query:
+def _filter_by_language(query, language: Language | str | None):
     if language is None:
         return query
 
-    return query.filter(getattr(Question, f"question_{Language(language)}").isnot(None))
+    return query.where(getattr(Question, f"question_{Language(language)}").isnot(None))
 
 
-def _with_latest_ai_review(db: Session, query):
+def _with_latest_ai_review(query):
     """Outer-join each question's newest ai_reviews row (one per question)."""
     latest = (
-        db.query(AiReview.question_id, func.max(AiReview.id).label("latest_id"))
+        select(AiReview.question_id, func.max(AiReview.id).label("latest_id"))
         .group_by(AiReview.question_id)
         .subquery()
     )
@@ -96,12 +121,12 @@ def _filter_by_ai_verdict(query, ai_verdict: str | None):
     if ai_verdict is None:
         return query
     if ai_verdict == "NONE":
-        return query.filter(AiReview.id.is_(None))
+        return query.where(AiReview.id.is_(None))
 
-    return query.filter(AiReview.verdict == ai_verdict)
+    return query.where(AiReview.verdict == ai_verdict)
 
 
-def _apply_sort(db: Session, query, sort: str | None):
+def _apply_sort(query, sort: str | None):
     if sort == "oldest":
         return query.order_by(Question.created_at.asc(), Question.id.asc())
 
@@ -110,7 +135,7 @@ def _apply_sort(db: Session, query, sort: str | None):
 
     if sort == "asked_count":
         asks = (
-            db.query(
+            select(
                 QuestionAsk.question_id,
                 func.count(QuestionAsk.id).label("asked"),
             )
@@ -124,138 +149,116 @@ def _apply_sort(db: Session, query, sort: str | None):
     return query.order_by(Question.id)
 
 
-def _list_query(
-    db: Session,
-    keyword: str | None,
-    status: str | None,
-    exclude_statuses: list[str] | None,
-    search_question: bool,
-    search_answer: bool,
-    language: Language | str | None,
-    ai_verdict: str | None,
-    join_ai_review: bool,
-    ids: list[int] | None = None,
-    concept: str | None = None,
-):
-    query = db.query(Question)
+def _list_select(filters: QuestionFilters, join_ai_review: bool):
+    """The list statement; one builder so no filter can differ by caller."""
+    query = select(Question)
 
-    if join_ai_review or ai_verdict is not None:
-        query = _with_latest_ai_review(db, query)
+    if join_ai_review or filters.ai_verdict is not None:
+        query = _with_latest_ai_review(query)
 
-    if ids is not None:
-        query = query.filter(Question.id.in_(ids))
+    if filters.ids is not None:
+        query = query.where(Question.id.in_(filters.ids))
 
-    query = _filter_by_concept(query, db, concept)
-    query = _filter_by_keyword(query, keyword, search_question, search_answer)
-    query = _filter_by_status(query, status, exclude_statuses)
-    query = _filter_by_language(query, language)
+    query = _filter_by_concept(query, filters.concept, filters.concept_id)
+    query = _filter_by_keyword(
+        query, filters.keyword, filters.search_question, filters.search_answer
+    )
+    query = _filter_by_status(query, filters.status, filters.exclude_statuses)
+    query = _filter_by_language(query, filters.language)
 
-    return _filter_by_ai_verdict(query, ai_verdict)
+    return _filter_by_ai_verdict(query, filters.ai_verdict)
 
 
-def get_questions(
-    db: Session,
+async def get_questions(
+    db: AsyncSession,
     offset: int,
     limit: int,
-    keyword: str | None = None,
-    status: str | None = None,
-    exclude_statuses: list[str] | None = None,
-    search_question: bool = True,
-    search_answer: bool = True,
-    language: Language | str | None = None,
+    filters: QuestionFilters | None = None,
     sort: str | None = None,
-    ai_verdict: str | None = None,
-    ids: list[int] | None = None,
-    concept: str | None = None,
 ) -> list[Question]:
-    query = _list_query(
-        db,
-        keyword,
-        status,
-        exclude_statuses,
-        search_question,
-        search_answer,
-        language,
-        ai_verdict,
-        join_ai_review=sort == "ai_confidence",
-        ids=ids,
-        concept=concept,
+    query = _list_select(
+        filters or QuestionFilters(), join_ai_review=sort == "ai_confidence"
     )
+    page = _apply_sort(query, sort).offset(offset).limit(limit)
 
-    return _apply_sort(db, query, sort).offset(offset).limit(limit).all()
+    return list((await db.scalars(page)).all())
 
 
-def count_questions(
-    db: Session,
-    keyword: str | None = None,
-    status: str | None = None,
-    exclude_statuses: list[str] | None = None,
-    search_question: bool = True,
-    search_answer: bool = True,
-    language: Language | str | None = None,
-    ai_verdict: str | None = None,
-    ids: list[int] | None = None,
-    concept: str | None = None,
+async def count_questions(
+    db: AsyncSession, filters: QuestionFilters | None = None
 ) -> int:
-    query = _list_query(
-        db,
-        keyword,
-        status,
-        exclude_statuses,
-        search_question,
-        search_answer,
-        language,
-        ai_verdict,
-        join_ai_review=False,
-        ids=ids,
-        concept=concept,
-    )
+    query = _list_select(filters or QuestionFilters(), join_ai_review=False)
+    total = await db.scalar(select(func.count()).select_from(query.subquery()))
 
-    return query.count()
+    return total or 0
 
 
-def get_question(
-    db: Session,
+def _question_select(question_id: int, exclude_statuses: list[str] | None):
+    query = select(Question).where(Question.id == question_id)
+
+    return _filter_by_status(query, None, exclude_statuses)
+
+
+async def get_question(
+    db: AsyncSession,
     question_id: int,
     exclude_statuses: list[str] | None = None,
 ) -> Question | None:
-    query = db.query(Question).filter(Question.id == question_id)
-    query = _filter_by_status(query, None, exclude_statuses)
-
-    return query.first()
+    """One question by id, optionally hiding the given statuses."""
+    return (await db.scalars(_question_select(question_id, exclude_statuses))).first()
 
 
-def get_questions_by_ids(db: Session, ids: list[int]) -> list[Question]:
+async def get_questions_by_ids(db: AsyncSession, ids: list[int]) -> list[Question]:
     if not ids:
         return []
 
-    return db.query(Question).filter(Question.id.in_(ids)).all()
+    return list((await db.scalars(select(Question).where(Question.id.in_(ids)))).all())
 
 
-def get_by_exact_text(
-    db: Session,
+def _exact_text_select(
+    question_text: str,
+    language: Language | str,
+    exclude_statuses: list[str] | None,
+):
+    column = getattr(Question, f"question_{Language(language)}")
+
+    return select(Question).where(
+        column == question_text, *_status_conditions(None, exclude_statuses)
+    )
+
+
+async def get_by_exact_text(
+    db: AsyncSession,
     question_text: str,
     language: Language | str = Language.JA,
     exclude_statuses: list[str] | None = None,
 ) -> Question | None:
-    column = getattr(Question, f"question_{Language(language)}")
-    query = db.query(Question).filter(column == question_text)
-    query = _filter_by_status(query, None, exclude_statuses)
+    query = _exact_text_select(question_text, language, exclude_statuses)
 
-    return query.first()
+    return (await db.scalars(query)).first()
 
 
-def get_missing_language(
-    db: Session, language: Language | str, limit: int | None = None
+async def get_missing_language(
+    db: AsyncSession, language: Language | str, limit: int | None = None
 ) -> list[Question]:
     """Questions that have no text in `language` (candidates for translation)."""
     column = getattr(Question, f"question_{Language(language)}")
-    query = db.query(Question).filter(column.is_(None)).order_by(Question.id)
+    query = select(Question).where(column.is_(None)).order_by(Question.id)
 
     if limit is not None:
         query = query.limit(limit)
 
-    return query.all()
+    return list((await db.scalars(query)).all())
+
+
+def build_question(
+    texts: dict[Language, tuple[str, str]],
+    original_language: Language | str,
+    status: str,
+    source: str,
+) -> Question:
+    """A new, unsaved row; the caller adds it inside its transaction ([93])."""
+    return _new_question(texts, original_language, status, source, None, None)
 
 
 def _new_question(
@@ -286,151 +289,47 @@ def _new_question(
     return question
 
 
-def create_question(
-    db: Session,
-    texts: dict[Language, tuple[str, str]] | None = None,
+async def create_question(
+    db: AsyncSession,
+    texts: dict[Language, tuple[str, str]],
     original_language: Language | str = Language.JA,
     status: str = "APPROVED",
     source: str = "MANUAL",
     retrieved_question_ids: list[int] | None = None,
-    provenances: dict[Language, str] | None = None,
-    question: str | None = None,
-    answer: str | None = None,
-    language: Language | str = Language.JA,
 ) -> Question:
-    # Legacy single-language form: question=/answer=/language=.
-    if texts is None:
-        if question is None or answer is None:
-            raise ValueError("Either texts or question and answer are required")
-        texts = {Language(language): (question, answer)}
-        original_language = language
-
+    """Create one question; tests keep the legacy single-language form."""
     db_question = _new_question(
-        texts, original_language, status, source, retrieved_question_ids, provenances
+        texts, original_language, status, source, retrieved_question_ids, None
     )
 
     db.add(db_question)
-    db.flush()
+    await db.flush()
 
     return db_question
 
 
-def create_questions(
-    db: Session,
-    rows: list[tuple[dict[Language, tuple[str, str]], Language] | QuestionCreate],
-    status: str = "APPROVED",
-    source: str = "MANUAL",
-) -> list[Question]:
-    normalised = [
-        (row.texts(), row.original_language())
-        if isinstance(row, QuestionCreate)
-        else row
-        for row in rows
-    ]
-    db_questions = [
-        _new_question(texts, original, status, source, None, None)
-        for texts, original in normalised
-    ]
-
-    db.add_all(db_questions)
-    db.flush()
-
-    return db_questions
-
-
-def delete(db: Session, question_id: int) -> bool:
-    question = db.query(Question).filter(Question.id == question_id).first()
+async def delete(db: AsyncSession, question_id: int) -> bool:
+    question = await db.get(Question, question_id)
 
     if not question:
         return False
 
-    db.delete(question)
-    db.flush()
+    await db.delete(question)
+    await db.flush()
 
     return True
 
 
-def set_text(
-    db: Session,
-    question_id: int,
-    language: Language | str,
-    question: str,
-    answer: str,
-    provenance: str,
+async def update_status(
+    db: AsyncSession, question_id: int, status: str
 ) -> Question | None:
-    db_question = db.query(Question).filter(Question.id == question_id).first()
-
-    if not db_question:
-        return None
-
-    db_question.set_text(language, question, answer, provenance)
-    db.flush()
-
-    return db_question
-
-
-def update_status(db: Session, question_id: int, status: str) -> Question | None:
-    db_question = db.query(Question).filter(Question.id == question_id).first()
+    """Set one question's status."""
+    db_question = await db.get(Question, question_id)
 
     if not db_question:
         return None
 
     db_question.status = status
-    db.flush()
-
-    return db_question
-
-
-def update(
-    db: Session,
-    question_id: int,
-    question_data: QuestionUpdate,
-) -> Question | None:
-    """Replace the given languages' text (human-provided)."""
-    db_question = db.query(Question).filter(Question.id == question_id).first()
-
-    if not db_question:
-        return None
-
-    for lang, (q, a) in question_data.texts().items():
-        provenance = (
-            TextProvenance.ORIGINAL
-            if lang == db_question.original_language
-            else TextProvenance.HUMAN
-        )
-        db_question.set_text(lang, q, a, provenance)
-
-    db.flush()
-
-    return db_question
-
-
-def update_content_and_status(
-    db: Session,
-    question_id: int,
-    status: str,
-    question: str | None = None,
-    answer: str | None = None,
-    language: Language | str | None = None,
-) -> Question | None:
-    """Set status and optionally replace one language's text."""
-    db_question = db.query(Question).filter(Question.id == question_id).first()
-
-    if not db_question:
-        return None
-
-    if question is not None and answer is not None:
-        lang = (
-            Language(language) if language else Language(db_question.original_language)
-        )
-        provenance = (
-            TextProvenance.ORIGINAL
-            if lang == db_question.original_language
-            else TextProvenance.HUMAN
-        )
-        db_question.set_text(lang, question, answer, provenance)
-
-    db_question.status = status
-    db.flush()
+    await db.flush()
 
     return db_question

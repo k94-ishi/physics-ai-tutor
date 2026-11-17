@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
     ApiError,
     fetchPrerequisites,
@@ -10,26 +10,25 @@ import {
 } from "@/lib/api";
 import { PrerequisitesResponse, Question } from "@/types/question";
 import Card from "@/components/ui/Card";
+import QuestionCard from "@/components/ui/QuestionCard";
 import LoadingState from "@/components/ui/LoadingState";
 import MarkdownContent from "@/components/ui/MarkdownContent";
 import ConceptChips from "@/components/ui/ConceptChips";
-import QuestionLevelGrid, {
-    hasCoordinates,
-} from "@/components/ui/QuestionLevelGrid";
 import QuestionPreviewModal from "@/components/ui/QuestionPreviewModal";
 import ReferencedQuestions from "@/components/ui/ReferencedQuestions";
 import StatusMessage from "@/components/ui/StatusMessage";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { useLatestRequest } from "@/lib/hooks/useLatestRequest";
 
 type QuestionDetailProps = {
     id: number;
     matched?: string;
 };
 
-// 1回の取得でAPIの上限まで取り、表示だけ段階的に増やす(追加の通信なし)。
+// Fetch up to the API limit once and reveal more without another request.
 const RELATED_FETCH_LIMIT = 20;
 const RELATED_VISIBLE = 10;
-// 前提の「穴」チップの初期表示数(ConceptChipsと同じ発想)。
+// How many gap chips show at first, as in ConceptChips.
 const GAPS_VISIBLE = 8;
 
 /**
@@ -37,7 +36,7 @@ const GAPS_VISIBLE = 8;
  * switching the header language switches the content too.
  */
 export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
-    const { language, t } = useLanguage();
+    const { language, resolved, t } = useLanguage();
     const [question, setQuestion] = useState<Question | null>(null);
     const [related, setRelated] = useState<Question[]>([]);
     const [prerequisites, setPrerequisites] =
@@ -46,25 +45,32 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
     const [relatedExpanded, setRelatedExpanded] = useState(false);
     const [preview, setPreview] = useState<Question | null>(null);
     const [loading, setLoading] = useState(true);
+    // Show the question first; the related blocks wait with headings and spinners ([42]).
+    const [relatedLoading, setRelatedLoading] = useState(true);
     const [notFoundError, setNotFoundError] = useState(false);
     const [loadError, setLoadError] = useState(false);
-    const requestId = useRef(0);
+    const requestId = useLatestRequest();
 
     const load = useCallback(async () => {
-        const current = ++requestId.current;
+        const isCurrent = requestId.begin();
         setLoading(true);
         setLoadError(false);
         setNotFoundError(false);
+        setRelatedLoading(true);
+        // Never keep the previous language's results after a switch ([53]).
+        setRelated([]);
+        setPrerequisites(null);
+        setPreview(null);
 
         try {
             const data = await fetchQuestion(id, language);
 
-            if (current !== requestId.current) {
+            if (!isCurrent()) {
                 return;
             }
             setQuestion(data);
         } catch (error) {
-            if (current !== requestId.current) {
+            if (!isCurrent()) {
                 return;
             }
             if (error instanceof ApiError && error.status === 404) {
@@ -75,16 +81,19 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
             }
             setQuestion(null);
             setLoading(false);
+            setRelatedLoading(false);
             return;
         }
 
+        setLoading(false);
+
         try {
-            // 前提ブロックと関連リストは独立に失敗してよい(片方は出す)。
+            // The prerequisite and related blocks may fail independently.
             const [prerequisiteData, relatedData] = await Promise.allSettled([
                 fetchPrerequisites(id, language),
                 fetchRelatedQuestions(id, RELATED_FETCH_LIMIT, language),
             ]);
-            if (current === requestId.current) {
+            if (isCurrent()) {
                 setPrerequisites(
                     prerequisiteData.status === "fulfilled"
                         ? prerequisiteData.value
@@ -95,16 +104,20 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
                 );
             }
         } finally {
-            if (current === requestId.current) {
-                setLoading(false);
+            if (isCurrent()) {
+                setRelatedLoading(false);
             }
         }
-    }, [id, language]);
+    }, [id, language, requestId]);
 
     useEffect(() => {
+        // Wait for the language, or the page fetches once in ja and again ([53]).
+        if (!resolved) {
+            return;
+        }
         // eslint-disable-next-line react-hooks/set-state-in-effect
         load();
-    }, [load]);
+    }, [load, resolved]);
 
     if (loading && question === null) {
         return <LoadingState />;
@@ -128,15 +141,6 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
         ? related
         : related.slice(0, RELATED_VISIBLE);
     const hiddenRelated = related.length - visibleRelated.length;
-
-    // 広い画面では格子(座標を持つQAのみ)、狭い画面と座標のない行はリスト。
-    const showGrid =
-        question !== null &&
-        hasCoordinates(question) &&
-        related.some(hasCoordinates);
-    const unplacedRelated = showGrid
-        ? related.filter((item) => !hasCoordinates(item))
-        : [];
 
     const translatedBadge =
         question.provenance === "MACHINE"
@@ -179,9 +183,10 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
                 <ReferencedQuestions items={question.retrieved_questions} />
             </Card>
 
-            {prerequisites !== null &&
-                (prerequisites.items.length > 0 ||
-                    prerequisites.gaps.length > 0) && (
+            {(relatedLoading ||
+                (prerequisites !== null &&
+                    (prerequisites.items.length > 0 ||
+                        prerequisites.gaps.length > 0))) && (
                     <div className="flex flex-col gap-3">
                         <h2 className="text-lg font-semibold text-gray-900">
                             {t("prerequisites.heading")}
@@ -191,29 +196,18 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
                             {t("prerequisites.hint")}
                         </p>
 
-                        {prerequisites.items.map((item) => (
-                            <Card
-                                key={item.id}
-                                className="transition-colors hover:border-emerald-300 hover:bg-emerald-50/50"
-                            >
-                                <button
-                                    type="button"
-                                    onClick={() => setPreview(item)}
-                                    className="flex w-full cursor-pointer flex-col gap-1 text-left"
-                                >
-                                    <span className="font-medium text-gray-900">
-                                        {item.question}
-                                    </span>
+                        {relatedLoading && <LoadingState />}
 
-                                    <MarkdownContent
-                                        content={item.answer}
-                                        variant="preview"
-                                    />
-                                </button>
-                            </Card>
+                        {prerequisites?.items.map((item) => (
+                            <QuestionCard
+                                key={item.id}
+                                question={item}
+                                onOpen={() => setPreview(item)}
+                                tone="emerald"
+                            />
                         ))}
 
-                        {prerequisites.gaps.length > 0 && (
+                        {prerequisites !== null && prerequisites.gaps.length > 0 && (
                             <div className="flex flex-col gap-2">
                                 <p className="text-xs text-gray-500">
                                     {t("prerequisites.gapsLabel")}
@@ -260,7 +254,7 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
                     </div>
                 )}
 
-            {related.length > 0 && (
+            {(relatedLoading || related.length > 0) && (
                 <div className="flex flex-col gap-3">
                     <h2 className="text-lg font-semibold text-gray-900">
                         {t("questionDetail.relatedQuestions")}
@@ -270,68 +264,15 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
                         {t("questionDetail.relatedHint")}
                     </p>
 
-                    {showGrid && (
-                        <div className="hidden md:flex md:flex-col md:gap-3">
-                            <QuestionLevelGrid
-                                current={question}
-                                items={related}
-                                onPreview={setPreview}
-                            />
+                    {relatedLoading && <LoadingState />}
 
-                            {unplacedRelated.length > 0 && (
-                                <div className="flex flex-col gap-2">
-                                    <p className="text-xs text-gray-500">
-                                        {t("grid.unplaced")}
-                                    </p>
-                                    {unplacedRelated.map((item) => (
-                                        <Card
-                                            key={item.id}
-                                            className="transition-colors hover:border-blue-300 hover:bg-blue-50/50"
-                                        >
-                                            <button
-                                                type="button"
-                                                onClick={() => setPreview(item)}
-                                                className="flex w-full cursor-pointer flex-col gap-1 text-left"
-                                            >
-                                                <span className="font-medium text-gray-900">
-                                                    {item.question}
-                                                </span>
-
-                                                <MarkdownContent
-                                                    content={item.answer}
-                                                    variant="preview"
-                                                />
-                                            </button>
-                                        </Card>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    <div
-                        className={`flex flex-col gap-3 ${showGrid ? "md:hidden" : ""}`}
-                    >
+                    <div className="flex flex-col gap-3">
                         {visibleRelated.map((item) => (
-                            <Card
+                            <QuestionCard
                                 key={item.id}
-                                className="transition-colors hover:border-blue-300 hover:bg-blue-50/50"
-                            >
-                                <button
-                                    type="button"
-                                    onClick={() => setPreview(item)}
-                                    className="flex w-full cursor-pointer flex-col gap-1 text-left"
-                                >
-                                    <span className="font-medium text-gray-900">
-                                        {item.question}
-                                    </span>
-
-                                    <MarkdownContent
-                                        content={item.answer}
-                                        variant="preview"
-                                    />
-                                </button>
-                            </Card>
+                                question={item}
+                                onOpen={() => setPreview(item)}
+                            />
                         ))}
                     </div>
 
@@ -339,7 +280,7 @@ export default function QuestionDetail({ id, matched }: QuestionDetailProps) {
                         <button
                             type="button"
                             onClick={() => setRelatedExpanded(true)}
-                            className={`self-start cursor-pointer text-sm font-medium text-blue-700 underline underline-offset-2 ${showGrid ? "md:hidden" : ""}`}
+                            className="self-start cursor-pointer text-sm font-medium text-blue-700 underline underline-offset-2"
                         >
                             {t("questionDetail.showMoreRelated")}
                         </button>

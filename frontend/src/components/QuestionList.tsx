@@ -1,18 +1,22 @@
 "use client";
 
-import Link from "next/link";
-import { Suspense, useCallback, useEffect, useState, useRef } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { fetchQuestions } from "@/lib/api";
 import { Question } from "@/types/question";
-import Card from "@/components/ui/Card";
+import QuestionCard from "@/components/ui/QuestionCard";
 import LoadingState from "@/components/ui/LoadingState";
 import StatusMessage from "@/components/ui/StatusMessage";
 import Pagination from "@/components/ui/Pagination";
-import MarkdownContent from "@/components/ui/MarkdownContent";
 import ReferencedQuestions from "@/components/ui/ReferencedQuestions";
 import QuestionSearchAndAsk from "@/components/QuestionSearchAndAsk";
+import QuestionPreviewModal, {
+    PreviewQuestion,
+} from "@/components/ui/QuestionPreviewModal";
+import MeaningChooser from "@/components/ui/MeaningChooser";
+import { ConceptSearchItem } from "@/types/concept";
 import { useQueryState } from "@/lib/hooks/useQueryState";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { useLatestRequest } from "@/lib/hooks/useLatestRequest";
 
 type Mode = "similarity" | "keyword";
 
@@ -22,10 +26,11 @@ const LIST_QUERY_DEFAULTS = {
     page: "1",
     size: "30",
     keyword: "",
-    // 概念チップ([41])からの絞り込み。空文字なら絞り込みなし。
+    // Tag chip filter ([41]); empty means no filter.
     concept: "",
-    // ベクトル検索([49])。値はQuestionSearchAndAskが管理し、ここでは
-    // 初期タブの選択にだけ使う。
+    // Exact tag sense filter ([55]); `concept` holds the label for the banner.
+    conceptId: "",
+    // Vector search ([49]); QuestionSearchAndAsk owns it, it only picks the first tab here.
     similar: "",
 };
 
@@ -41,12 +46,11 @@ const inputClassName =
     "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
 
 function QuestionListInner() {
-    const { language, t } = useLanguage();
+    const { language, resolved, t } = useLanguage();
 
-    // 一覧(pagination + keyword filter、page/size/keywordはURLで管理)
+    // List state (page, size, keyword) lives in the URL.
     const [queryState, setQueryState] = useQueryState(LIST_QUERY_DEFAULTS);
-    // 共有リンクが正しいタブで開くよう、初期タブはURLから決める:
-    // ?similar=はベクトル検索、?keyword=だけならキーワード検索。
+    // Open the tab the URL implies, so a shared link lands in the right place.
     const [mode, setMode] = useState<Mode>(() =>
         queryState.keyword !== "" && queryState.similar === ""
             ? "keyword"
@@ -61,7 +65,8 @@ function QuestionListInner() {
     const [listTotal, setListTotal] = useState(0);
     const [listLoading, setListLoading] = useState(true);
     const [listError, setListError] = useState(false);
-    const listRequestId = useRef(0);
+    const listRequestId = useLatestRequest();
+    const [preview, setPreview] = useState<PreviewQuestion | null>(null);
 
     const loadList = useCallback(
         async (
@@ -70,9 +75,10 @@ function QuestionListInner() {
             keyword: string,
             targetSearchQuestion: boolean,
             targetSearchAnswer: boolean,
-            concept: string
+            concept: string,
+            conceptId: string
         ) => {
-            const requestId = ++listRequestId.current;
+            const isCurrent = listRequestId.begin();
             setListLoading(true);
             setListError(false);
 
@@ -85,38 +91,40 @@ function QuestionListInner() {
                     searchQuestion: targetSearchQuestion,
                     searchAnswer: targetSearchAnswer,
                     lang: language,
-                    concept: concept || undefined,
+                    // A chosen sense is exact; a bare word covers all its senses.
+                    concept: conceptId ? undefined : concept || undefined,
+                    conceptId: conceptId ? Number(conceptId) : undefined,
                 });
 
-                if (requestId !== listRequestId.current) {
+                if (!isCurrent()) {
                     return;
                 }
 
                 setListItems(data.items);
                 setListTotal(data.total);
             } catch (error) {
-                if (requestId !== listRequestId.current) {
+                if (!isCurrent()) {
                     return;
                 }
 
                 console.error(error);
                 setListError(true);
             } finally {
-                if (requestId === listRequestId.current) {
+                if (isCurrent()) {
                     setListLoading(false);
                 }
             }
         },
-        [language]
+        [language, listRequestId]
     );
 
-    // URLのkeywordが外部要因(戻る/進む等)で変わったら入力欄に反映する
+    // Reflect URL keyword changes (back/forward) in the input.
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setKeywordInput(queryState.keyword);
     }, [queryState.keyword]);
 
-    // キーワード入力をデバウンスしてURLへ反映する(1ページ目に戻す)
+    // Debounce keyword typing into the URL and go back to page 1.
     useEffect(() => {
         const timer = setTimeout(() => {
             const trimmed = keywordInput.trim();
@@ -129,8 +137,12 @@ function QuestionListInner() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [keywordInput]);
 
-    // ページ・サイズ・キーワード・検索対象フィールドが確定するたびに一覧を取得する(初回ロードも含む)
+    // Fetch the list whenever its inputs settle, including the first load.
     useEffect(() => {
+        // Wait for the language, or the list loads once in ja and again ([53]).
+        if (!resolved) {
+            return;
+        }
         // eslint-disable-next-line react-hooks/set-state-in-effect
         loadList(
             page,
@@ -138,9 +150,11 @@ function QuestionListInner() {
             queryState.keyword,
             searchQuestion,
             searchAnswer,
-            queryState.concept
+            queryState.concept,
+            queryState.conceptId
         );
     }, [
+        resolved,
         loadList,
         page,
         size,
@@ -148,6 +162,8 @@ function QuestionListInner() {
         searchQuestion,
         searchAnswer,
         queryState.concept,
+        queryState.conceptId,
+        listRequestId,
     ]);
 
     const handlePageChange = (nextPage: number) =>
@@ -155,7 +171,7 @@ function QuestionListInner() {
     const handleSizeChange = (nextSize: number) =>
         setQueryState({ size: String(nextSize), page: "1" });
 
-    // 検索対象(質問/回答)は最低1つはオンのまま維持する(両方オフだと絞り込みが崩れるため)。
+    // Keep at least one of question/answer searched, or the filter breaks.
     const toggleSearchQuestion = () => {
         setSearchQuestion((prev) => (prev && !searchAnswer ? prev : !prev));
     };
@@ -163,8 +179,7 @@ function QuestionListInner() {
         setSearchAnswer((prev) => (prev && !searchQuestion ? prev : !prev));
     };
 
-    // 「AIに聞く-検索/生成」タブでまだ検索していない間のフォールバックにも、
-    // 「キーワード検索」タブの主表示にも、同じ質問一覧を使う(重複させない)。
+    // Both tabs share this list: the AI tab before a search, the keyword tab always.
     const conceptBanner = queryState.concept ? (
         <div className="flex flex-wrap items-center gap-3 rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-800">
             <span>
@@ -172,7 +187,9 @@ function QuestionListInner() {
             </span>
             <button
                 type="button"
-                onClick={() => setQueryState({ concept: "", page: "1" })}
+                onClick={() =>
+                    setQueryState({ concept: "", conceptId: "", page: "1" })
+                }
                 className="cursor-pointer font-medium underline underline-offset-2"
             >
                 {t("concepts.clearFilter")}
@@ -180,9 +197,20 @@ function QuestionListInner() {
         </div>
     ) : null;
 
+    const chooseSense = (item: ConceptSearchItem) =>
+        setQueryState({
+            concept: item.label,
+            conceptId: String(item.id),
+            page: "1",
+        });
+
     const browseList = (
         <>
             {conceptBanner}
+
+            {queryState.concept && !queryState.conceptId && (
+                <MeaningChooser word={queryState.concept} onSelect={chooseSense} />
+            )}
 
             {listLoading && <LoadingState />}
 
@@ -197,7 +225,8 @@ function QuestionListInner() {
                             queryState.keyword,
                             searchQuestion,
                             searchAnswer,
-                            queryState.concept
+                            queryState.concept,
+                            queryState.conceptId
                         )
                     }
                 />
@@ -225,25 +254,15 @@ function QuestionListInner() {
 
                     <div className="flex flex-col gap-3">
                         {listItems.map((question) => (
-                            <Card
+                            <QuestionCard
                                 key={question.id}
-                                className="transition-colors hover:border-blue-300 hover:bg-blue-50/50"
+                                question={question}
+                                onOpen={() => setPreview(question)}
                             >
-                                <Link href={`/questions/${question.id}`}>
-                                    <span className="font-medium text-gray-900">
-                                        {question.question}
-                                    </span>
-
-                                    <MarkdownContent
-                                        content={question.answer}
-                                        variant="preview"
-                                    />
-                                </Link>
-
                                 <ReferencedQuestions
-                                    items={question.retrieved_questions}
+                                items={question.retrieved_questions}
                                 />
-                            </Card>
+                            </QuestionCard>
                         ))}
                     </div>
 
@@ -278,6 +297,11 @@ function QuestionListInner() {
                     {t("common.keywordSearch")}
                 </button>
             </div>
+
+            <QuestionPreviewModal
+                question={preview}
+                onClose={() => setPreview(null)}
+            />
 
             {mode === "similarity" ? (
                 <QuestionSearchAndAsk>{browseList}</QuestionSearchAndAsk>

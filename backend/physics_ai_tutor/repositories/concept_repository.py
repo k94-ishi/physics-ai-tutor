@@ -1,31 +1,20 @@
-from sqlalchemy import func
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
-from physics_ai_tutor.models import Concept, QuestionConcept
-
-
-def get_by_name(db: Session, name: str, language: str = "ja") -> Concept | None:
-    column = Concept.name_ja if language == "ja" else Concept.name_en
-    return db.query(Concept).filter(column == name).first()
+from physics_ai_tutor.core.text import normalize_key
+from physics_ai_tutor.models import Concept, ConceptTerm, QuestionConcept
 
 
-def create(
-    db: Session,
+def build(
     embedding: list[float],
     extraction_model: str,
     embedding_model: str,
     extraction_prompt_version: str,
     name_ja: str | None = None,
     name_en: str | None = None,
-    name: str | None = None,
 ) -> Concept:
-    # Legacy single-name form means Japanese.
-    if name is not None:
-        name_ja = name
-
-    if name_ja is None and name_en is None:
-        raise ValueError("A concept needs a name in at least one language")
-
+    """A new, unsaved sense; given names become its preferred terms ([55])."""
     concept = Concept(
         name_ja=name_ja,
         name_en=name_en,
@@ -34,19 +23,22 @@ def create(
         embedding_model=embedding_model,
         extraction_prompt_version=extraction_prompt_version,
     )
-
-    db.add(concept)
-    db.flush()
-
+    for language, word in (("ja", name_ja), ("en", name_en)):
+        if word:
+            concept.terms.append(
+                ConceptTerm(
+                    language=language,
+                    term=word,
+                    normalized=normalize_key(word),
+                    is_preferred=True,
+                    source="EXTRACTED",
+                )
+            )
     return concept
 
 
-def list_all(db: Session) -> list[Concept]:
-    return db.query(Concept).all()
-
-
-def average_concept_similarity(
-    db: Session,
+async def average_concept_similarity(
+    db: AsyncSession,
     source_concept_ids: list[int],
     candidate_question_ids: list[int],
 ) -> dict[int, float]:
@@ -66,16 +58,32 @@ def average_concept_similarity(
         source_concept.embedding
     )
 
-    rows = (
-        db.query(
+    query = (
+        select(
             QuestionConcept.question_id,
             func.avg(similarity).label("avg_similarity"),
         )
         .join(candidate_concept, candidate_concept.id == QuestionConcept.concept_id)
         .join(source_concept, source_concept.id.in_(source_concept_ids))
-        .filter(QuestionConcept.question_id.in_(candidate_question_ids))
+        .where(QuestionConcept.question_id.in_(candidate_question_ids))
         .group_by(QuestionConcept.question_id)
-        .all()
     )
+    rows = (await db.execute(query)).all()
 
     return {question_id: float(avg_similarity) for question_id, avg_similarity in rows}
+
+
+async def ids_missing_name(
+    db: AsyncSession, question_ids: list[int], language: str
+) -> list[int]:
+    """Concepts of these questions that have no name in `language`."""
+    if not question_ids:
+        return []
+    column = Concept.name_ja if language == "ja" else Concept.name_en
+    query = (
+        select(Concept.id)
+        .join(QuestionConcept, QuestionConcept.concept_id == Concept.id)
+        .where(QuestionConcept.question_id.in_(question_ids), column.is_(None))
+        .distinct()
+    )
+    return list((await db.scalars(query)).all())

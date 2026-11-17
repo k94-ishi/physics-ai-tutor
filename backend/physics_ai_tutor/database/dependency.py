@@ -1,14 +1,11 @@
-from collections.abc import Generator
+from collections.abc import AsyncGenerator
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from physics_ai_tutor.database.database import SessionLocal
+from physics_ai_tutor.database.database import AsyncSessionLocal
 
 
-def get_db() -> Generator[Session]:
-    db = SessionLocal()
-
-    try:
+async def get_db() -> AsyncGenerator[AsyncSession]:
+    """The request-scoped session every route depends on ([69], [110])."""
+    async with AsyncSessionLocal() as db:
         yield db
-    finally:
-        db.close()

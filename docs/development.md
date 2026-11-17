@@ -53,19 +53,24 @@ To load sample data:
 docker compose exec backend uv run python -m physics_ai_tutor.database.seed
 ```
 
-The seed script reads `backend/physics_ai_tutor/database/seed.json` and
+The seed script reads `backend/physics_ai_tutor/database/seed.jsonl` (one
+question per line) and
 inserts every entry as an approved question in both languages. Entries may
 be `{"question", "answer"}` (Japanese, English machine translated) or carry
 explicit `question_ja` / `answer_ja` / `question_en` / `answer_en` columns
-(a supplied English text is kept as a human translation). It generates
-embeddings, extracts concepts and translates, so `OPENAI_API_KEY` and
-`DEEPSEEK_API_KEY` must be set.
+(a supplied English text is kept as a human translation). The file carries the
+translations, tags and difficulty levels, and `seed_embeddings.jsonl.gz`
+next to it carries their embeddings, so seeding calls neither OpenAI nor
+DeepSeek (see
+[docs/database.md](database.md#seed-data); write a local database back
+into the files with `python -m physics_ai_tutor.cli.export_seed` and
+`python -m physics_ai_tutor.cli.export_seed_embeddings`).
 The import is all-or-nothing: if any question text already exists, nothing
 is inserted. Reset the database (see [docs/database.md](database.md)) before
 re-seeding.
 
-`seed.jsonl` in the same directory holds the same data in JSONL form, which
-is the format accepted by the admin "Upload" page.
+The same lines are valid input for the admin "Upload" page, which reads
+the texts and ignores the stored tags, levels and provenance ([101]).
 
 ### Translate existing rows
 
@@ -127,8 +132,10 @@ pull request. Run them locally before pushing.
 
 ### Backend (pytest)
 
-Run from the `backend/` directory. Tests need the `postgres-test` container
-(port 5433) started by Docker Compose; OpenAI and DeepSeek calls are mocked.
+Run from the `backend/` directory. The suite is self-contained ([113]): it
+starts its own temporary PostgreSQL + pgvector container (Docker must be
+running; nothing needs to be started first) and needs no environment
+variables. OpenAI and DeepSeek calls are mocked.
 
 ```bash
 cd backend
@@ -148,13 +155,35 @@ docker compose exec backend uv run pytest
 
 How the database is handled:
 
-- Each checkout gets its own auto-created test database
-  (`physics_ai_tutor_test_<hash>` derived from the path), so several
-  worktrees can share one `postgres-test` container. Set `TEST_DATABASE_URL`
-  to override.
-- The schema is built once per session with `alembic upgrade head` and
-  tables are truncated between tests, so model/migration drift fails the
-  suite (`tests/test_migrations.py`).
+- Each run starts a fresh `pgvector/pgvector:pg17` container (the image
+  of compose's `postgres-test`; a test pins the two together) and removes
+  it when the run ends, so runs in different checkouts or sessions never
+  share a database. A run killed before it could clean up leaves its
+  container behind; the next run on the same machine removes it, and
+  never touches a container whose run is still alive.
+- `TEST_DATABASE_URL` switches this off and uses that database instead;
+  `docker compose exec backend` sets it to the in-network `postgres-test`.
+  CI does not set it: it runs the suite exactly as a developer does, on
+  the runner's Docker.
+- Before the app is imported, `tests/isolated_environment.py` forces
+  `DATABASE_URL` to the test database and the OpenAI/DeepSeek keys and
+  base URLs to harmless values. Environment variables win over
+  `backend/.env`, so a real database or API key in that file cannot reach
+  a test run (`tests/test_isolated_environment.py`).
+- The schema is built once per session with `alembic upgrade head`, so
+  model/migration drift fails the suite (`tests/test_migrations.py`).
+- Every test that uses `db` starts from empty tables: `reset_database()`
+  deletes all rows and restarts the id sequences (ids start at 1, as
+  `TRUNCATE ... RESTART IDENTITY` did, at ~2 ms instead of ~40 ms). It
+  runs before each test only; the next test resets anyway.
+- Passwords are hashed with Argon2 at minimal cost during tests (~0 ms
+  instead of ~50 ms per hash); `tests/test_security.py` pins the
+  production parameters, so the shortcut cannot leak into the app.
+- Expensive read-only setup is shared with a module-scoped fixture, as
+  `tests/test_seed.py` does for the full seed. Use it only when every test
+  in the module just reads; anything that writes needs the per-test `db`.
+- The whole backend suite takes about 40 s (2026-11-11, 522 tests; it was
+  ~6 min before [66]). CI prints the 10 slowest tests.
 - A PostgreSQL advisory lock is held for the session; a second concurrent
   run on the same database aborts immediately instead of corrupting it.
 
@@ -163,15 +192,30 @@ Layout of `backend/tests/`:
 | File | Covers |
 | --- | --- |
 | `conftest.py` | Database lifecycle, `client` / `admin_client` / `user_client` fixtures, mocks for embeddings and concept extraction |
+| `isolated_environment.py` | Not a test: run first by `conftest.py`; starts the temporary database and forces safe settings ([113]) |
+| `test_isolated_environment.py` | The app engine uses the test database, LLM clients hold fake keys and a dead address, and the container image matches compose ([113]) |
 | `test_questions.py`, `test_users.py`, `test_auth.py`, `test_ai.py`, `test_health.py` | HTTP API, one file per router: status codes, auth rules, validation |
 | `test_rate_limit.py` | Postgres-backed rate limiter: window counting, pruning, check/record split |
 | `test_review_workflow.py` | End-to-end review flow: AI answer saved as unreviewed, hidden from students, approved / edited / rejected by an admin, history recorded |
-| `test_*_service.py` | Service layer: RAG context, embeddings, concepts, recommendations, question lifecycle |
+| `test_*_service.py` | Service layer: RAG context, embeddings, concepts, recommendations, question lifecycle (`test_question_service.py` covers the five `question_*_service` modules) |
 | `test_*_repository.py` | Repository queries against a real PostgreSQL + pgvector |
 | `test_models.py` | Column defaults, cascades |
 | `test_migrations.py` | Single Alembic head, models match migrations |
-| `test_cli.py` | `create_user` and `translate_missing` CLIs and the seed script |
+| `test_cli.py` | `create_user` and `translate_missing` CLIs, seed file checks |
+| `test_seed.py` | One offline seed per module (OpenAI and DeepSeek forbidden), then read-only checks and export round trips |
+| `test_security.py` | Production password hashing parameters (the test hasher is cheaper) |
+| `test_comment_style.py` | Comments are English (Japanese only as quoted data) ([65]) |
+| `test_architecture.py` | Layering rules: routers call services only; only `transaction()` commits; sessions come from `database/`; no sync database access or sync LLM client in the app; no transaction waits on an LLM ([69], [82], [99]) |
+| `test_async_foundation.py` | Async engine, session, `transaction` commit/rollback, pool sizing ([69]) |
+| `test_async_hot_path.py` | A pending generation does not hold the server; concurrent generations overlap ([70]) |
+| `test_llm_connection_discipline.py` | No transaction is open at the moment any LLM seam is called ([82]) |
+| `test_background_concurrency.py` | Background items overlap up to the limit; takeover stops a run; one call per row ([72]) |
+| `test_background_claims.py` | Database claims: one winner among concurrent claimers, expiry, release on success and failure ([75]) |
+| `test_ask_stream.py` | Streamed answers: SSE events, the off-topic sentinel never leaking, nothing saved on an abandoned stream ([71]) |
+| `test_timing.py` | Stage timing logs and the request-path label ([68]) |
+| `test_language_strict.py` | Students never get the other language on related/prerequisites/concepts; hidden rows are translated once in the background ([53]) |
 | `test_language.py` | Bilingual rows: eager translation, provenance, `lang` resolution, English ask flow, cache tiers, review in either language, translate endpoint, import shapes |
+| `test_concept_senses.py` | Concept senses ([55]): homonyms and synonyms at extraction, cross-language search and filter, admin editor (alias, label, merge, split), split CLI |
 | `test_logging.py` | Request logging middleware |
 
 Conventions:
@@ -181,9 +225,28 @@ Conventions:
 - Anything that calls OpenAI or DeepSeek must be mocked. `conftest.py`
   already patches `embedding_service.create_embeddings`,
   `concept_service.extract_concept_names` and
-  `translation_service.translate_qa` (which returns `"[en] <text>"` style
-  markers so tests can assert on translations); patch `deepseek_service`
-  per test.
+  `translation_service.translate_qa` (which returns `"[en] <text>"`
+  style markers so tests can assert on translations).
+- Patch LLM seams through the `conftest` helpers, never with a bare
+  `monkeypatch.setattr` ([70]): `patch_generation`,
+  `patch_chat_completion`, `patch_create_embeddings`,
+  `patch_extract_concept_names` and `patch_rag_answer` each take a plain
+  sync stub and install it on the async function the app awaits. A
+  sync function there would be awaited and fail with a confusing
+  `TypeError`. Since [108] the app has no sync seam left to patch.
+- A test that calls converted (async) code is `async def`, marked
+  `pytest.mark.anyio`, and takes `async_db`. Arrange rows through the
+  sync `db` and `db.commit()` them - the async session is another
+  connection and only sees committed rows. The app's repositories are
+  async only since [111]/[112], so sync arrangement goes through the
+  `conftest` helpers (`create_question`, `create_concept`,
+  `link_concept`, `create_embedding`, `create_ai_review`,
+  `concepts_for_question` to read back). Inside an async test use
+  `async_create_user`, not `create_user`: the sync bridge runs its own
+  event loop and cannot nest ([83]).
+- A coroutine that is never awaited fails the suite: `pyproject.toml`
+  turns `RuntimeWarning` into an error ([83]). Twice before, a test
+  passed vacuously because an `await` was missing ([72]).
 - Admin-only endpoints need a test for `admin_client` (success),
   `user_client` (403) and `client` (401).
 - Any endpoint that returns question content needs a test proving
@@ -214,13 +277,18 @@ Test files sit next to the code in `__tests__/` folders and end in
 
 | Location | Covers |
 | --- | --- |
+| `src/lib/__tests__/commentStyle.test.ts` | Comments are English (Japanese only as quoted data) ([65]) |
+| `src/lib/api/__tests__/importBoundary.test.ts` | Nothing outside `lib/api` imports a feature file directly |
 | `src/lib/__tests__/api.test.ts` | Request building (query params, JSON bodies, multipart), cookie inclusion, `ApiError` on non-2xx, 204 handling |
 | `src/lib/__tests__/markdown.test.ts` | LaTeX delimiter normalisation for DeepSeek output |
 | `src/lib/__tests__/concurrency.test.ts` | Concurrency limiter used by bulk admin actions |
+| `src/lib/__tests__/askAiStream.test.ts` | SSE parsing: frames split across chunks, newlines kept, error and non-2xx handling ([71]) |
 | `src/lib/hooks/__tests__/useQueryState.test.tsx` | URL-backed list state (defaults omitted, `router.replace` without scroll) |
 | `src/lib/i18n/__tests__/` | Translation tables have identical keys and placeholders in `ja` and `en`; language switching, persistence, `<html lang>` |
 | `src/lib/auth/__tests__/AuthContext.test.tsx` | Session bootstrap, 401 treated as logged out, login / logout state |
 | `src/components/ui/__tests__/` | `Pagination`, `StatusMessage`, `ConfirmDialog`: rendering, accessibility roles, callbacks, keyboard handling |
+| `src/components/admin/__tests__/AdminQuestionCard.test.tsx` | Admin queue card: each action calls only its callback; selection toggling |
+| `src/lib/hooks/__tests__/useLatestRequest.test.tsx` | Only the newest request stays current; cancel; stable object |
 
 Conventions:
 
@@ -232,6 +300,112 @@ Conventions:
 - Prefer testing hooks and pure helpers directly; keep component tests for
   behaviour a user can observe. `async` Server Components are out of scope
   for Vitest; use a browser check against the local stack for those.
+
+### Backend layers and transactions
+
+AGENTS.md asks for router -> service -> repository. Since [59] this is
+enforced by `tests/test_architecture.py`:
+
+- **Routers** (`api/`) parse input, authorise, call one service and map
+  domain errors to HTTP. They never import `repositories`, open a session,
+  or call `db.query/get/add/commit/...`.
+- **Services** own the use case and its transaction. Wrap the writes of a
+  use case in `async with transaction(db, "operation"):`
+  (`database/transaction.py`): it commits on success, and on any error
+  rolls back, logs `Rolling back transaction: operation=...` and re-raises.
+  For best-effort work, put the `async with` inside your own `try/except`.
+  It is the only code that calls `commit()` or `rollback()`.
+- **Repositories** query and flush; they never commit.
+- **No transaction waits on an LLM** ([82]). An `transaction()`
+  block must not contain a call to OpenAI or
+  DeepSeek: the block holds a pooled connection, and a connection parked
+  behind a 20-second network call is what capped the backend at ~15
+  concurrent operations once threads no longer did. Structure such code
+  as *prepare* (LLM calls, no session) then *apply* (short write
+  transaction) — `question_translation_service` is the model. Enforced
+  lexically by `test_architecture.py` and at runtime by
+  `tests/test_llm_connection_discipline.py`.
+- **Question use cases** live in five modules (since [60]):
+  `question_read_service` (list, detail, exact match, ask cache),
+  `question_write_service` (create, import, update, delete, AI answers,
+  concept extraction), `question_review_service` (approve / edit-approve /
+  reject, history), `question_translation_service` (machine translation and
+  per-language embeddings) and `question_presentation_service` (response
+  shaping). Routers: `api/v1/questions.py` (public reads) and
+  `api/v1/admin_questions.py` (admin writes), same `/questions` prefix.
+- **Response language** (since [62]): a router builds one
+  `ResponseLanguage.for_caller(lang, admin=...)` per request. Students are
+  `strict` (never the other language, [53]); admins get the fallback.
+  Services take it as `language=` (a plain `Language` means the fallback)
+  and return what a strict response left out as `TranslationNeeds`; the
+  router hands those to the background translator in one call. List
+  filters travel as one `QuestionFilters` object from router to repository.
+- **Background tasks** open their session with `background_session()`
+  (`database/session.py`); tests point that one helper at the test
+  database. CLIs open `AsyncSessionLocal` and run through `asyncio.run`
+  (all of them since [109]).
+- **Background work is claimed in the database** ([75]). A worker takes a
+  `background_claims` row before starting and deletes it in a `finally`;
+  the unique `(kind, key)` means exactly one worker can win, and an
+  expired claim is taken over so a crash cannot park a row. Claims are
+  taken inside the task, not by the caller, so the holder is whoever
+  actually does the work. No service keeps cross-request state in a
+  module-level set or dict — that is per-process and two workers would
+  silently disagree, which is how the same row got translated twice.
+- **Background work is asyncio, a few items at a time** ([72]). Every
+  `add_task` target is a coroutine function — a sync one would run on
+  the anyio thread pool and compete with request handling, which is what
+  [68] measured. Items run under a small semaphore
+  (`AI_REVIEW_CONCURRENCY`, `TRANSLATION_CONCURRENCY`), and **each
+  concurrent item opens its own session**, because a session cannot be
+  shared between tasks running at once. No `threading` primitives in
+  services; both rules are enforced by `tests/test_architecture.py`.
+  In-process tasks still die with a deploy or restart: translations
+  self-heal on the next view and runs are reaped by the timeout guard,
+  which is the same trade-off as before concurrency.
+
+### The async stack ([67], [73])
+
+Since Track F the backend runs on one stack: SQLAlchemy's async engine over
+the psycopg driver and the plain `DATABASE_URL`, and `AsyncOpenAI` for
+both providers. Alembic keeps its own sync engine for migrations, and
+tests build a sync engine to arrange rows; neither is part of the app.
+
+| | Where |
+| --- | --- |
+| Request session | `Depends(get_db)` (`database/dependency.py`) |
+| Background session | `async with background_session()` (`database/session.py`) |
+| Writes | `async with transaction(db, "op")` (`database/transaction.py`) |
+| CLI session | `async with AsyncSessionLocal()` inside `asyncio.run` |
+| Engine | `async_engine` / `AsyncSessionLocal` (`database/database.py`) |
+| Test fixtures | `async_db` for the code under test; sync `db` to arrange rows |
+
+Rules, enforced by `tests/test_architecture.py` where a test can see them:
+
+- **No sync database access anywhere in the app** (`sqlalchemy.orm.Session`,
+  `sessionmaker`, `create_engine`), `database/` included. Never bridge
+  with `run_in_executor`: a blocking call on the event loop stalls every
+  request, not just its own.
+- **`transaction()` is the only commit point**, and no transaction may
+  wait on an LLM ([82]); see the layering rules above.
+- **Read what you need off an ORM row before a transaction that might
+  roll back.** A rollback expires the object, and reading an expired
+  attribute afterwards is implicit IO, which `AsyncSession` refuses with
+  `MissingGreenlet` - so an error path that logs `question.id` crashes
+  instead of logging. `review_question` captures its scalars up front
+  for exactly this reason.
+- **No implicit IO.** A relationship needs `lazy="selectin"` or a
+  `selectinload` in the query; `Concept.terms` is the model.
+- Only `database/` (and script entry points: `cli/`, `database/seed.py`)
+  may use the session factory. Everything else takes a session.
+- The session factory keeps `expire_on_commit=False`: services return
+  ORM objects whose attributes are read after the commit, and an async
+  refresh would need an await the caller cannot give.
+- Async tests are marked `pytest.mark.anyio`; the `anyio_backend`
+  fixture pins asyncio.
+
+Each worker holds **one pool** (`POOL_SIZE` 5 + `MAX_OVERFLOW` 10 in
+`database/database.py`); see the connection budget below.
 
 ### URL parameters on the student list
 
@@ -253,6 +427,37 @@ button never bounces forward. Query embeddings are cached server-side in
 `query_embeddings`, keyed by (normalised-text hash, embedding model); a
 model upgrade misses the cache by construction instead of mixing
 incompatible vectors.
+
+### Frontend building blocks ([63])
+
+- `useLatestRequest()` (`lib/hooks`): `const isCurrent = req.begin()` before
+  a fetch, `if (!isCurrent()) return` after it; `req.cancel()` makes older
+  requests stale. Use it instead of a hand-written request counter.
+- `QuestionCard` (`components/ui`): question, answer preview and tags,
+  opening the preview; `tone="emerald"` for "Read these first".
+- The API client is `lib/api/` ([64]): `client.ts` (base URLs,
+  `apiFetch`, `ApiError`) and one file per feature (`questions`, `concepts`,
+  `auth`, `users`, `admin`, `ai`). Always import from `@/lib/api`: tests
+  mock that module, and `lib/api/__tests__/importBoundary.test.ts` fails on
+  a direct feature import.
+- Translations are `lib/i18n/translations/` ([64]): one file per feature
+  (`common`, `student`, `account`, `admin`, `adminStats`, `levels`,
+  `conceptsAdmin`), each with `ja` and an `en` typed against it; add a key
+  to the file of its feature. Import from `@/lib/i18n/translations`.
+- The admin queue (`app/admin/questions/`) is a page plus two hooks:
+  `useAdminQueueList` (URL filters, loading, searches, paging) and
+  `useAdminQueueActions` (selection, review, bulk, extraction, AI review,
+  delete), and two components, `AdminQueueFilters` and `AdminQuestionCard`.
+
+### Naming: "tag" on screen, "concept" in code
+
+Students and teachers see **タグ / tag** (owner, 2026-11-10); the code,
+tables and API keep the developer name `concept` (`concepts`,
+`concept_terms`, `?concept=`, `ConceptChips`). Translation keys keep their
+`concepts.*` prefix. Keep physics wording that is not about the tag
+feature (「抽象概念」 in the level rubric, the `UNNEEDED_TOOLS` reason
+text) as it is. Tag chips carry no visible heading; the list has the
+accessible name "タグ"/"Tags".
 
 ### The sticky ask bar
 
@@ -276,6 +481,13 @@ answers never need editing for it (issue [36]). Keep it in the plugin
 list, and cover any new renderer with
 `src/components/ui/__tests__/MarkdownContent.test.tsx`.
 
+### Host builds and the dev container
+
+The compose frontend mounts `./frontend`, including `.next`. Running
+`npm run build` on the host while that container runs overwrites its
+Turbopack cache and the dev server exits ("Failed to open database").
+Restart it with `docker compose -p <project> up -d frontend`.
+
 ### What is not covered
 
 - No end-to-end browser tests. Pages, routing and the Mermaid / KaTeX
@@ -285,8 +497,9 @@ list, and cover any new renderer with
 ## CI/CD
 
 - GitHub Actions (`.github/workflows/ci.yml`) runs on pull requests to
-  `main`: backend migrations, ruff, mypy, pytest against a pgvector
-  container, and frontend lint, type check, and build.
+  `main`: backend ruff, mypy and pytest (which starts its own pgvector
+  container and applies the migrations to it, [113]), and frontend lint,
+  type check, tests and build.
 - Frontend is deployed to Vercel, backend to Render, database on Supabase.
 - Apply migrations to production (`alembic upgrade head` with the Supabase
   `DATABASE_URL`) before deploying backend code that needs the new schema.
@@ -310,10 +523,121 @@ without `--force`, so a mis-set cron fails loudly (exit 2) instead of
 paying full price. A failed run exits 1 and fails the job, which triggers
 GitHub's failure e-mail; results are also on `/admin/stats`.
 
+Since [105] the CLI grades `AI_REVIEW_CONCURRENCY` questions at a time,
+like a run started from the admin page. A reviewer failure (DeepSeek
+down, unreadable verdict) is one failed question and the run goes on.
+An unexpected crash outside the review (a bug, a database error) stops
+the run: no new question starts, the ones in flight finish and are
+saved, the run ends `failed` with "question N crashed", and the CLI
+exits 1 so the job alerts. `--continue-on-crash` counts the crash as one
+failed question instead and finishes the run (exit 0); use it for a
+manual re-run once the cause is known. Runs started from the admin page
+always continue.
+
 Required repository secrets: `DATABASE_URL` (Supabase pooler) and
 `DEEPSEEK_API_KEY`. With the nightly in place, `AI_REVIEW_ENABLED` can
 stay `false` in production: teachers find fresh verdicts in the morning
 and generation never pays for an inline review call.
+
+## Reading latency logs ([68])
+
+Every request logs its total time
+(`Response: POST /api/v1/ai/ask 200 20913.08ms`), and the waiting parts
+inside it log their own:
+
+```
+Stage finished: name=ask_cache_lookup path=/api/v1/ai/ask duration_ms=6.33 hit=False
+Stage finished: name=embed_query     path=/api/v1/ai/ask duration_ms=336.78 cache=miss
+Stage finished: name=vector_search   path=/api/v1/ai/ask duration_ms=40.01 limit=5 results=5
+Stage finished: name=deepseek_chat   path=/api/v1/ai/ask duration_ms=20033.74 completion_tokens=200
+Stage finished: name=save_answer     path=/api/v1/ai/ask duration_ms=420.22
+```
+
+The top-level stages of one request add up to its total, so a slow
+request can be explained without guessing. Points to know:
+
+- Stages nest. `rag_context` contains `embed_query` (which contains
+  `openai_embeddings`) and `vector_search`; do not add a stage to its own
+  parent when summing.
+- `path=background:...` means work that ran *after* a response was sent
+  (translation, AI review). It is not charged to any request.
+- A failed call still logs its duration, because waiting for a timeout is
+  latency too.
+- Wrap a new slow step with `timing.stage("name")` from
+  `core/timing.py`, in a service (never a router). `stage.note(...)`
+  adds fields such as `cache=hit`.
+
+To measure rather than read, use the two dev scripts:
+
+```bash
+# Concurrency and percentiles against a LOCAL stack (refuses other hosts).
+python scripts/latency_probe.py --path /api/v1/health -n 40 -c 1
+python scripts/latency_probe.py --path /api/v1/ai/ask \
+  --body '{"question":"テスト {n}"}' -n 60 -c 60    # {n} keeps each request distinct
+
+# A stand-in for OpenAI/DeepSeek with a known delay, so generation time is
+# a constant instead of a variable. No API key, no quota. It also serves
+# `stream: true` as SSE, spreading the delay over the pieces ([71]).
+python scripts/fake_llm_server.py --port 9100 --chat-delay 20
+# then run the backend with OPENAI_BASE_URL and DEEPSEEK_BASE_URL set to it
+```
+
+The probe's own thread pool is sized to `-c`; asyncio's default executor
+caps near 12 threads and would otherwise silently become the limit.
+Baseline numbers and how they were taken are in
+[docs/issues/68-latency-baseline-and-stage-timing.md](issues/68-latency-baseline-and-stage-timing.md).
+
+## Running more than one worker ([75])
+
+uvicorn serves on one process by default. `WEB_CONCURRENCY=N` starts N,
+which is the cheapest way to raise throughput for the work that is
+CPU-bound rather than waiting — serialising a question list, rendering
+JSON, the Python side of a vector search.
+
+Measured locally on a 200-row database, 800 requests to
+`/questions?size=50` at concurrency 32:
+
+| Workers | p50 | p95 | Wall | Throughput | Database connections |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 99 ms | 166 ms | 2.7 s | ~296 req/s | 6 |
+| 2 | 72 ms | 122 ms | 1.9 s | ~421 req/s | 11 |
+| 4 | 51 ms | 101 ms | 1.5 s | ~533 req/s | 21 |
+
+Sub-linear, as expected: the database and the client become the shared
+limit. The gain is real but smaller than the worker count.
+
+**Two things must be true before raising it.**
+
+1. **Background de-duplication must be database-backed**, which is why
+   [75] came first. Each worker is a separate process with its own
+   memory, so a claim held in a Python set is invisible to the others
+   and the same row gets translated twice — two DeepSeek calls for one
+   row's worth of value.
+2. **The connection budget must fit.** Each worker builds its own pool,
+   one per worker since [110]:
+
+   ```
+   worst case per worker = pool_size + max_overflow = 5 + 10 = 15
+   ```
+
+   Re-measured in [99] (2026-11-17, same probe as above, 144 questions):
+
+   | Workers | Worst case | Peak under load | Held when idle |
+   | --- | --- | --- | --- |
+   | 1 | 15 | 15 | 6 |
+   | 2 | 30 | 30 | 11 |
+   | 4 | 60 | 47 | 21 |
+
+   Under load the pools filled to their ceiling, so plan with the worst
+   case, not with the idle figure. Against a Supabase instance that
+   typically allows ~60 direct connections, **two workers are safe,
+   three fit, and four reach the limit exactly** - before [110] four
+   could demand 120. [74] settles the pool sizes for the Supabase pooler;
+   with a smaller `MAX_OVERFLOW`, four becomes comfortable.
+
+`--reload` and `--workers` are mutually exclusive, so the Compose
+development server stays single-worker. Set `WEB_CONCURRENCY` on Render
+(its start command lives in the dashboard, not in this repository).
 
 ## Environment Variables
 
@@ -345,6 +669,10 @@ Backend (`backend/.env`):
 | `AI_REVIEW_ENABLED` | no | Grade each new AI answer into `ai_reviews` (default `false`; one extra DeepSeek call per generation) |
 | `AI_REVIEW_DAILY_CAP` | no | Rolling 24h budget of reviewer calls across all runs (default `200`) |
 | `AI_REVIEW_MAX_TOKENS` | no | Output budget for reviewer calls (default `3000`); below ~2500 the JSON with a full suggested answer gets truncated |
+| `AI_REVIEW_CONCURRENCY` | no | Questions graded at the same time inside one run (default `3`, [72]); multiplies the DeepSeek request rate |
+| `TRANSLATION_CONCURRENCY` | no | Rows translated at the same time by the background task (default `3`, [72]) |
+| `BACKGROUND_CLAIM_TIMEOUT_MINUTES` | no | How long a background claim is honoured before another worker may take the work over (default `15`, [75]) |
+| `WEB_CONCURRENCY` | no | uvicorn worker processes (default `1`). Read by uvicorn itself; see "Running more than one worker" below before raising it |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | no | Enable Google Sign-In for students; all three must be set (see below) |
 | `FRONTEND_URL` | no | Where the Google callback redirects the browser (default `http://localhost:3000`) |
 
@@ -476,6 +804,26 @@ repository's `DEEPSEEK_API_KEY`; no database is needed. Run it before
 merging changes to the `answer` or `ai_review` prompt families (rule in
 `AGENTS.md`).
 
+### Splitting concepts merged by the old rule ([55])
+
+Before [55] an extracted pair joined any concept sharing one of its words,
+and the other word was dropped (相 | phase landed on 位相 | phase). The
+stored data no longer says which word was dropped, so detection is a
+heuristic: a link is a candidate when the question's own text uses none of
+the sense's words in its original language. That also catches many
+correct links whose concept the text only implies (236 links on 105 of the
+144 seed questions), which is safe: re-extraction only replaces that
+question's links, under the new matching.
+
+```bash
+uv run python -m physics_ai_tutor.cli.split_merged_concepts --dry-run   # report, offline
+uv run python -m physics_ai_tutor.cli.split_merged_concepts --limit 50  # re-extract (DeepSeek)
+```
+
+On production the `backfill_levels` pass ([54]) re-extracts every APPROVED
+question anyway, which applies the same split. Remaining mistakes are fixed
+by hand in `/admin/manage/concepts` (merge / split / alias).
+
 ### Exporting the review dataset
 
 One JSONL line per human review, for offline analysis and prompt
@@ -515,5 +863,6 @@ npm run build
 - [docs/api.md](api.md): endpoint reference and access rules
 - [docs/security.md](security.md): security model and dependency policy
 - [AGENTS.md](../AGENTS.md): project rules for contributors and coding agents
-
-Issue tracking is kept outside this repository.
+- [docs/issues/](issues/): the issue tracker; `status.md` is the index and
+  the only place a status lives, each `NN-slug.md` carries the body. The
+  git-bug store is a read-only archive of everything before 2026-11-02.

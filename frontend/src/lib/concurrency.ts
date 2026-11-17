@@ -1,7 +1,4 @@
-/**
- * `items`を`limit`件まで同時実行しながら`worker`を適用するヘルパー。
- * 大量のitemsを一括で全て並列実行してAPI/外部サービスへ負荷をかけすぎないようにする。
- */
+/** Run `worker` over `items` with at most `limit` calls at a time. */
 export async function runWithConcurrencyLimit<T>(
     items: T[],
     limit: number,

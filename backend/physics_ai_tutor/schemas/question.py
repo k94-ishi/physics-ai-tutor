@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Literal
@@ -210,3 +211,23 @@ class TranslationResult(BaseModel):
 
 class TranslationBatchResponse(BaseModel):
     results: list[TranslationResult]
+
+
+@dataclass(frozen=True)
+class QuestionFilters:
+    """Which questions a list (and its count) covers ([62]).
+
+    `language` keeps only rows with text in it; the read service sets it for
+    strict (student) responses.
+    """
+
+    keyword: str | None = None
+    status: str | None = None
+    exclude_statuses: list[str] | None = None
+    search_question: bool = True
+    search_answer: bool = True
+    language: Language | None = None
+    ai_verdict: str | None = None
+    ids: list[int] | None = None
+    concept: str | None = None
+    concept_id: int | None = None

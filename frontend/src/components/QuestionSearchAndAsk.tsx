@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
     FormEvent,
@@ -10,7 +9,13 @@ import {
     useRef,
     useState,
 } from "react";
-import { ApiError, askAi, fetchQuestionByExactText, searchQuestions } from "@/lib/api";
+import {
+    ApiError,
+    askAi,
+    askAiStream,
+    fetchQuestionByExactText,
+    searchQuestions,
+} from "@/lib/api";
 import { ContentLanguage, SimilarQuestion } from "@/types/question";
 import { AskAiResponse } from "@/types/ai";
 import Card from "@/components/ui/Card";
@@ -18,9 +23,13 @@ import Button from "@/components/ui/Button";
 import LoadingState from "@/components/ui/LoadingState";
 import StatusMessage from "@/components/ui/StatusMessage";
 import MarkdownContent from "@/components/ui/MarkdownContent";
+import QuestionPreviewModal, {
+    PreviewQuestion,
+} from "@/components/ui/QuestionPreviewModal";
 import { showToast } from "@/components/ui/Toast";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { useQueryState } from "@/lib/hooks/useQueryState";
+import { useLatestRequest } from "@/lib/hooks/useLatestRequest";
 
 const SIMILARITY_LIMIT = 10;
 const QUESTION_MIN_LENGTH = 5;
@@ -80,14 +89,8 @@ type QuestionSearchAndAskProps = {
     children?: ReactNode;
 };
 
-/**
- * 質問を関連度検索し、結果を表示したうえで「目的の質問はありませんか？」
- * からRAGモードのAI回答生成へ進める共有フロー。トップページ(検索前は
- * children で質問一覧をフォールバック表示)と質問詳細ページ(children なし)
- * の両方から使われる。
- */
-// ベクトル検索をURLで共有・復元するためのキー([49])。"q"はキーワード検索や
-// AI質問と紛らわしいため"similar"(オーナー決定、2026-11-02)。
+/** Similarity search with a path on to a RAG answer, shared by the home and question pages. */
+// URL key for a shared vector search ([49]); `similar`, not `q` (owner, 2026-11-02).
 const SEARCH_QUERY_DEFAULTS = { similar: "" };
 
 export default function QuestionSearchAndAsk({
@@ -101,11 +104,15 @@ export default function QuestionSearchAndAsk({
     const [results, setResults] = useState<SimilarQuestion[]>([]);
     const [searchLoading, setSearchLoading] = useState(false);
     const [searchError, setSearchError] = useState(false);
-    const searchRequestId = useRef(0);
+    const searchRequestId = useLatestRequest();
 
     const [ragAnswer, setRagAnswer] = useState<AskAiResponse | null>(null);
     const [ragLoading, setRagLoading] = useState(false);
-    const ragRequestId = useRef(0);
+    // Partial answer while it streams in ([71]); cleared once done.
+    const [streamingText, setStreamingText] = useState("");
+    const ragRequestId = useLatestRequest();
+    // Similarity results open in the preview instead of leaving the page ([56]).
+    const [preview, setPreview] = useState<PreviewQuestion | null>(null);
     const contentLanguage = language as ContentLanguage;
 
     const runSearch = useCallback(async (
@@ -118,13 +125,11 @@ export default function QuestionSearchAndAsk({
             return;
         }
 
-        const requestId = ++searchRequestId.current;
+        const isCurrent = searchRequestId.begin();
         setSearchLoading(true);
         setSearchError(false);
 
-        // 完全一致するQAが既にあれば、検索結果を経由せずその個別ページへ直接遷移する。
-        // ただしURL(?similar=)からの復元時は遷移しない: 戻るボタンで戻った直後に
-        // また飛ばされる往復を防ぎ、共有リンクは常に検索結果を見せる。
+        // Go straight to an exact match, except when restoring from the URL, so back never bounces forward.
         if (!options?.skipExactRedirect) {
             let exactMatchId: number | null = null;
             try {
@@ -137,7 +142,7 @@ export default function QuestionSearchAndAsk({
                 }
             }
 
-            if (requestId !== searchRequestId.current) {
+            if (!isCurrent()) {
                 return;
             }
 
@@ -149,7 +154,7 @@ export default function QuestionSearchAndAsk({
 
         setSearched(true);
         setRagAnswer(null);
-        ragRequestId.current += 1;
+        ragRequestId.cancel();
 
         try {
             const data = await searchQuestions({
@@ -158,24 +163,24 @@ export default function QuestionSearchAndAsk({
                 language: contentLanguage,
             });
 
-            if (requestId !== searchRequestId.current) {
+            if (!isCurrent()) {
                 return;
             }
 
             setResults(data);
         } catch (error) {
-            if (requestId !== searchRequestId.current) {
+            if (!isCurrent()) {
                 return;
             }
 
             console.error(error);
             setSearchError(true);
         } finally {
-            if (requestId === searchRequestId.current) {
+            if (isCurrent()) {
                 setSearchLoading(false);
             }
         }
-    }, [router, contentLanguage]);
+    }, [router, contentLanguage, ragRequestId, searchRequestId]);
 
     const runRag = useCallback(async (rawQuery: string, searchResults: SimilarQuestion[]) => {
         const trimmed = rawQuery.trim();
@@ -184,56 +189,99 @@ export default function QuestionSearchAndAsk({
             return;
         }
 
-        const requestId = ++ragRequestId.current;
+        const isCurrent = ragRequestId.begin();
         setRagLoading(true);
         setRagAnswer(null);
+        setStreamingText("");
+
+        const retrievedQuestionIds = searchResults.map((result) => result.id);
+        const options = {
+            language: contentLanguage,
+            mode: "RAG" as const,
+            retrievedQuestionIds:
+                retrievedQuestionIds.length > 0
+                    ? retrievedQuestionIds
+                    : undefined,
+        };
 
         try {
-            const retrievedQuestionIds = searchResults.map((result) => result.id);
-            const result = await askAi(trimmed, {
-                language: contentLanguage,
-                mode: "RAG",
-                retrievedQuestionIds:
-                    retrievedQuestionIds.length > 0
-                        ? retrievedQuestionIds
-                        : undefined,
+            let streamed = "";
+            let pending = false;
+
+            const result = await askAiStream(trimmed, options, {
+                onDelta: (text) => {
+                    if (!isCurrent()) {
+                        return;
+                    }
+
+                    streamed += text;
+
+                    // One state update per frame: a long answer arrives in
+                    // many small pieces and each would otherwise re-render.
+                    if (!pending) {
+                        pending = true;
+                        requestAnimationFrame(() => {
+                            pending = false;
+                            if (isCurrent()) {
+                                setStreamingText(streamed);
+                            }
+                        });
+                    }
+                },
             });
 
-            if (requestId !== ragRequestId.current) {
+            if (!isCurrent()) {
                 return;
             }
 
             setRagAnswer(result);
-        } catch (error) {
-            if (requestId !== ragRequestId.current) {
+            setStreamingText("");
+        } catch (streamError) {
+            if (!isCurrent()) {
                 return;
             }
 
-            console.error(error);
-            showToast(t("questionSearch.askFailed"), "error");
+            // Streaming can fail for reasons the plain endpoint will not
+            // (a proxy that buffers, a browser without streams), so fall
+            // back rather than showing the student an error.
+            console.error(streamError);
+            setStreamingText("");
+
+            try {
+                const result = await askAi(trimmed, options);
+
+                if (!isCurrent()) {
+                    return;
+                }
+
+                setRagAnswer(result);
+            } catch (error) {
+                if (!isCurrent()) {
+                    return;
+                }
+
+                console.error(error);
+                showToast(t("questionSearch.askFailed"), "error");
+            }
         } finally {
-            if (requestId === ragRequestId.current) {
+            if (isCurrent()) {
                 setRagLoading(false);
             }
         }
-    }, [t, contentLanguage]);
+    }, [t, contentLanguage, ragRequestId]);
 
-    // URLの?similar=が真実: 直リンク・リロード・戻る/進むで検索を一度だけ
-    // 復元する。実行済みキーは言語込み([50]): 言語を切り替えたら同じ検索文を
-    // 新しい言語の埋め込みに対して実行し直す(オーナー決定 2026-11-02)。
+    // Restore `?similar=` once per URL and language, re-running on a language switch ([50]).
     const lastExecutedRef = useRef<string | null>(null);
 
     useEffect(() => {
-        // 言語解決前に走ると、既定のjaで検索してから保存言語で検索し直す
-        // 二重実行になる([50]で顕在化)。解決を待ってから一度だけ復元する。
+        // Wait for the language, or the search runs in ja and then again ([50]).
         if (!languageResolved) {
             return;
         }
 
         const target = queryState.similar.trim();
         if (target === "") {
-            // URLが実際に空になってから解除する(再レンダリング中の古い
-            // パラメータで同じ検索を二重実行しないため)。
+            // Reset only once the URL is really empty, so a stale render cannot search twice.
             lastExecutedRef.current = null;
             return;
         }
@@ -251,9 +299,7 @@ export default function QuestionSearchAndAsk({
     function handleQueryChange(value: string) {
         setQuery(value);
 
-        // 入力を空にしたらURLの?similar=も消す。API呼び出しのないURL整理
-        // なので、キーストローク時でも書いてよい唯一のケース。refは触らない:
-        // URLが空になった時点でeffect側が解除する。
+        // Clearing the box clears `?similar=`; the only URL write allowed on a keystroke.
         if (value.trim() === "" && queryState.similar !== "") {
             setQueryState({ similar: "" });
         }
@@ -277,6 +323,11 @@ export default function QuestionSearchAndAsk({
 
     return (
         <div className="flex flex-col gap-4">
+            <QuestionPreviewModal
+                question={preview}
+                onClose={() => setPreview(null)}
+            />
+
             <form onSubmit={handleSubmit} className="flex flex-col gap-1">
                 <div className="flex gap-2">
                     <input
@@ -351,15 +402,20 @@ export default function QuestionSearchAndAsk({
                                 const isTopResult = index === 0;
 
                                 return (
-                                    <Link key={result.id} href={`/questions/${result.id}`}>
-                                        <Card
-                                            className={`transition-colors hover:border-blue-300 hover:bg-blue-50/50 ${topResultRingClassName(isTopResult, percent)}`}
-                                            style={{
-                                                backgroundColor: topResultBackgroundColor(
-                                                    isTopResult,
-                                                    percent
-                                                ),
-                                            }}
+                                    <Card
+                                        key={result.id}
+                                        className={`transition-colors hover:border-blue-300 hover:bg-blue-50/50 ${topResultRingClassName(isTopResult, percent)}`}
+                                        style={{
+                                            backgroundColor: topResultBackgroundColor(
+                                                isTopResult,
+                                                percent
+                                            ),
+                                        }}
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={() => setPreview(result)}
+                                            className="flex w-full cursor-pointer flex-col text-left"
                                         >
                                             {isTopResult && percent >= HIGH_SIMILARITY_THRESHOLD && (
                                                 <p className="mb-1 text-xs font-medium text-green-700">
@@ -383,14 +439,25 @@ export default function QuestionSearchAndAsk({
                                                 content={result.answer}
                                                 variant="preview"
                                             />
-                                        </Card>
-                                    </Link>
+                                        </button>
+                                    </Card>
                                 );
                             })}
                         </div>
                     )}
 
-                    {ragLoading && <LoadingState label={t("questionSearch.generating")} />}
+                    {ragLoading && streamingText === "" && (
+                        <LoadingState label={t("questionSearch.generating")} />
+                    )}
+
+                    {ragLoading && streamingText !== "" && (
+                        <Card className="flex flex-col gap-2">
+                            <MarkdownContent
+                                content={streamingText}
+                                variant="full"
+                            />
+                        </Card>
+                    )}
 
                     {!ragLoading && ragAnswer && (
                         <Card className="flex flex-col gap-2">

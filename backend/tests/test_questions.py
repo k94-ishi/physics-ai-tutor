@@ -2,9 +2,13 @@ import json
 from enum import StrEnum
 
 from physics_ai_tutor.core.exceptions import EmbeddingGenerationError
-from physics_ai_tutor.models import Question, QuestionEmbedding
-from physics_ai_tutor.repositories import question_repository
-from physics_ai_tutor.services import embedding_service
+from physics_ai_tutor.models import Concept, Question, QuestionEmbedding
+from tests.conftest import (
+    create_concept,
+    create_question,
+    link_concept,
+    patch_create_embeddings,
+)
 
 PATH = "/api/v1/questions"
 IMPORT_PATH = f"{PATH}/import"
@@ -652,7 +656,7 @@ def test_create_question_embedding_failure_returns_503(admin_client, monkeypatch
     def _raise(texts):
         raise EmbeddingGenerationError("boom")
 
-    monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
+    patch_create_embeddings(monkeypatch, _raise)
 
     response = _post(admin_client, "質問", "回答")
 
@@ -670,7 +674,7 @@ def test_search_questions_embedding_failure_returns_503(client, monkeypatch):
     def _raise(texts):
         raise EmbeddingGenerationError("boom")
 
-    monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
+    patch_create_embeddings(monkeypatch, _raise)
 
     response = client.post(SEARCH_PATH, json={"query": "質問"})
 
@@ -687,7 +691,7 @@ def test_update_question_embedding_failure_returns_503(admin_client, monkeypatch
     def _raise(texts):
         raise EmbeddingGenerationError("boom")
 
-    monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
+    patch_create_embeddings(monkeypatch, _raise)
 
     response = admin_client.put(
         f"{PATH}/{question_id}",
@@ -712,7 +716,7 @@ def test_import_questions_embedding_failure_returns_503(admin_client, monkeypatc
     def _raise(texts):
         raise EmbeddingGenerationError("boom")
 
-    monkeypatch.setattr(embedding_service, "create_embeddings", _raise)
+    patch_create_embeddings(monkeypatch, _raise)
 
     response = _post_import(admin_client, [("一括質問1", "一括回答1")])
 
@@ -741,6 +745,23 @@ def test_delete_question_removes_embeddings(admin_client, db):
     )
 
     assert remaining == []
+
+
+def test_delete_question_removes_concept_links_and_reviews(admin_client, db):
+    """The database cascade still runs from the async session ([86])."""
+    from physics_ai_tutor.models import QuestionConcept, QuestionReview
+
+    create_response = _post(admin_client, "履歴つき削除対象", "回答")
+    question_id = create_response.json()[Key.ID]
+    admin_client.post(f"{PATH}/{question_id}/review", json={"action": "APPROVE"})
+    assert db.query(QuestionConcept).filter_by(question_id=question_id).count() > 0
+    assert db.query(QuestionReview).filter_by(question_id=question_id).count() == 1
+
+    assert admin_client.delete(f"{PATH}/{question_id}").status_code == 204
+
+    db.expire_all()
+    assert db.query(QuestionConcept).filter_by(question_id=question_id).count() == 0
+    assert db.query(QuestionReview).filter_by(question_id=question_id).count() == 0
 
 
 def test_create_question_response_includes_concepts_and_language(admin_client):
@@ -897,10 +918,8 @@ def test_create_question_has_empty_retrieved_questions(admin_client):
 
 
 def test_get_question_detail_includes_retrieved_questions(admin_client, db):
-    referenced = question_repository.create_question(
-        db, question="参照質問", answer="参照回答"
-    )
-    rag_question = question_repository.create_question(
+    referenced = create_question(db, question="参照質問", answer="参照回答")
+    rag_question = create_question(
         db,
         question="RAG質問",
         answer="RAG回答",
@@ -921,10 +940,8 @@ def test_get_question_detail_includes_retrieved_questions(admin_client, db):
 
 
 def test_get_questions_list_includes_retrieved_questions(admin_client, db):
-    referenced = question_repository.create_question(
-        db, question="参照質問2", answer="参照回答2"
-    )
-    question_repository.create_question(
+    referenced = create_question(db, question="参照質問2", answer="参照回答2")
+    create_question(
         db,
         question="RAG質問2",
         answer="RAG回答2",
@@ -994,14 +1011,10 @@ def test_ids_filter_combines_with_the_status_filter(admin_client):
 
 
 def _link_concept(db, question_id: int, name_ja: str, name_en: str) -> None:
-    from physics_ai_tutor.repositories import (
-        concept_repository,
-        question_concept_repository,
-    )
 
-    concept = concept_repository.get_by_name(db, name_ja, language="ja")
+    concept = db.query(Concept).filter(Concept.name_ja == name_ja).first()
     if concept is None:
-        concept = concept_repository.create(
+        concept = create_concept(
             db,
             name_ja=name_ja,
             name_en=name_en,
@@ -1010,7 +1023,7 @@ def _link_concept(db, question_id: int, name_ja: str, name_en: str) -> None:
             embedding_model="mock",
             extraction_prompt_version="v4",
         )
-    question_concept_repository.link(db, question_id=question_id, concept_id=concept.id)
+    link_concept(db, question_id=question_id, concept_id=concept.id)
     db.commit()
 
 

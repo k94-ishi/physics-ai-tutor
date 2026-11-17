@@ -2,12 +2,16 @@
 public payload, and the backfill CLI."""
 
 import pytest
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from physics_ai_tutor.cli import backfill_levels as backfill_cli
 from physics_ai_tutor.models import Question
-from physics_ai_tutor.services import concept_service
-from tests.conftest import engine
+from tests.conftest import (
+    async_engine,
+    fake_generation,
+    patch_extract_concept_names,
+    patch_generation,
+)
 
 QUESTIONS = "/api/v1/questions"
 ASK = "/api/v1/ai/ask"
@@ -20,10 +24,8 @@ RATED = [
 
 @pytest.fixture
 def _rated_extraction(monkeypatch):
-    monkeypatch.setattr(
-        concept_service,
-        "extract_concept_names",
-        lambda question, answer, language="ja": RATED,
+    patch_extract_concept_names(
+        monkeypatch, lambda question, answer, language="ja": RATED
     )
 
 
@@ -31,10 +33,8 @@ def test_approval_stores_levels_and_payload_carries_them(
     client, admin_client, db, monkeypatch, _rated_extraction
 ):
     """Extraction (and with it the rating) runs when a question is APPROVED."""
-    from physics_ai_tutor.services import deepseek_service
-    from tests.conftest import fake_generation
 
-    monkeypatch.setattr(deepseek_service, "generate_answer", fake_generation("回答"))
+    patch_generation(monkeypatch, fake_generation("回答"))
     client.post(ASK, json={"question": "難易度が付く質問ですか？"})
 
     row = db.query(Question).one()
@@ -82,8 +82,11 @@ def test_levels_are_validated_on_update(admin_client):
 def test_backfill_cli_is_restartable_and_window_guarded(admin_client, db, monkeypatch):
     from datetime import UTC, datetime
 
-    factory = sessionmaker(bind=engine, expire_on_commit=False)
-    monkeypatch.setattr(backfill_cli, "SessionLocal", factory)
+    monkeypatch.setattr(
+        backfill_cli,
+        "AsyncSessionLocal",
+        async_sessionmaker(bind=async_engine, expire_on_commit=False),
+    )
 
     # Created (and auto-approved) while extraction still returns no LEVELS
     # line, like every pre-[40] production row: rated = NULL.
@@ -93,10 +96,8 @@ def test_backfill_cli_is_restartable_and_window_guarded(admin_client, db, monkey
         )
     assert db.query(Question).filter(Question.physics_level.isnot(None)).count() == 0
 
-    monkeypatch.setattr(
-        concept_service,
-        "extract_concept_names",
-        lambda question, answer, language="ja": RATED,
+    patch_extract_concept_names(
+        monkeypatch, lambda question, answer, language="ja": RATED
     )
 
     # Outside the window nothing is rated.

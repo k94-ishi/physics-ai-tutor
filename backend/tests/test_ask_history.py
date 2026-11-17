@@ -1,6 +1,5 @@
 from physics_ai_tutor.models import QuestionAsk, User
-from physics_ai_tutor.services import deepseek_service
-from tests.conftest import fake_generation
+from tests.conftest import fake_generation, patch_generation
 
 ASK_PATH = "/api/v1/ai/ask"
 MY_QUESTIONS_PATH = "/api/v1/users/me/questions"
@@ -10,9 +9,8 @@ REJECT_BODY = {"action": "REJECT", "reason": "PHYSICS_ERROR"}
 
 
 def _mock_answer(monkeypatch, answer="回答"):
-    monkeypatch.setattr(
-        deepseek_service,
-        "generate_answer",
+    patch_generation(
+        monkeypatch,
         fake_generation(answer),
     )
 

@@ -39,7 +39,15 @@ language; the response also carries `language` (the language actually
 served), `provenance` (`ORIGINAL`, `HUMAN`, `MACHINE`), `original_language`,
 `available_languages`, and `texts` with both language blocks. For non-admin
 callers, list results only include rows that have text in `lang`; detail
-requests for a row that lacks `lang` are translated on the fly.
+requests for a row that lacks `lang` are translated on the fly. The same
+strict rule covers everything around a student's question ([53]): related
+questions, prerequisites (items and `gaps`), concept names, and
+`retrieved_questions` never fall back to the other language. Hidden
+APPROVED rows are machine translated once in the background, so they
+appear on the next view. Concept names missing in `lang` are hidden the
+same way and translated once in the background through the existing QA
+translator (no separate prompt); a translation that collides with another
+concept's name is skipped.
 
 Write endpoints accept either `{"question", "answer", "language"}`
 (language defaults to `ja`) or the explicit
@@ -81,11 +89,11 @@ missing language is machine translated at creation.
 
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
-| GET | `/api/v1/questions?lang=` | Public | Paginated list with optional keyword (matches any language) and status filter. Non-admins only see `APPROVED` rows that have text in `lang`. Admins may also pass `sort` (`oldest`, `ai_confidence`, `asked_count`) and `ai_verdict` (`APPROVE`, `EDIT`, `REJECT`, `NONE` = no AI review); both are ignored for other callers. Anyone may pass `concept=<name>` (matched against either language's concept name) to list the questions linked to that concept, which is what the student concept chips use; the usual visibility rules still apply, so non-admins only see APPROVED rows. Admins may also pass `ids` (comma-separated, 1-100, e.g. `ids=54,848`) to list exactly those questions; it is ignored for other callers, and 422 when it is empty, over 100 ids, or not integers. Admin items carry `ai_review` (latest verdict, confidence, reasons, rationale, suggested answer) and `generation`; public items return `null` for both. Every item carries the two-axis difficulty of the QA pair, `physics_level`/`math_level` (0-4 by what a reader needs to follow the answer, or null = unrated; LLM-assigned at approval time, teacher-correctable via `PUT /questions/{id}`, which also accepts a levels-only body). |
+| GET | `/api/v1/questions?lang=` | Public | Paginated list with optional keyword (matches any language) and status filter. Non-admins only see `APPROVED` rows that have text in `lang`. Admins may also pass `sort` (`oldest`, `ai_confidence`, `asked_count`) and `ai_verdict` (`APPROVE`, `EDIT`, `REJECT`, `NONE` = no AI review); both are ignored for other callers. Anyone may pass `concept=<word>` to list the questions linked to any sense having that word in either language (so an English word finds Japanese-only rows), which is what the student concept chips use, or `concept_id=<id>` for exactly one sense ([55]); the usual visibility rules still apply, so non-admins only see APPROVED rows. Admins may also pass `ids` (comma-separated, 1-100, e.g. `ids=54,848`) to list exactly those questions; it is ignored for other callers, and 422 when it is empty, over 100 ids, or not integers. Admin items carry `ai_review` (latest verdict, confidence, reasons, rationale, suggested answer) and `generation`; public items return `null` for both. Every item carries the two-axis difficulty of the QA pair, `physics_level`/`math_level` (0-4 by what a reader needs to follow the answer, or null = unrated; LLM-assigned at approval time, teacher-correctable via `PUT /questions/{id}`, which also accepts a levels-only body). |
 | GET | `/api/v1/questions/exact-match?question=&lang=` | Public | Look up a question by exact text in the `lang` column. Non-admins only match `APPROVED` rows. |
 | GET | `/api/v1/questions/{id}?lang=` | Public | Question detail with concepts and referenced questions in `lang`. 404 for non-admins unless `APPROVED`. |
-| GET | `/api/v1/questions/{id}/related?lang=` | Public | Concept- and embedding-based recommendations, compared within `lang` |
-| GET | `/api/v1/questions/{id}/prerequisites?lang=&limit=` | Public | "Read these first" ([38]): for each concept this QA leans on, the APPROVED question that defines it (definition-style wording, e.g. 「〜とは」/"what is") and is not more advanced than the current QA on either difficulty axis; one card per QA, hardest first, `limit` 1-20 (default 5). `gaps` lists the current QA's concepts that have no such definer, in `lang`. Only APPROVED rows ever appear, for admins too. 404 when the question id does not exist. |
+| GET | `/api/v1/questions/{id}/related?lang=` | Public | Concept- and embedding-based recommendations, compared within `lang`. For non-admins, rows without text in `lang` are left out and translated once in a background task after the response ([53]); admins get the original-language fallback. |
+| GET | `/api/v1/questions/{id}/prerequisites?lang=&limit=` | Public | "Read these first" ([38]): for each concept this QA leans on, the APPROVED question that defines it (definition-style wording, e.g. 「〜とは」/"what is") and is not more advanced than the current QA on either difficulty axis; one card per QA, hardest first, `limit` 1-20 (default 5). `gaps` lists the current QA's concepts that have no such definer, in `lang`. Students get the same strict language rule as `/related` ([53]). Only APPROVED rows ever appear, for admins too. 404 when the question id does not exist. |
 | POST | `/api/v1/questions/search` | Public | Semantic similarity search within one language. Body: `{"query": str, "limit": int, "language": "ja" or "en"}`. Returns rows with cosine `distance`. Query embeddings are cached by (normalised-text hash, embedding model), so a repeated search - retried phrasing, shared `?similar=` link, or the RAG retrieval of the same text - costs no OpenAI call. |
 | GET | `/api/v1/questions/{id}/reviews` | Admin | Review history of a question. Each row carries `reviewer_kind` (`human`/`ai`/`policy`) and `policy_name`; everything recorded so far is `human`. |
 | GET | `/api/v1/admin/reviews/export` | Admin | The human review dataset as JSONL (`application/x-ndjson`, one review per line; schema in `docs/database.md`). `since=YYYY-MM-DD` is inclusive and defaults to the 2026-10-28 data cutoff; `all=true` returns every row. Reviewer identity is replaced by a keyed hash. |
@@ -112,11 +120,30 @@ JSONL import format, one object per line, in either shape:
 {"question_ja": "速度ってなに？", "answer_ja": "...", "question_en": "What is velocity?", "answer_en": "..."}
 ```
 
+## Concepts
+
+A concept is a **sense** (one meaning); its words live in `concept_terms`,
+any number per language, and the same word may belong to several senses
+(位相 = phase / topology, "phase" = 位相 / 相) ([55]).
+
+| Method | Path | Access | Purpose |
+| --- | --- | --- | --- |
+| GET | `/api/v1/concepts?q=&lang=&limit=` | Public | Senses whose words (either language) contain `q`, best match first (exact label, exact alias, prefix, contains; then question count). Each item: `id`, `label` (preferred word in `lang`), `gloss`, `matched_term`, `question_count`. Non-admins only get senses with APPROVED questions and a label in `lang`. Empty `q` lists the most used senses. |
+| GET | `/api/v1/admin/concepts?q=&review_filter=&page=&size=` | Admin | Senses for the editor; `review_filter` is `all`, `review` (machine words or a language without a word) or `shared` (a word also used by another sense). Items carry `terms` (with `source` `EXTRACTED`/`MACHINE`/`TEACHER`), `question_count`, `shares_word_with`. |
+| GET | `/api/v1/admin/concepts/{id}?lang=` | Admin | One sense with its linked `questions` |
+| PATCH | `/api/v1/admin/concepts/{id}` | Admin | Set `gloss_ja` / `gloss_en` |
+| POST | `/api/v1/admin/concepts/{id}/terms` | Admin | Add a word (`language`, `term`, `is_preferred`); 409 if the sense already has it (compared after NFKC, case and spacing normalisation) |
+| PATCH | `/api/v1/admin/concepts/terms/{term_id}` | Admin | Edit a word or make it the label; the word becomes `TEACHER` (an empty body marks a machine word as checked) |
+| DELETE | `/api/v1/admin/concepts/terms/{term_id}` | Admin | Remove a word; if it was the label, the oldest remaining word of that language takes over |
+| POST | `/api/v1/admin/concepts/{id}/merge` | Admin | Fold this sense into `into_id`: links and words move, this sense is deleted |
+| POST | `/api/v1/admin/concepts/{id}/split` | Admin | Move `question_ids` to a new sense named by `terms`, with optional glosses |
+
 ## AI
 
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
 | POST | `/api/v1/ai/ask` | Public | Answer a question. Body: `{"question": str, "language": "ja" or "en", "mode": "RAG" or null, "retrieved_question_ids": [int] or null}`. Response: `{"answer", "language", "cached", "question_id", "status"}`. |
+| POST | `/api/v1/ai/ask/stream` | Public | The same, streamed as server-sent events ([71]). Same body, auth, rate limit and cache tiers. |
 
 The flow, in order:
 
@@ -141,6 +168,40 @@ The flow, in order:
    mode (`DIRECT`/`RAG`), and token usage. Admin question responses include
    this as a `generation` object; public responses always return
    `generation: null`.
+
+### Streaming (`/ai/ask/stream`)
+
+`Content-Type: text/event-stream`. Three event types, always ending in
+`done` or `error`:
+
+| Event | Data | Meaning |
+| --- | --- | --- |
+| `delta` | `{"text": str}` | A piece of the answer; concatenating every `delta` gives `answer` |
+| `done` | the `/ask` response body | The answer is complete and, if saved, `question_id` and `status` are set |
+| `error` | `{"detail": str}` | Generation failed after the response had started |
+
+The status line is sent before generation begins, so a failure part-way
+through arrives as an `error` event with HTTP 200 rather than a 503. A
+rate-limited caller is still refused with a plain 429, because the limit
+is checked before the stream opens.
+
+Everything the non-streaming flow guarantees still holds, in particular:
+
+- A cache hit sends the stored answer as one `delta` and never calls the
+  LLM.
+- An off-topic refusal is detected by buffering the opening of the
+  stream until the `[OFF_TOPIC]` sentinel can be ruled in or out, so the
+  sentinel never reaches the client. The refusal is sent as a `delta`,
+  nothing is saved, and the ask still counts against the rate limit.
+- The row is written only once the whole answer has been collected, just
+  before `done`, so a client that disconnects part-way leaves no
+  `UNREVIEWED` row. Its quota stays spent: the generation happened.
+- Translation and the optional AI review run after the stream closes,
+  exactly as they do after a plain response.
+
+Clients should fall back to `/ai/ask` if the stream fails to start: a
+proxy that buffers responses or a browser without streaming support
+would otherwise leave the student with nothing.
 
 Rate limits (anonymous callers are bucketed by IP, signed-in callers by
 account):

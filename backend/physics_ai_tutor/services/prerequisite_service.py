@@ -8,21 +8,38 @@ or embedding calls: concepts and levels are already on the rows.
 """
 
 import logging
+from dataclasses import dataclass
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.models.concept import Concept
 from physics_ai_tutor.models.question import Question
-from physics_ai_tutor.models.question_concept import QuestionConcept
+from physics_ai_tutor.repositories import (
+    question_concept_repository,
+    question_repository,
+)
 from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.question import (
     PrerequisitesResponse,
     QuestionResponse,
-    QuestionStatus,
 )
-from physics_ai_tutor.services.question_service import prepare_for_response
+from physics_ai_tutor.services.question_presentation_service import (
+    prepare_for_response,
+)
+from physics_ai_tutor.services.response_language import (
+    ResponseLanguage,
+    TranslationNeeds,
+)
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class Prerequisites:
+    response: PrerequisitesResponse
+    # Rows and concept names a strict reader missed ([53]).
+    needs: TranslationNeeds
+
 
 # A question "defines" a concept when it reads like a definition request.
 _DEFINITION_MARKERS_JA = ("とは", "ってなに", "って何", "とはなに", "とは何")
@@ -44,9 +61,14 @@ def _is_definition_question(text: str | None, concept_name: str | None) -> bool:
 
 
 def _defines(question: Question, concept: Concept) -> bool:
-    return _is_definition_question(
-        question.question_ja, concept.name_ja
-    ) or _is_definition_question(question.question_en, concept.name_en)
+    # Any word of the sense counts: 速度 is defined by "what is velocity?" too ([55]).
+    return any(
+        _is_definition_question(question.question_ja, term.term)
+        for term in concept.terms_in("ja")
+    ) or any(
+        _is_definition_question(question.question_en, term.term)
+        for term in concept.terms_in("en")
+    )
 
 
 def _not_more_advanced(candidate: Question, current: Question) -> bool:
@@ -74,73 +96,97 @@ def _rank(question: Question) -> tuple[int, int]:
     return ((question.physics_level or 0) + (question.math_level or 0), question.id)
 
 
-def get_prerequisites(
-    db: Session,
-    question_id: int,
-    limit: int = 5,
-    language: Language | str = Language.JA,
-) -> PrerequisitesResponse | None:
-    lang = Language(language)
+Link = tuple[Concept, Question]
 
-    current = db.get(Question, question_id)
-    if current is None:
-        return None
 
-    links = (
-        db.query(Concept, Question)
-        .join(QuestionConcept, QuestionConcept.concept_id == Concept.id)
-        .join(Question, Question.id == QuestionConcept.question_id)
-        .filter(
-            Concept.id.in_(
-                db.query(QuestionConcept.concept_id)
-                .filter(QuestionConcept.question_id == question_id)
-                .scalar_subquery()
-            ),
-            Question.id != question_id,
-            Question.status == QuestionStatus.APPROVED,
-        )
-        .all()
+def _readable_only(
+    links: list[Link], response: ResponseLanguage
+) -> tuple[list[Link], list[int]]:
+    """Drop definers a strict reader cannot read; they are not definers yet."""
+    readable, missing = response.readable(
+        list({candidate.id: candidate for _, candidate in links}.values())
     )
+    readable_ids = {question.id for question in readable}
+    return [link for link in links if link[1].id in readable_ids], missing
 
-    best_by_concept: dict[int, tuple[Concept, Question]] = {}
-    concepts_seen: dict[int, Concept] = {}
+
+def _best_definers(links: list[Link], current: Question) -> dict[int, Link]:
+    """Per concept, the least advanced QA that defines it (ties: older row)."""
+    best_by_concept: dict[int, Link] = {}
     for concept, candidate in links:
-        concepts_seen[concept.id] = concept
         if not _defines(candidate, concept):
             continue
         if not _not_more_advanced(candidate, current):
             continue
         best = best_by_concept.get(concept.id)
-        # Prefer the least advanced definer; ties go to the older row.
         if best is None or _rank(candidate) < _rank(best[1]):
             best_by_concept[concept.id] = (concept, candidate)
+    return best_by_concept
 
-    # Concepts of the current QA that ended up with no usable definer.
-    current_concepts = (
-        db.query(Concept)
-        .join(QuestionConcept, QuestionConcept.concept_id == Concept.id)
-        .filter(QuestionConcept.question_id == question_id)
-        .all()
+
+async def _gaps(
+    db: AsyncSession,
+    question_id: int,
+    covered: dict[int, Link],
+    lang: Language,
+    strict: bool,
+) -> list[str]:
+    """Names of this QA's concepts that ended up with no usable definer."""
+    current_concepts = await question_concept_repository.get_concepts_for_question(
+        db, question_id
     )
-    gaps = [
-        concept.display_name(lang.value)
+    return [
+        name
         for concept in current_concepts
-        if concept.id not in best_by_concept
+        if concept.id not in covered
+        and (
+            name := concept.name_in(lang.value)
+            if strict
+            else concept.display_name(lang.value)
+        )
+        is not None
     ]
 
-    # One card per QA even when it defines several concepts; hardest
-    # prerequisite first - that is the one the stuck reader meets next.
+
+def _hardest_first(
+    best_by_concept: dict[int, Link], current: Question, limit: int
+) -> list[Question]:
+    """One card per QA; the hardest on the stuck axis is the next step down."""
     axis = _stuck_axis(current)
     unique: dict[int, Question] = {}
     for _, candidate in best_by_concept.values():
         unique[candidate.id] = candidate
-    ordered = sorted(
+    return sorted(
         unique.values(),
         key=lambda q: (getattr(q, axis) or 0, -q.id),
         reverse=True,
     )[:limit]
 
-    prepare_for_response(db, ordered, lang)
+
+async def get_prerequisites(
+    db: AsyncSession,
+    question_id: int,
+    limit: int = 5,
+    language: Language | str | ResponseLanguage = Language.JA,
+) -> Prerequisites | None:
+    """Defining QAs for this QA's concepts, plus the concepts with none ([38])."""
+    response = ResponseLanguage.of(language)
+    lang = response.language
+    current = await question_repository.get_question(db, question_id)
+    if current is None:
+        return None
+
+    links = await question_concept_repository.approved_links_sharing_concepts(
+        db, question_id
+    )
+    links, missing = _readable_only(links, response)
+    best_by_concept = _best_definers(links, current)
+    gaps = await _gaps(db, question_id, best_by_concept, lang, response.strict)
+    ordered = _hardest_first(best_by_concept, current, limit)
+    needs = await prepare_for_response(db, ordered, response)
+    if response.strict:
+        # The current QA's own concepts are the gap chips.
+        needs.concept_question_ids.insert(0, question_id)
 
     logger.info(
         "Prerequisites computed: question_id=%d definers=%d gaps=%d",
@@ -148,8 +194,10 @@ def get_prerequisites(
         len(ordered),
         len(gaps),
     )
-
-    return PrerequisitesResponse(
-        items=[QuestionResponse.model_validate(question) for question in ordered],
-        gaps=gaps,
+    return Prerequisites(
+        response=PrerequisitesResponse(
+            items=[QuestionResponse.model_validate(question) for question in ordered],
+            gaps=gaps,
+        ),
+        needs=TranslationNeeds(question_ids=missing).merge(needs),
     )

@@ -31,15 +31,11 @@ const STATUS_CLASSES: Record<AiReviewRunStatus, string> = {
 };
 
 type AiReviewRunsPanelProps = {
-    /** ラン完了後に親が集計(合意率など)を取り直すためのフック。 */
+    /** Lets the parent refresh its numbers after a run finishes. */
     onRunFinished?: () => void;
 };
 
-/**
- * /admin/stats のAIレビュー実行パネル([27])。
- * 未判定・旧プロンプト件数と残り回数を見せ、確認ダイアログでDeepSeek
- * 呼び出し回数を明示してからランを開始し、終わるまで進捗を出す。
- */
+/** AI review run panel on /admin/stats; it quotes the DeepSeek calls before starting ([27]). */
 export default function AiReviewRunsPanel({
     onRunFinished,
 }: AiReviewRunsPanelProps) {
@@ -92,7 +88,7 @@ export default function AiReviewRunsPanel({
     useEffect(() => {
         (async () => {
             const runs = await load();
-            // 他の画面やCLIが始めたランが動いていたら進捗表示を引き継ぐ。
+            // Take over the progress of a run started elsewhere (another page or the CLI).
             const active = runs.find((r) => r.status === "running");
             if (active) {
                 adopt(active);

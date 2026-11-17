@@ -102,7 +102,7 @@ export default function EditQuestionPage() {
     const [translating, setTranslating] = useState(false);
     const [reasonDialogOpen, setReasonDialogOpen] = useState(false);
     const [suggestionApplied, setSuggestionApplied] = useState(false);
-    // QAペアの難易度(物理・数学)。LLMの推定値を教員が上書きできる。
+    // Difficulty of the QA pair (physics, math); the teacher may override the LLM estimate.
     const [levels, setLevels] = useState<Record<LevelField, number | null>>({
         physics_level: null,
         math_level: null,
@@ -123,7 +123,7 @@ export default function EditQuestionPage() {
                 physics_level: data.physics_level,
                 math_level: data.math_level,
             });
-            // サーバの本文で上書きしたので「AI修正案を適用済み(未保存)」は無効。
+            // The server text replaced the form, so the applied AI suggestion no longer stands.
             setSuggestionApplied(false);
         } catch (error) {
             console.error(error);

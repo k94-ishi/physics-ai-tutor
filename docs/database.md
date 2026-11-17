@@ -215,8 +215,9 @@ concept-based "related questions" recommendations.
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
 | `id` | `integer` | no | serial | Primary key |
-| `name_ja` | `varchar(255)` | yes | | Japanese name, unique. |
-| `name_en` | `varchar(255)` | yes | | English name, unique. At least one name is set; a missing side is filled when a later extraction supplies it. |
+| `name_ja` | `varchar(255)` | yes | | Mirror of the preferred Japanese word in `concept_terms` (not unique since [55]). |
+| `name_en` | `varchar(255)` | yes | | Mirror of the preferred English word. |
+| `gloss_ja`, `gloss_en` | `varchar(255)` | yes | | Short explanation separating senses that share a word. |
 | `embedding` | `vector(1536)` | no | | Embedding of the concept name. |
 | `extraction_model` | `varchar` | no | | LLM used to extract the concept (e.g. `deepseek-chat`). |
 | `embedding_model` | `varchar` | no | | Embedding model used for `embedding`. |
@@ -226,6 +227,39 @@ concept-based "related questions" recommendations.
 
 The three provenance columns exist so concepts can be selectively
 re-extracted when the model or prompt changes.
+
+### `concept_terms`
+
+The words for a concept sense ([55]). A `concepts` row is one **meaning**;
+it may have any number of words per language, and one word may belong to
+several senses (位相 = phase of a wave / topology; "phase" = 位相 / 相).
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | `integer` | no | serial | Primary key |
+| `concept_id` | `integer` | no | | FK to `concepts.id`, `ON DELETE CASCADE`, indexed |
+| `language` | `varchar(10)` | no | | `ja` or `en` |
+| `term` | `varchar(255)` | no | | The word as written |
+| `normalized` | `varchar(255)` | no | | NFKC, collapsed whitespace, case-folded; the matching key |
+| `is_preferred` | `boolean` | no | `false` | The label shown on chips; at most one per (sense, language) |
+| `source` | `varchar(20)` | no | `'EXTRACTED'` | `EXTRACTED` (concept extraction), `MACHINE` (translator), `TEACHER` (admin editor) |
+| `created_at` | `timestamptz` | no | `now()` | |
+
+Constraints: `uq_concept_terms_sense_word` UNIQUE (`concept_id`,
+`language`, `normalized`); partial unique index
+`uq_concept_terms_one_preferred` on (`concept_id`, `language`) WHERE
+`is_preferred`; `ix_concept_terms_lookup` on (`language`, `normalized`),
+deliberately **not** unique.
+
+`concepts.name_ja` / `name_en` remain as mirrors of the preferred words
+(no longer unique) until every reader uses terms; `concepts.gloss_ja` /
+`gloss_en` hold a short explanation that tells senses sharing a word apart.
+
+Matching at extraction: a `<ja> | <en>` pair joins the sense that has both
+words; a sense sharing only one word is a synonym or a homonym, decided by
+cosine similarity of the pair embeddings against
+`CONCEPT_SENSE_MATCH_THRESHOLD` (default 0.75, not yet tuned on real
+embeddings); below it a new sense is created.
 
 ### `question_concepts`
 
@@ -358,6 +392,31 @@ record calls, so the table stays small without a scheduled job.
 
 ---
 
+### `background_claims`
+
+One row per piece of background work a worker is doing right now ([75]).
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | `integer` | no | serial | Primary key |
+| `kind` | `varchar(50)` | no | | `translate_question` or `translate_concept_name`. |
+| `key` | `integer` | no | | The row the work is about: a question id or a concept id. |
+| `claimed_at` | `timestamp` | no | `now()` | Compared against the database clock; a claim older than `BACKGROUND_CLAIM_TIMEOUT_MINUTES` may be taken over. |
+
+The unique `(kind, key)` is the guard. A claim is a single
+`INSERT ... ON CONFLICT DO UPDATE ... WHERE claimed_at < cutoff`
+returning the id: exactly one worker can win, and a claim whose worker
+died is taken over once it expires rather than parking the row forever.
+
+Rows are transient — taken before the work, deleted in a `finally`. The
+table is therefore near-empty in normal operation, and anything left in
+it for longer than the timeout means a worker died mid-task. There is no
+foreign key to `questions` or `concepts` on purpose: a claim is
+operational state about work, and deleting the content row should not
+have to care whether a claim happens to exist.
+
+---
+
 ## Indexes and Constraints
 
 | Name | Table | Definition |
@@ -366,8 +425,9 @@ record calls, so the table stays small without a scheduled job.
 | `ix_questions_status` | `questions` | btree (`status`) |
 | `question_embeddings_pkey` | `question_embeddings` | PK (`id`) |
 | `concepts_pkey` | `concepts` | PK (`id`) |
-| `concepts_name_ja_key` | `concepts` | UNIQUE (`name_ja`) |
-| `concepts_name_en_key` | `concepts` | UNIQUE (`name_en`) |
+| `uq_concept_terms_sense_word` | `concept_terms` | UNIQUE (`concept_id`, `language`, `normalized`) |
+| `uq_concept_terms_one_preferred` | `concept_terms` | UNIQUE (`concept_id`, `language`) WHERE `is_preferred` |
+| `ix_concept_terms_lookup` | `concept_terms` | btree (`language`, `normalized`) |
 | `ix_question_embeddings_language` | `question_embeddings` | btree (`language`) |
 | `question_concepts_pkey` | `question_concepts` | PK (`question_id`, `concept_id`) |
 | `question_reviews_pkey` | `question_reviews` | PK (`id`) |
@@ -380,6 +440,9 @@ record calls, so the table stays small without a scheduled job.
 | `ix_question_asks_user_created` | `question_asks` | btree (`user_id`, `created_at`) |
 | `users_google_provider` | `users` | CHECK provider/google_sub pairing |
 | `rate_limit_hits_pkey` | `rate_limit_hits` | PK (`id`) |
+| `background_claims_pkey` | `background_claims` | PK (`id`) |
+| `uq_background_claims_work` | `background_claims` | UNIQUE (`kind`, `key`) — one worker per piece of work ([75]) |
+| `ix_background_claims_claimed_at` | `background_claims` | btree (`claimed_at`) — sweeping expired claims |
 | `ix_rate_limit_hits_window` | `rate_limit_hits` | btree (`action`, `bucket_key`, `created_at`) |
 
 Foreign keys:
@@ -389,6 +452,7 @@ Foreign keys:
 | `question_embeddings.question_id` | `questions.id` | CASCADE |
 | `question_concepts.question_id` | `questions.id` | CASCADE |
 | `question_concepts.concept_id` | `concepts.id` | CASCADE |
+| `concept_terms.concept_id` | `concepts.id` | CASCADE |
 | `question_reviews.question_id` | `questions.id` | CASCADE |
 | `question_reviews.reviewer_id` | `users.id` | SET NULL |
 | `question_asks.question_id` | `questions.id` | CASCADE |
@@ -459,7 +523,9 @@ Revisions in order from the first to the current head:
 | `a1b2c3d4e5f6` | 2026-11-01 | Add `skipped_count` and `heartbeat_at` to `ai_review_runs` |
 | `b7c8d9e0f1a2` | 2026-11-01 | Add two-axis difficulty to `questions`: `question_physics_level`, `question_math_level`, `answer_physics_level`, `answer_math_level` |
 | `c9d0e1f2a3b4` | 2026-11-02 | Create `query_embeddings`: cached embeddings for the `?similar=` URL search |
-| `d1e2f3a4b5c6` | 2026-11-04 | One difficulty rating per QA pair: rename `answer_physics_level`/`answer_math_level` to `physics_level`/`math_level`, drop the separate `question_*_level` columns (**head**) |
+| `d1e2f3a4b5c6` | 2026-11-04 | One difficulty rating per QA pair: rename `answer_physics_level`/`answer_math_level` to `physics_level`/`math_level`, drop the separate `question_*_level` columns |
+| `e2f3a4b5c6d7` | 2026-11-10 | Concept senses ([55]): create `concept_terms` (copied from `name_ja`/`name_en` as preferred words), add `concepts.gloss_ja`/`gloss_en`, drop the uniqueness of the concept names. Downgrade fails if two senses share a preferred name; merge them first |
+| `f3a4b5c6d7e8` | 2026-11-12 | Create `background_claims` ([75]): workers claim background work in the database so two of them cannot translate the same row. Downgrade drops the table; in-flight work simply redoes itself (**head**) |
 
 The chain is linear with a single head. Verify with:
 
@@ -539,7 +605,7 @@ Rules from `AGENTS.md` that apply here:
 | Service | Database | Host port | Purpose |
 | --- | --- | --- | --- |
 | `postgres` | `physics_ai_tutor` | 5432 | Development data, persisted in the `postgres_data` volume |
-| `postgres-test` | `physics_ai_tutor_test` | 5433 | Ephemeral database used by `pytest` |
+| `postgres-test` | `physics_ai_tutor_test` | 5433 | Test database for `docker compose exec backend uv run pytest`; a host run starts its own container instead ([113]) |
 
 Both use user `physics` / password `physics`.
 
@@ -552,7 +618,8 @@ DATABASE_URL=postgresql+psycopg://physics:physics@localhost:5432/physics_ai_tuto
 # Development (from inside the backend container)
 DATABASE_URL=postgresql+psycopg://physics:physics@postgres:5432/physics_ai_tutor
 
-# Tests (default in tests/conftest.py, override with TEST_DATABASE_URL)
+# Tests: not needed on the host, where each run starts its own container.
+# Set it to use an existing database instead, e.g. compose's postgres-test:
 TEST_DATABASE_URL=postgresql+psycopg://physics:physics@localhost:5433/physics_ai_tutor_test
 ```
 
@@ -573,14 +640,47 @@ docker compose exec backend uv run python -m physics_ai_tutor.database.seed
 
 ### Seed data
 
-`seed.json` holds 144 entries: 21 hand-translated bilingual pairs plus 123
-teacher-approved Q&A exported from production on 2026-10-30 (Japanese
-only; the English side is machine translated on import). Refresh the
-production part by exporting `questions` with `status = 'APPROVED'` again
-after a review pass.
+`seed.jsonl` holds 144 entries, one JSON object per line ([101]): 21
+hand-translated bilingual pairs plus 123
+teacher-approved Q&A exported from production on 2026-10-30. The local
+database is **disposable**: everything in it that an LLM produced is also
+in the file (2026-11-10), so a reset loses nothing:
+
+| Field | Meaning |
+| --- | --- |
+| `question_ja`, `answer_ja`, `question_en`, `answer_en` | Both languages for every entry |
+| `en_provenance` (optional) | `MACHINE` for the 123 machine translations; absent = hand-written (`HUMAN`) |
+| `physics_level`, `math_level` | Difficulty ratings ([40]); applied after any extraction so they win |
+| `tags` | The entry's tags as `"<ja> \| <en>"` pairs, the concept-extraction output format ([55]) |
+
+All LLM-made fields come from one extraction run (the `elm` stack of the
+[40] trial), so tags and levels belong together.
+
+The embeddings of those questions and tags live in a separate file,
+`seed_embeddings.jsonl.gz` (about 5.5 MB, 1,366 vectors; kept apart from
+the reviewable `seed.jsonl` on the owner's request). Format: gzip JSON
+lines, a header `{"model", "dimensions", "format": "float32-le-base64"}`,
+then `{"key", "vector"}` per embedding, where `key` is
+`embedding_service.vector_key(model, text)` - a SHA-256 of the model and
+the exact embedded text (question, answer, or a tag's `"<ja> | <en>"`).
+The seed serves these vectors instead of calling OpenAI; a text that is
+not in the file, or an `EMBEDDING_MODEL` other than the header's, falls
+back to OpenAI. Rebuild it with
+`python -m physics_ai_tutor.cli.export_seed_embeddings` (no API calls).
+
+So a full reset needs **no API key at all**: verified 2026-11-10 by
+dropping the local volume and seeding with both providers unreachable
+(144 questions, 790 tags, 2,029 links, 576 embeddings in about 11 s).
+Entries without `tags` fall back to concept extraction, and entries
+missing a language fall back to translation (both DeepSeek). After
+changing data in a local database that should survive a reset, write it
+back with `python -m physics_ai_tutor.cli.export_seed` (no API calls; it
+keeps the file's order and reports aliases and glosses, which the format
+does not carry yet).
 
 `backend/physics_ai_tutor/database/seed.py` loads
-`backend/physics_ai_tutor/database/seed.json` and inserts each entry as an
+`backend/physics_ai_tutor/database/seed.jsonl` (read and written through
+`database/seed_file.py`) and inserts each entry as an
 `APPROVED` / `MANUAL` question with embeddings in every language. Entries
 may be written either way:
 
@@ -602,9 +702,17 @@ exists in the database (or appears twice in the file), a
 an already seeded database, import only the new rows through the admin
 import endpoint, or reset the database first.
 
-`seed.jsonl` in the same directory holds the same content in JSONL form and
-is the format accepted by the admin import endpoint
-(`POST /api/v1/questions/import`) and the "Upload" page in the admin UI.
+Every entry also carries `physics_level` and `math_level` (0-4), the
+LLM ratings from the 2026-11-03 local run ([40]). The seed writes them
+after concept extraction, so they win over a fresh rating and every new
+stack shows the two-axis grid. They are advisory like any rating; the
+production rows still need `backfill_levels`.
+
+The same file is valid input for the admin import endpoint
+(`POST /api/v1/questions/import`) and the "Upload" page in the admin UI:
+they read the texts and ignore the other fields. Until 2026-11-14 the
+seed lived in `seed.json` and `seed.jsonl` held only 21 older text-only
+entries; the two were merged into this one file ([101]).
 
 ### Creating an admin user
 
@@ -644,8 +752,8 @@ already exists". Use Alembic for every real database.
 
 `backend/tests/conftest.py` builds the test schema with the real migrations.
 Once per session it drops and recreates the `public` schema of the test
-database and runs `alembic upgrade head`; between tests it truncates all
-tables. Two dedicated tests in `tests/test_migrations.py` fail the suite if
+database and runs `alembic upgrade head`; before each test it deletes all
+rows and restarts the id sequences (`reset_database()`). Two dedicated tests in `tests/test_migrations.py` fail the suite if
 the migration chain has more than one head or if the SQLAlchemy models
 drift from what the migrations produce, so a forgotten migration is caught
 locally, not only in CI.
@@ -653,17 +761,19 @@ locally, not only in CI.
 The test database is wiped on every run, so isolation is handled
 automatically:
 
-- Unless `TEST_DATABASE_URL` is set, the database name is derived from the
-  checkout path (`physics_ai_tutor_test_<hash>`), so several worktrees can
-  share one `postgres-test` container without touching each other's data.
-- The database is created on first use; no manual `CREATE DATABASE` needed.
+- Unless `TEST_DATABASE_URL` is set, every run starts its own temporary
+  PostgreSQL + pgvector container and removes it at the end ([113]), so
+  no two runs ever share a database.
+- With `TEST_DATABASE_URL`, the database is created on first use; no
+  manual `CREATE DATABASE` needed.
 - A PostgreSQL advisory lock is held for the whole session. A second pytest
   run against the same database aborts immediately instead of corrupting
   the first one.
 
-Set `TEST_DATABASE_URL` explicitly to use a specific database (CI pins it
-to `physics_ai_tutor_test`; `docker compose exec backend uv run pytest`
-uses the in-network URL set in `docker-compose.yml`).
+Set `TEST_DATABASE_URL` explicitly to use a specific database
+(`docker compose exec backend uv run pytest` uses the in-network URL set
+in `docker-compose.yml`). CI does not set it and gets a temporary
+container like any other run.
 
 ---
 

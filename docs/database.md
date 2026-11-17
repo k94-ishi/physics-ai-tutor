@@ -770,9 +770,10 @@ automatically:
   run against the same database aborts immediately instead of corrupting
   the first one.
 
-Set `TEST_DATABASE_URL` explicitly to use a specific database (CI pins it
-to `physics_ai_tutor_test`; `docker compose exec backend uv run pytest`
-uses the in-network URL set in `docker-compose.yml`).
+Set `TEST_DATABASE_URL` explicitly to use a specific database
+(`docker compose exec backend uv run pytest` uses the in-network URL set
+in `docker-compose.yml`). CI does not set it and gets a temporary
+container like any other run.
 
 ---
 

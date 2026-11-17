@@ -161,9 +161,10 @@ How the database is handled:
   share a database. A run killed before it could clean up leaves its
   container behind; the next run on the same machine removes it, and
   never touches a container whose run is still alive.
-- `TEST_DATABASE_URL` switches this off and uses that database instead.
-  CI sets it to its service container, and `docker compose exec backend`
-  to the in-network `postgres-test`.
+- `TEST_DATABASE_URL` switches this off and uses that database instead;
+  `docker compose exec backend` sets it to the in-network `postgres-test`.
+  CI does not set it: it runs the suite exactly as a developer does, on
+  the runner's Docker.
 - Before the app is imported, `tests/isolated_environment.py` forces
   `DATABASE_URL` to the test database and the OpenAI/DeepSeek keys and
   base URLs to harmless values. Environment variables win over
@@ -515,8 +516,9 @@ Restart it with `docker compose -p <project> up -d frontend`.
 ## CI/CD
 
 - GitHub Actions (`.github/workflows/ci.yml`) runs on pull requests to
-  `main`: backend migrations, ruff, mypy, pytest against a pgvector
-  container, and frontend lint, type check, and build.
+  `main`: backend ruff, mypy and pytest (which starts its own pgvector
+  container and applies the migrations to it, [113]), and frontend lint,
+  type check, tests and build.
 - Frontend is deployed to Vercel, backend to Render, database on Supabase.
 - Apply migrations to production (`alembic upgrade head` with the Supabase
   `DATABASE_URL`) before deploying backend code that needs the new schema.

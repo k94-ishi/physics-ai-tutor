@@ -47,9 +47,8 @@ in practice, exported settings. Two problems followed:
 
 ## Out of scope
 
-- CI keeps its service container through `TEST_DATABASE_URL`; switching
-  it to the temporary container is possible but changes nothing for
-  correctness.
+- None. (CI was first left on its service container; the owner asked
+  for it to use the temporary container too, see the Log.)
 
 ## Dependencies
 
@@ -91,3 +90,18 @@ are quieted for the `atexit` fallback.
 check`, `ruff format --check`, `mypy` clean (the Docker client is reached
 through testcontainers' typed wrapper, so no stub package is needed).
 Frontend untouched.
+
+### 2026-11-17 — CI uses the temporary container too (owner)
+
+`.github/workflows/ci.yml`'s backend job lost its `services:` database,
+its settings block and its "Run migrations" step: pytest now starts its
+own container on the runner's Docker and applies the migrations itself
+(the session fixture runs `alembic upgrade head` on an empty schema, and
+`test_migrations.py` checks the chain), exactly as on a developer
+machine. This also removes the one copy of the image name no test
+checked. The ruff step's name, "Rudd", is corrected to "Ruff".
+
+**Not verified here**, by the owner's choice: the workflow only runs on
+GitHub. The owner will check it on the next pull request. If that
+runner ever lacks Docker, putting back the `services:` block with
+`TEST_DATABASE_URL` restores the old path, which still works.

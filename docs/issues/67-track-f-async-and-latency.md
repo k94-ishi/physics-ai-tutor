@@ -86,7 +86,8 @@ wait for the slowest endpoint from "whole answer" to "first words".
    database, then run more than one worker~~ done 2026-11-12 (a
    `background_claims` table; eight racing processes yield one winner;
    two workers is the ceiling until [73] halves the pools per worker)
-8. [73] Convert everything that remains; the app keeps no sync engine.
+8. ~~[73] Convert everything that remains; the app keeps no sync engine.~~
+   **Done 2026-11-17** (closed by [99]).
    Slice 1 (auth, users, sessions) merged 2026-11-12; the rest was
    **re-scoped on 2026-11-13 into small issues**, each its own PR, after
    a one-pass attempt proved too big to merge ([73]'s Log):
@@ -121,7 +122,7 @@ wait for the slowest endpoint from "whole answer" to "first words".
        5. ~~[111] Test-only sync helpers in question_repository~~ done 2026-11-16
        6. ~~[112] Test-only sync helpers in the concept and embedding repositories~~ done 2026-11-16
    16. ~~[98] Rename pass: drop the async_ prefixes~~ done 2026-11-17
-   17. [99] Async end state: architecture test, docs, connection budget (closes [73])
+   17. ~~[99] Async end state: architecture test, docs, connection budget (closes [73])~~ done 2026-11-17
    Re-split 2026-11-13 into ~10-test slices; [87] can run beside the concept chain.
 9. [74] Latency quick wins independent of async: pgvector HNSW index,
    pool settings for the Supabase pooler, response compression. The
@@ -136,6 +137,9 @@ wait for the slowest endpoint from "whole answer" to "first words".
 13. ~~[113] Self-contained tests: a temporary database per run, settings
     isolated from `.env`~~ done 2026-11-16 (owner's request; found while
     sessions kept sharing test databases).
+
+14. [114] The question list loads every concept's embedding vector it
+    never uses (found in [99]). Independent; fits beside [74]/[77].
 
 [74], [76] and [77] touch no async plumbing and can be picked up
 whenever there is a gap, as long as [68] is in place to measure them.
@@ -157,8 +161,9 @@ Rules for the whole track:
   end of the track rather than done per step. Known entries for that
   check so far: SSE is not buffered by Render's proxy ([71]), the
   pgvector index migration and pool settings on Supabase ([74]), and the
-  worker count against the Supabase connection limit ([75]; [88] halves
-  the per-worker demand, so re-read the budget after it). Migrations
+  worker count against the Supabase connection limit ([75]; re-read in
+  [99]: 15 per worker worst case, so two workers safe, four at the limit
+  until [74] sizes the pool). Migrations
   are applied by the owner before the backend deploy, as usual.
 
 ## Dependencies

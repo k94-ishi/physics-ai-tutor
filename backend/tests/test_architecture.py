@@ -79,11 +79,10 @@ def test_only_the_transaction_helper_commits_or_rolls_back():
 
 
 def test_only_the_database_layer_builds_sessions():
-    """A session comes from a dependency or a `*_background_session` ([69]).
+    """A session comes from `get_db` or `background_session` ([69]).
 
-    Both stacks coexist during Track F ([67]); whichever a module uses, it
-    must not instantiate its own factory. [73] tightens this further by
-    forbidding the sync factory outside `cli/`.
+    Only `database/`, and script entry points (`cli/`, `database/seed.py`),
+    may touch the session factory; everything else takes a session.
     """
     allowed = {
         PACKAGE / "database" / "database.py",
@@ -100,39 +99,35 @@ def test_only_the_database_layer_builds_sessions():
         bad = [
             name
             for name in names
-            if name.endswith(("SessionLocal", "AsyncSessionLocal"))
-            or name.endswith(("sessionmaker", "async_sessionmaker"))
+            if name.endswith(("SessionLocal", "sessionmaker", "async_sessionmaker"))
         ]
         if bad:
             offenders[str(path.relative_to(PACKAGE))] = bad
     assert offenders == {}
 
 
-def test_async_code_never_uses_the_sync_transaction_helper():
-    """An `async def` that commits must use `transaction` ([69]).
+# Sync SQLAlchemy entry points; the app is async only since [110].
+SYNC_SQLALCHEMY = {
+    "sqlalchemy.orm.Session",
+    "sqlalchemy.orm.sessionmaker",
+    "sqlalchemy.orm.scoped_session",
+    "sqlalchemy.create_engine",
+    "sqlalchemy.engine.create_engine",
+}
 
-    `transaction()` on an `AsyncSession` would call `commit()` without
-    awaiting it: the block would look fine and write nothing.
+
+def test_the_app_has_no_sync_database_access():
+    """The end state of Track F ([73], [99]): one async stack, nothing else.
+
+    Anywhere in the package, `database/` included. Alembic (outside the
+    package) keeps its own sync engine for migrations, and tests build a
+    sync engine to arrange rows; neither is scanned here.
     """
     offenders = {}
     for path in sorted(PACKAGE.rglob("*.py")):
-        tree = ast.parse(path.read_text())
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.AsyncFunctionDef):
-                continue
-            for inner in ast.walk(node):
-                # `with transaction(...)` inside async code, not `async with`.
-                if isinstance(inner, ast.With):
-                    for item in inner.items:
-                        call = item.context_expr
-                        if (
-                            isinstance(call, ast.Call)
-                            and isinstance(call.func, ast.Name)
-                            and call.func.id == "transaction"
-                        ):
-                            offenders.setdefault(
-                                str(path.relative_to(PACKAGE)), []
-                            ).append(f"{node.name} (line {inner.lineno})")
+        bad = sorted(set(_imports(ast.parse(path.read_text()))) & SYNC_SQLALCHEMY)
+        if bad:
+            offenders[str(path.relative_to(PACKAGE))] = bad
     assert offenders == {}
 
 
@@ -171,6 +166,9 @@ def test_the_checks_catch_a_violation():
     # A session factory import is spotted wherever it comes from.
     factory = ast.parse("from physics_ai_tutor.database.database import SessionLocal\n")
     assert any(name.endswith("SessionLocal") for name in _imports(factory))
+    # A sync SQLAlchemy import is spotted by the end-state rule.
+    sync = ast.parse("from sqlalchemy.orm import Session\nimport sqlalchemy\n")
+    assert "sqlalchemy.orm.Session" in set(_imports(sync)) & SYNC_SQLALCHEMY
 
 
 # Functions that leave the process to talk to an LLM provider, directly
@@ -178,29 +176,48 @@ def test_the_checks_catch_a_violation():
 # of these is a connection spent waiting on something the database has no
 # part in ([82]).
 LLM_CALLS = {
+    # The provider seams.
+    "_request",
+    "_request_embeddings",
     "generate_answer",
     "chat_completion",
     "stream_answer",
     "create_embeddings",
+    "embed_many",
+    "embed_query",
     "translate_qa",
     "extract_concept_names",
-    "prepare_concepts",
     "grade_answer",
-    "embed_language",
-    "prepare_translation",
-    "translate_into",
-    "translate_missing",
-    "refresh_machine_translations",
-    "embed_query",
+    # One hop: use cases and prepare halves that call a seam ([82], [99]).
+    "_build_sense",
+    "_generate",
+    "_prepare_approval",
+    "_prepare_concepts",
+    "_prepare_create",
+    "_prepare_edit",
+    "_prepare_import_concepts",
+    "_prepare_import_translations",
+    "_prepare_translation",
+    "_reextract_one",
+    "_resolve_sense",
+    "_stream_generation",
+    "_tag_names",
+    "attach_concepts",
+    "fetch_question",
     "generate_rag_answer",
+    "grade_cases",
+    "prepare_concepts",
+    "prepare_refresh",
+    "prepare_translation",
+    "review_question",
+    "save_ai_question",
+    "search_similar_questions",
     "stream_rag_answer",
+    "translate_missing",
+    "translate_missing_languages",
+    "translate_missing_name",
+    "update_question",
 }
-
-# Sync admin-only paths that keep their transaction across an LLM call on
-# purpose, each with the issue that retires it. This list may only shrink.
-# Empty since [94]: every path that held a transaction across an LLM
-# call has been split into prepare/apply. Keep it empty.
-KNOWN_TRANSACTION_LLM_CALLERS: set[tuple[str, str]] = set()
 
 
 def _llm_calls_inside_transactions(tree: ast.AST) -> dict[str, list[str]]:
@@ -252,21 +269,8 @@ def test_no_transaction_spans_an_llm_call():
         found = _llm_calls_inside_transactions(ast.parse(path.read_text()))
         relative = str(path.relative_to(PACKAGE))
         for function, calls in found.items():
-            if (relative, function) in KNOWN_TRANSACTION_LLM_CALLERS:
-                continue
             offenders[f"{relative}:{function}"] = calls
     assert offenders == {}
-
-
-def test_the_known_transaction_llm_callers_still_exist():
-    """The allowlist must shrink when a path is fixed, not linger."""
-    stale = set()
-    for relative, function in KNOWN_TRANSACTION_LLM_CALLERS:
-        tree = ast.parse((PACKAGE / relative).read_text())
-        found = _llm_calls_inside_transactions(tree)
-        if function not in found:
-            stale.add((relative, function))
-    assert stale == set()
 
 
 def test_the_llm_transaction_check_catches_a_violation():

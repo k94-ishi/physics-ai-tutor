@@ -63,7 +63,7 @@ traffic first, then by which sync functions can be deleted soonest.
 | 16e | [111] | Test-only sync helpers in question_repository | done 2026-11-16 |
 | 16f | [112] | Test-only sync helpers in the concept and embedding repositories | done 2026-11-16 |
 | 17 | [98] | Rename pass: drop the async_ prefixes | done 2026-11-17 |
-| 18 | [99] | Async end state: architecture test, docs, connection budget (closes [73]) | open |
+| 18 | [99] | Async end state: architecture test, docs, connection budget (closes [73]) | done 2026-11-17 |
 
 Chains: concepts [84]→[89]→[90]→[91], review [85]→[92], writes [86]→[93]→[94]→[95], admin stats [87]→[96]→[97] ([103]→[104]→[105]→[106]), end [88] ([107]→[108]→[109]→[110]→[111]→[112])→[98]→[99]. [87] needs only [83] and can run beside the concept chain. [76] (batch embeddings on import) is
 recommended before [86].
@@ -72,8 +72,8 @@ recommended before [86].
 
 - [x] No route resolves a sync `Session`; `rg "SessionLocal"` outside
       `database/`, `alembic/`, `tests/` finds nothing app-side. ([88])
-- [ ] One engine, one pool at runtime; pool settings documented.
-- [ ] Architecture test enforces the end state.
+- [x] One engine, one pool at runtime; pool settings documented. ([110], [99])
+- [x] Architecture test enforces the end state. ([99])
 - [x] Behaviour identical: strict-language rule ([53]), admin fallback,
       review history, bulk actions, exports — existing tests are the net.
       (Suite green after every slice; the one intended change is the
@@ -130,12 +130,20 @@ itself, not to nested ones.
 
 ## Definition of done
 
-- [ ] [83]-[88] closed
-- [ ] `docs/development.md` backend-layers section describes only the
+- [x] [83]-[88] closed (and every later slice, [89]-[112], [98], [99])
+- [x] `docs/development.md` backend-layers section describes only the
       async stack; dual-stack notes removed
-- [ ] This issue closed in `status.md`
+- [x] This issue closed in `status.md`
 
 ## Log
+
+### 2026-11-17 — closed
+
+Every slice is done; [99] ticked the last two criteria (architecture
+test; one pool, documented). The app serves every request, background
+task and CLI through one async stack: no sync session, no sync engine,
+no sync LLM client, and no `async_` twins left. The one intended
+behaviour change is [105]'s nightly concurrency (owner-approved).
 
 ### 2026-11-13 — turned into an umbrella; six slice issues filed
 

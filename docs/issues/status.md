@@ -93,7 +93,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 70 | closed | 70-async-hot-path-ask-and-search.md | Asynchronize the hot path: /ai/ask and similarity search, async LLM clients | — (file-era issue) |
 | 71 | closed | 71-streaming-ask-answers.md | Stream /ai/ask answers (SSE) so students read while it generates | — (file-era issue) |
 | 72 | closed | 72-async-background-work.md | Background work on the event loop: parallel translations, bounded AI-review concurrency | — (file-era issue) |
-| 73 | open | 73-async-remaining-modules.md | Asynchronize the rest (umbrella for [83]-[88]): every route on the async stack; app keeps no sync engine | — (file-era issue) |
+| 73 | closed | 73-async-remaining-modules.md | Asynchronize the rest (umbrella for [83]-[88]): every route on the async stack; app keeps no sync engine | — (file-era issue) |
 | 74 | open | 74-latency-quick-wins.md | Latency quick wins independent of async: vector index, pool settings, compression | — (file-era issue) |
 | 75 | closed | 75-worker-safe-background-claims.md | Worker-safe background claims: move de-duplication into the database, then scale out | — (file-era issue) |
 | 76 | closed | 76-batch-embedding-calls.md | Batch embedding calls: one OpenAI request per import, not two per row | — (file-era issue) |
@@ -119,7 +119,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 96 | closed | 96-async-review-export.md | Asynchronize the review dataset export | — (file-era issue) |
 | 97 | closed | 97-async-ai-review-runs.md | Asynchronize AI review runs; one ai_review_service (umbrella for [103]-[106]) | — (file-era issue) |
 | 98 | closed | 98-async-rename-pass.md | Rename pass: drop the async_ prefixes | — (file-era issue) |
-| 99 | open | 99-async-end-state-and-docs.md | Async end state: architecture test, docs, connection budget (closes [73]) | — (file-era issue) |
+| 99 | closed | 99-async-end-state-and-docs.md | Async end state: architecture test, docs, connection budget (closes [73]) | — (file-era issue) |
 | 100 | open | 100-reuse-sense-embeddings.md | Reuse sense embeddings instead of re-embedding every candidate on each extraction | — (file-era issue) |
 | 101 | closed | 101-seed-as-one-jsonl-file.md | Seed data as one JSONL file; seed.json removed | — (file-era issue) |
 | 102 | closed | 102-async-translate-missing-cli.md | translate_missing CLI on the async service; delete the sync translation half | — (file-era issue) |
@@ -134,6 +134,7 @@ including all discussion comments; browse it with `git bug bug` /
 | 111 | closed | 111-question-repository-test-helpers-out-of-app.md | Test-only sync helpers in question_repository move out of the app | — (file-era issue) |
 | 112 | closed | 112-concept-embedding-test-helpers-out-of-app.md | Test-only sync helpers in the concept and embedding repositories move out of the app | — (file-era issue) |
 | 113 | closed | 113-self-contained-test-database.md | Self-contained tests: a temporary database per run, settings isolated from .env | — (file-era issue) |
+| 114 | open | 114-list-loads-unused-concept-embeddings.md | The question list loads every concept's embedding vector it never uses | — (file-era issue) |
 
 ## Notes on the archive column
 

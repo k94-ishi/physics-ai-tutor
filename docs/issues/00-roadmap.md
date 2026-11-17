@@ -44,7 +44,7 @@ tracks changes.
 
 | # | Track | Status | Next item |
 | --- | --- | --- | --- |
-| 1 | **F - async and latency** [67] | active | [83] public reads, then [84]-[88]; [74], [76], [77] in gaps |
+| 1 | **F - async and latency** [67] | conversion done 2026-11-17 ([73]) | latency items [74], [77], [114], [100]; then the one pre-deploy check |
 | 2 | E - refactoring [57] | nearly done | [65] part 2 waits on the owner; [61] skipped for now |
 | 3 | D - owner's queue [48] | waiting on the owner | [54] production rollout; [52] production sample after it |
 | 4 | A - student experience [45] | paused until F lands | [21] /help page |

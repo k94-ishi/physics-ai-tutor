@@ -205,7 +205,7 @@ Layout of `backend/tests/`:
 | `test_seed.py` | One offline seed per module (OpenAI and DeepSeek forbidden), then read-only checks and export round trips |
 | `test_security.py` | Production password hashing parameters (the test hasher is cheaper) |
 | `test_comment_style.py` | Comments are English (Japanese only as quoted data) ([65]) |
-| `test_architecture.py` | Layering rules: routers call services only; only `transaction()` commits; sessions come from `database/`; async code never uses the sync helper ([69]) |
+| `test_architecture.py` | Layering rules: routers call services only; only `transaction()` commits; sessions come from `database/`; no sync database access or sync LLM client in the app; no transaction waits on an LLM ([69], [82], [99]) |
 | `test_async_foundation.py` | Async engine, session, `transaction` commit/rollback, pool sizing ([69]) |
 | `test_async_hot_path.py` | A pending generation does not hold the server; concurrent generations overlap ([70]) |
 | `test_llm_connection_discipline.py` | No transaction is open at the moment any LLM seam is called ([82]) |
@@ -323,8 +323,7 @@ enforced by `tests/test_architecture.py`:
   concurrent operations once threads no longer did. Structure such code
   as *prepare* (LLM calls, no session) then *apply* (short write
   transaction) — `question_translation_service` is the model. Enforced
-  lexically by `test_architecture.py` (with a shrinking allowlist of
-  admin write paths that [73]/[76] rework) and at runtime by
+  lexically by `test_architecture.py` and at runtime by
   `tests/test_llm_connection_discipline.py`.
 - **Question use cases** live in five modules (since [60]):
   `question_read_service` (list, detail, exact match, ask cache),
@@ -365,66 +364,48 @@ enforced by `tests/test_architecture.py`:
   self-heal on the next view and runs are reaped by the timeout guard,
   which is the same trade-off as before concurrency.
 
-### Two stacks during the async migration ([69])
+### The async stack ([67], [73])
 
-> **Since [110] only the async stack exists in the app.** The sync
-> column below is history; [99] removes this section.
+Since Track F the backend runs on one stack: SQLAlchemy's async engine over
+the psycopg driver and the plain `DATABASE_URL`, and `AsyncOpenAI` for
+both providers. Alembic keeps its own sync engine for migrations, and
+tests build a sync engine to arrange rows; neither is part of the app.
 
-Track F ([67]) converts the backend to async one vertical slice at a
-time, so a sync and an async stack coexist until [73] retires the sync
-one from the app. Both use the same psycopg driver and the same
-`DATABASE_URL`; only the calling style differs.
+| | Where |
+| --- | --- |
+| Request session | `Depends(get_db)` (`database/dependency.py`) |
+| Background session | `async with background_session()` (`database/session.py`) |
+| Writes | `async with transaction(db, "op")` (`database/transaction.py`) |
+| CLI session | `async with AsyncSessionLocal()` inside `asyncio.run` |
+| Engine | `async_engine` / `AsyncSessionLocal` (`database/database.py`) |
+| Test fixtures | `async_db` for the code under test; sync `db` to arrange rows |
 
-| | Sync (not yet converted) | Async (converted) |
-| --- | --- | --- |
-| Request session | none since [104]; `get_db` remains only for [88] to delete | `Depends(get_async_db)` (every route) |
-| Background session | `with background_session()` | `async with async_background_session()` |
-| Writes | `with transaction(db, "op")` | `async with async_transaction(db, "op")` |
-| Test fixture | `db` | `async_db` |
-| Engine | `engine` / `SessionLocal` | `async_engine` / `AsyncSessionLocal` |
+Rules, enforced by `tests/test_architecture.py` where a test can see them:
 
-Rules, all enforced by `tests/test_architecture.py`:
-
-- **A slice is converted whole or not at all.** Router, services and
-  repositories of one call chain move together. Never call a sync
-  repository from an async service, and never bridge with
-  `run_in_executor` — convert the callee instead.
-- **Shared functions get an `async_` twin, not a rewrite.** A repository
-  or service used by both converted and unconverted callers keeps its
-  sync function and gains `async_<name>` beside it ([70]); [73] deletes
-  the sync half and drops the prefix. Where the two would otherwise
-  duplicate a rule, extract it: the status predicate
-  (`_status_conditions`), the vector-search statement
-  (`_similar_embeddings_select`) and the strict-language naming
-  (`_names_by_question`) are shared by both variants on purpose, because
-  a filter drifting between them is a security bug, not a style problem.
+- **No sync database access anywhere in the app** (`sqlalchemy.orm.Session`,
+  `sessionmaker`, `create_engine`), `database/` included. Never bridge
+  with `run_in_executor`: a blocking call on the event loop stalls every
+  request, not just its own.
+- **`transaction()` is the only commit point**, and no transaction may
+  wait on an LLM ([82]); see the layering rules above.
 - **Read what you need off an ORM row before a transaction that might
   roll back.** A rollback expires the object, and reading an expired
   attribute afterwards is implicit IO, which `AsyncSession` refuses with
-  `MissingGreenlet` — so an error path that logs `question.id` crashes
-  instead of logging. `async_review_question` captures its scalars up
-  front for exactly this reason.
+  `MissingGreenlet` - so an error path that logs `question.id` crashes
+  instead of logging. `review_question` captures its scalars up front
+  for exactly this reason.
+- **No implicit IO.** A relationship needs `lazy="selectin"` or a
+  `selectinload` in the query; `Concept.terms` is the model.
 - Only `database/` (and script entry points: `cli/`, `database/seed.py`)
-  may build a session factory. Everything else takes a session.
-- `async_transaction` is the only way async code commits. A plain
-  `with transaction(...)` inside an `async def` is a silent bug — it
-  would call `commit()` without awaiting, so the block looks fine and
-  writes nothing. There is a test that fails on exactly that shape.
-- Async tests are marked `pytest.mark.anyio` (module-level
-  `pytestmark`); the `anyio_backend` fixture pins asyncio. The anyio
-  plugin ships with anyio, so there is no new test dependency.
-- `AsyncSession` raises on implicit IO, so a relationship the sync code
-  loaded lazily needs `selectinload` or an explicit query once its slice
-  is converted.
+  may use the session factory. Everything else takes a session.
+- The session factory keeps `expire_on_commit=False`: services return
+  ORM objects whose attributes are read after the commit, and an async
+  refresh would need an await the caller cannot give.
+- Async tests are marked `pytest.mark.anyio`; the `anyio_backend`
+  fixture pins asyncio.
 
-Both session factories keep `expire_on_commit=False`: services return ORM
-objects whose attributes are read after the commit, and an async refresh
-would need an await the caller cannot give.
-
-Pool sizes are explicit (`POOL_SIZE`, `MAX_OVERFLOW` in
-`database/database.py`) because during the migration two pools add up
-against one connection limit; [74] tunes the final numbers for the
-Supabase pooler, and [75] settles how they multiply across workers.
+Each worker holds **one pool** (`POOL_SIZE` 5 + `MAX_OVERFLOW` 10 in
+`database/database.py`); see the connection budget below.
 
 ### URL parameters on the student list
 
@@ -632,19 +613,27 @@ limit. The gain is real but smaller than the worker count.
    memory, so a claim held in a Python set is invisible to the others
    and the same row gets translated twice — two DeepSeek calls for one
    row's worth of value.
-2. **The connection budget must fit.** Each worker builds its own pools,
-   and until [73] retires the sync engine there are two per worker:
+2. **The connection budget must fit.** Each worker builds its own pool,
+   one per worker since [110]:
 
    ```
-   worst case per worker = (pool_size + max_overflow) x 2 engines = 30
+   worst case per worker = pool_size + max_overflow = 5 + 10 = 15
    ```
 
-   So 2 workers can demand 60 connections and 4 can demand 120, against
-   a Supabase instance that typically allows ~60 direct. The observed
-   figures above are far lower (about 5 per worker under that load),
-   but the pool will open more under a slower database. **Two workers is
-   the safe ceiling today**; after [73] halves the pools per worker, and
-   with the sizing [74] settles, four becomes reasonable.
+   Re-measured in [99] (2026-11-17, same probe as above, 144 questions):
+
+   | Workers | Worst case | Peak under load | Held when idle |
+   | --- | --- | --- | --- |
+   | 1 | 15 | 15 | 6 |
+   | 2 | 30 | 30 | 11 |
+   | 4 | 60 | 47 | 21 |
+
+   Under load the pools filled to their ceiling, so plan with the worst
+   case, not with the idle figure. Against a Supabase instance that
+   typically allows ~60 direct connections, **two workers are safe,
+   three fit, and four reach the limit exactly** - before [110] four
+   could demand 120. [74] settles the pool sizes for the Supabase pooler;
+   with a smaller `MAX_OVERFLOW`, four becomes comfortable.
 
 `--reload` and `--workers` are mutually exclusive, so the Compose
 development server stays single-worker. Set `WEB_CONCURRENCY` on Render

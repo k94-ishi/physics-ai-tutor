@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.core import prompts, timing
 from physics_ai_tutor.core.config import settings
-from physics_ai_tutor.database.session import async_background_session
-from physics_ai_tutor.database.transaction import async_transaction
+from physics_ai_tutor.database.session import background_session
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models import Question
 from physics_ai_tutor.schemas.ai import AskAiRequest, AskAiResponse
 from physics_ai_tutor.schemas.question import (
@@ -49,8 +49,8 @@ async def _from_cache(
         # Committed here, not left for the quota recording to flush: the
         # connection must be back in the pool before a generation starts,
         # and that must not depend on a callback's side effect ([82]).
-        async with async_transaction(db, "ask_cache_lookup"):
-            cached = await question_read_service.async_find_cached_answer(
+        async with transaction(db, "ask_cache_lookup"):
+            cached = await question_read_service.find_cached_answer(
                 db, request.question, request.language
             )
         stage.note(hit=cached is not None)
@@ -80,11 +80,11 @@ async def _from_cache(
 async def _generate(db: AsyncSession, request: AskAiRequest):
     """Call the LLM in the requested mode; returns (result, ids, source, mode)."""
     if request.mode == "RAG":
-        result, retrieved_ids = await rag_service.async_generate_rag_answer(
+        result, retrieved_ids = await rag_service.generate_rag_answer(
             db, request.question, request.retrieved_question_ids, request.language
         )
         return result, retrieved_ids, QuestionSource.RAG_RESULT, "RAG"
-    result = await deepseek_service.async_generate_answer(
+    result = await deepseek_service.generate_answer(
         prompts.SYSTEM_PROMPTS[request.language], request.question
     )
     return result, [], QuestionSource.AI_GENERATED, "DIRECT"
@@ -158,7 +158,7 @@ async def _save_answer(
 ) -> int | None:
     """Store the answer as UNREVIEWED and record the ask; None if not saved."""
     with timing.stage("save_answer"):
-        saved = await question_write_service.async_save_ai_question(
+        saved = await question_write_service.save_ai_question(
             db,
             request.question,
             result.content,
@@ -191,9 +191,9 @@ async def post_generation_tasks(question_id: int) -> None:
     """
     # Stages here belong to no request; name them so the logs say so ([68]).
     with timing.request_path("background:post_generation"):
-        async with async_background_session() as db:
+        async with background_session() as db:
             try:
-                await question_translation_service.async_translate_missing_languages(
+                await question_translation_service.translate_missing_languages(
                     db, question_id
                 )
             except Exception:
@@ -206,7 +206,7 @@ async def post_generation_tasks(question_id: int) -> None:
             if settings.ai_review_enabled:
                 question = await db.get(Question, question_id)
                 if question is not None:
-                    await ai_review_service.async_review_question(db, question)
+                    await ai_review_service.review_question(db, question)
 
 
 @dataclass
@@ -240,7 +240,7 @@ async def _stream_generation(
 ) -> AsyncIterator[str | tuple]:
     """Stream the LLM in the requested mode; last item is the metadata."""
     if request.mode == "RAG":
-        async for piece in rag_service.async_stream_rag_answer(
+        async for piece in rag_service.stream_rag_answer(
             db, request.question, request.retrieved_question_ids, request.language
         ):
             if isinstance(piece, str):
@@ -250,7 +250,7 @@ async def _stream_generation(
                 yield result, retrieved_ids, QuestionSource.RAG_RESULT, "RAG"
         return
 
-    async for direct in deepseek_service.async_stream_answer(
+    async for direct in deepseek_service.stream_answer(
         prompts.SYSTEM_PROMPTS[request.language], request.question
     ):
         if isinstance(direct, str):

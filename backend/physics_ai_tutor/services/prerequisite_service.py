@@ -24,7 +24,7 @@ from physics_ai_tutor.schemas.question import (
     QuestionResponse,
 )
 from physics_ai_tutor.services.question_presentation_service import (
-    async_prepare_for_response,
+    prepare_for_response,
 )
 from physics_ai_tutor.services.response_language import (
     ResponseLanguage,
@@ -132,10 +132,8 @@ async def _gaps(
     strict: bool,
 ) -> list[str]:
     """Names of this QA's concepts that ended up with no usable definer."""
-    current_concepts = (
-        await question_concept_repository.async_get_concepts_for_question(
-            db, question_id
-        )
+    current_concepts = await question_concept_repository.get_concepts_for_question(
+        db, question_id
     )
     return [
         name
@@ -174,7 +172,7 @@ async def get_prerequisites(
     """Defining QAs for this QA's concepts, plus the concepts with none ([38])."""
     response = ResponseLanguage.of(language)
     lang = response.language
-    current = await question_repository.async_get_question(db, question_id)
+    current = await question_repository.get_question(db, question_id)
     if current is None:
         return None
 
@@ -185,7 +183,7 @@ async def get_prerequisites(
     best_by_concept = _best_definers(links, current)
     gaps = await _gaps(db, question_id, best_by_concept, lang, response.strict)
     ordered = _hardest_first(best_by_concept, current, limit)
-    needs = await async_prepare_for_response(db, ordered, response)
+    needs = await prepare_for_response(db, ordered, response)
     if response.strict:
         # The current QA's own concepts are the gap chips.
         needs.concept_question_ids.insert(0, question_id)

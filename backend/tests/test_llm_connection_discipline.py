@@ -55,14 +55,14 @@ async def test_translation_holds_no_transaction_during_the_llm_calls(
         in_transaction["embed"] = async_db.in_transaction()
         return [[0.1] * 1536 for _ in texts]
 
-    monkeypatch.setattr(translation_service, "async_translate_qa", _translate)
-    monkeypatch.setattr(embedding_service, "async_create_embeddings", _embed)
+    monkeypatch.setattr(translation_service, "translate_qa", _translate)
+    monkeypatch.setattr(embedding_service, "create_embeddings", _embed)
 
     async_db.add(_question(status=QuestionStatus.APPROVED))
     await async_db.commit()
     question_id = (await async_db.scalars(select(Question.id))).first()
 
-    filled = await question_translation_service.async_translate_missing_languages(
+    filled = await question_translation_service.translate_missing_languages(
         async_db, question_id
     )
 
@@ -81,13 +81,13 @@ async def test_a_failed_translation_commits_nothing(async_db, monkeypatch):
     async def _fail(question, answer, source, target):
         raise TranslationError("down")
 
-    monkeypatch.setattr(translation_service, "async_translate_qa", _fail)
+    monkeypatch.setattr(translation_service, "translate_qa", _fail)
 
     async_db.add(_question(status=QuestionStatus.APPROVED))
     await async_db.commit()
     question_id = (await async_db.scalars(select(Question.id))).first()
 
-    filled = await question_translation_service.async_translate_missing_languages(
+    filled = await question_translation_service.translate_missing_languages(
         async_db, question_id
     )
 
@@ -106,7 +106,7 @@ async def test_the_direct_ask_holds_no_transaction_during_generation(
         seen["in_transaction"] = async_db.in_transaction()
         return deepseek_service.GenerationResult("回答", "mock-model", 1, 2)
 
-    monkeypatch.setattr(deepseek_service, "async_generate_answer", _generate)
+    monkeypatch.setattr(deepseek_service, "generate_answer", _generate)
 
     async def _record() -> None:
         pass
@@ -137,7 +137,7 @@ async def test_the_rag_ask_holds_no_transaction_during_generation(
         seen["in_transaction"] = async_db.in_transaction()
         return deepseek_service.GenerationResult("RAG回答", "mock-model", 1, 2)
 
-    monkeypatch.setattr(deepseek_service, "async_generate_answer", _generate)
+    monkeypatch.setattr(deepseek_service, "generate_answer", _generate)
 
     async def _record() -> None:
         pass
@@ -161,9 +161,9 @@ async def test_the_query_embedding_miss_holds_no_transaction(async_db, monkeypat
         seen["in_transaction"] = async_db.in_transaction()
         return [[0.1] * 1536 for _ in texts]
 
-    monkeypatch.setattr(embedding_service, "async_create_embeddings", _embed)
+    monkeypatch.setattr(embedding_service, "create_embeddings", _embed)
 
-    await embedding_service.async_embed_query(async_db, "初めて来る検索クエリ")
+    await embedding_service.embed_query(async_db, "初めて来る検索クエリ")
 
     assert seen["in_transaction"] is False
 
@@ -181,13 +181,13 @@ async def test_the_ai_review_holds_no_transaction_during_grading(async_db, monke
             2,
         )
 
-    monkeypatch.setattr(deepseek_service, "async_generate_answer", _grade)
+    monkeypatch.setattr(deepseek_service, "generate_answer", _grade)
 
     question = _question()
     async_db.add(question)
     await async_db.commit()
 
-    row = await ai_review_service.async_review_question(async_db, question)
+    row = await ai_review_service.review_question(async_db, question)
 
     assert row is not None
     assert seen["in_transaction"] is False
@@ -207,8 +207,8 @@ async def test_concept_reextraction_holds_no_transaction_during_llm_calls(
         in_transaction["embed"] = async_db.in_transaction()
         return [[0.1] * 1536 for _ in texts]
 
-    monkeypatch.setattr(concept_service, "async_extract_concept_names", _extract)
-    monkeypatch.setattr(embedding_service, "async_create_embeddings", _embed)
+    monkeypatch.setattr(concept_service, "extract_concept_names", _extract)
+    monkeypatch.setattr(embedding_service, "create_embeddings", _embed)
 
     async_db.add(_question(status=QuestionStatus.APPROVED))
     await async_db.commit()
@@ -244,9 +244,9 @@ async def test_edit_approve_holds_no_transaction_during_llm_calls(
         seen.append(("extract", async_db.in_transaction()))
         return ["概念A | concept A"]
 
-    monkeypatch.setattr(embedding_service, "async_create_embeddings", _embed)
-    monkeypatch.setattr(translation_service, "async_translate_qa", _translate)
-    monkeypatch.setattr(concept_service, "async_extract_concept_names", _extract)
+    monkeypatch.setattr(embedding_service, "create_embeddings", _embed)
+    monkeypatch.setattr(translation_service, "translate_qa", _translate)
+    monkeypatch.setattr(concept_service, "extract_concept_names", _extract)
 
     async_db.add(_question())
     async_db.add(User(email="probe@example.com", hashed_password="x", role="admin"))
@@ -287,9 +287,9 @@ async def test_create_holds_no_transaction_during_llm_calls(async_db, monkeypatc
         seen.append(("extract", async_db.in_transaction()))
         return ["概念A | concept A"]
 
-    monkeypatch.setattr(embedding_service, "async_create_embeddings", _embed)
-    monkeypatch.setattr(translation_service, "async_translate_qa", _translate)
-    monkeypatch.setattr(concept_service, "async_extract_concept_names", _extract)
+    monkeypatch.setattr(embedding_service, "create_embeddings", _embed)
+    monkeypatch.setattr(translation_service, "translate_qa", _translate)
+    monkeypatch.setattr(concept_service, "extract_concept_names", _extract)
 
     created = await question_write_service.create_question(
         async_db, QuestionCreate(question="新しい質問", answer="新しい回答")
@@ -318,9 +318,9 @@ async def test_import_holds_no_transaction_during_llm_calls(async_db, monkeypatc
         seen.append(("extract", async_db.in_transaction()))
         return ["概念A | concept A"]
 
-    monkeypatch.setattr(embedding_service, "async_create_embeddings", _embed)
-    monkeypatch.setattr(translation_service, "async_translate_qa", _translate)
-    monkeypatch.setattr(concept_service, "async_extract_concept_names", _extract)
+    monkeypatch.setattr(embedding_service, "create_embeddings", _embed)
+    monkeypatch.setattr(translation_service, "translate_qa", _translate)
+    monkeypatch.setattr(concept_service, "extract_concept_names", _extract)
 
     created = await question_write_service.import_questions_from_jsonl(
         async_db,

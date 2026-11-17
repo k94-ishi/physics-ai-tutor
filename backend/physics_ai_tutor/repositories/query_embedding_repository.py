@@ -12,13 +12,11 @@ def _by_hash(text_hash: str, model: str):
     )
 
 
-async def async_get(
-    db: AsyncSession, text_hash: str, model: str
-) -> QueryEmbedding | None:
+async def get(db: AsyncSession, text_hash: str, model: str) -> QueryEmbedding | None:
     return (await db.scalars(_by_hash(text_hash, model))).first()
 
 
-async def async_touch(db: AsyncSession, row: QueryEmbedding) -> None:
+async def touch(db: AsyncSession, row: QueryEmbedding) -> None:
     """Record a cache hit on the row (the caller commits)."""
     row.hit_count += 1
     row.last_used_at = func.now()
@@ -36,7 +34,7 @@ def _new_row(
     )
 
 
-async def async_create(
+async def create(
     db: AsyncSession,
     text_hash: str,
     normalized_text: str,

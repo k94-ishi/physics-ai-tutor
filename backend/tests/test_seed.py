@@ -35,9 +35,9 @@ def seeded():
             async_sessionmaker(bind=async_engine, expire_on_commit=False),
         )
         # The only path to OpenAI since [108]; any request fails the seed.
-        patch.setattr(embedding_service, "_async_request_embeddings", _forbidden)
-        patch.setattr(concept_service, "async_extract_concept_names", _forbidden)
-        patch.setattr(translation_service, "async_translate_qa", _forbidden)
+        patch.setattr(embedding_service, "_request_embeddings", _forbidden)
+        patch.setattr(concept_service, "extract_concept_names", _forbidden)
+        patch.setattr(translation_service, "translate_qa", _forbidden)
         seed_module.seed()
     with Session(engine) as session:
         yield session

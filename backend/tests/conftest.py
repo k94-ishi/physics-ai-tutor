@@ -24,7 +24,7 @@ from alembic import command
 from physics_ai_tutor.core import security
 from physics_ai_tutor.database import session as session_module
 from physics_ai_tutor.database.base import Base
-from physics_ai_tutor.database.dependency import get_async_db
+from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.main import app
 from physics_ai_tutor.models.user import User
 from physics_ai_tutor.schemas.language import Language
@@ -245,7 +245,7 @@ def _mock_create_embeddings(monkeypatch):
     async def _fake_async(texts):
         return _fake(texts)
 
-    monkeypatch.setattr(embedding_service, "async_create_embeddings", _fake_async)
+    monkeypatch.setattr(embedding_service, "create_embeddings", _fake_async)
 
 
 @pytest.fixture(autouse=True)
@@ -262,7 +262,7 @@ def patch_extract_concept_names(monkeypatch, extract) -> None:
     async def _async_extract(*args, **kwargs):
         return extract(*args, **kwargs)
 
-    monkeypatch.setattr(concept_service, "async_extract_concept_names", _async_extract)
+    monkeypatch.setattr(concept_service, "extract_concept_names", _async_extract)
 
 
 def attach_concepts(db, question_id: int, names: list[str], language: str = "ja"):
@@ -275,7 +275,7 @@ def attach_concepts(db, question_id: int, names: list[str], language: str = "ja"
 
     async def _attach():
         async with AsyncSession(async_engine, expire_on_commit=False) as session:
-            concepts = await concept_service.async_attach_concepts(
+            concepts = await concept_service.attach_concepts(
                 session, question_id, names, language
             )
             return [concept.id for concept in concepts]
@@ -297,7 +297,7 @@ def create_question(
 ):
     """Arrange a question row from a sync test ([111]).
 
-    The app writes only through `async_create_question`; this keeps the
+    The app writes only through `create_question`; this keeps the
     many sync tests on their `db` fixture, including the legacy
     single-language `question=/answer=` form. Flushes; the caller commits.
     """
@@ -386,7 +386,7 @@ def concepts_for_question(db, question_id):
 def create_ai_review(db, review):
     """Arrange an AI review row from a sync test ([106]).
 
-    The application writes only through `async_create`; this keeps the
+    The application writes only through `create`; this keeps the
     many sync tests on their `db` fixture. Flushes, as the deleted sync
     repository function did; the caller commits.
     """
@@ -411,7 +411,7 @@ async def fake_translate_async(question, answer, source, target):
 @pytest.fixture(autouse=True)
 def _mock_translate(monkeypatch):
     # Both seams, so a converted caller is mocked too ([70]).
-    monkeypatch.setattr(translation_service, "async_translate_qa", fake_translate_async)
+    monkeypatch.setattr(translation_service, "translate_qa", fake_translate_async)
 
 
 @pytest.fixture(autouse=True)
@@ -427,14 +427,14 @@ def _background_translation_uses_test_db(monkeypatch):
 
 @pytest.fixture
 def client(db):
-    async def override_get_async_db():
+    async def override_get_db():
         # Each request gets its own session, as in production: it cannot
         # share the sync `db` object, and committed rows are what a real
         # request would see anyway.
         async with AsyncSession(async_engine, expire_on_commit=False) as session:
             yield session
 
-    app.dependency_overrides[get_async_db] = override_get_async_db
+    app.dependency_overrides[get_db] = override_get_db
 
     with TestClient(app) as test_client:
         yield test_client
@@ -492,7 +492,7 @@ def fake_generation(answer: str):
 def patch_generation(monkeypatch, generate) -> None:
     """Install a plain sync stub on the DeepSeek generation seam ([70]).
 
-    The app only awaits `async_generate_answer` since [108]. Stubs stay
+    The app only awaits `generate_answer` since [108]. Stubs stay
     plain sync callables; the adapter forwards arguments and lets
     exceptions through unchanged.
     """
@@ -500,7 +500,7 @@ def patch_generation(monkeypatch, generate) -> None:
     async def _async_generate(*args, **kwargs):
         return generate(*args, **kwargs)
 
-    monkeypatch.setattr(deepseek_service, "async_generate_answer", _async_generate)
+    monkeypatch.setattr(deepseek_service, "generate_answer", _async_generate)
 
 
 def patch_translate_qa(monkeypatch, translate) -> None:
@@ -509,7 +509,7 @@ def patch_translate_qa(monkeypatch, translate) -> None:
     async def _async_translate(*args, **kwargs):
         return translate(*args, **kwargs)
 
-    monkeypatch.setattr(translation_service, "async_translate_qa", _async_translate)
+    monkeypatch.setattr(translation_service, "translate_qa", _async_translate)
 
 
 def patch_create_embeddings(monkeypatch, create) -> None:
@@ -518,7 +518,7 @@ def patch_create_embeddings(monkeypatch, create) -> None:
     async def _async_create(*args, **kwargs):
         return create(*args, **kwargs)
 
-    monkeypatch.setattr(embedding_service, "async_create_embeddings", _async_create)
+    monkeypatch.setattr(embedding_service, "create_embeddings", _async_create)
 
 
 def patch_rag_answer(monkeypatch, generate) -> None:
@@ -527,7 +527,7 @@ def patch_rag_answer(monkeypatch, generate) -> None:
     async def _async_generate(*args, **kwargs):
         return generate(*args, **kwargs)
 
-    monkeypatch.setattr(rag_service, "async_generate_rag_answer", _async_generate)
+    monkeypatch.setattr(rag_service, "generate_rag_answer", _async_generate)
 
 
 def patch_exchange_code(monkeypatch, exchange) -> None:
@@ -550,4 +550,4 @@ def patch_chat_completion(monkeypatch, complete) -> None:
     async def _async_complete(*args, **kwargs):
         return complete(*args, **kwargs)
 
-    monkeypatch.setattr(deepseek_service, "async_chat_completion", _async_complete)
+    monkeypatch.setattr(deepseek_service, "chat_completion", _async_complete)

@@ -7,7 +7,7 @@ from tests.conftest import patch_chat_completion
 
 # Captured at import time, before conftest's autouse fixture replaces the
 # module attribute with a canned mock for the API tests.
-_real_async_extract = concept_service.async_extract_concept_names
+_real_async_extract = concept_service.extract_concept_names
 
 
 def _real_extract_concept_names(*args, **kwargs):

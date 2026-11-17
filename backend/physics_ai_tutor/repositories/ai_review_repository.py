@@ -24,7 +24,7 @@ def _new_review(review: AiReviewCreate) -> AiReview:
     )
 
 
-async def async_create(db: AsyncSession, review: AiReviewCreate) -> AiReview:
+async def create(db: AsyncSession, review: AiReviewCreate) -> AiReview:
     row = _new_review(review)
 
     db.add(row)
@@ -49,9 +49,7 @@ def _newest_per_question(rows) -> dict[int, AiReview]:
     return latest
 
 
-async def async_latest_for_questions(
-    db: AsyncSession, ids: list[int]
-) -> dict[int, AiReview]:
+async def latest_for_questions(db: AsyncSession, ids: list[int]) -> dict[int, AiReview]:
     """As `latest_for_questions` ([83]); the sync one serves the review flow."""
     if not ids:
         return {}
@@ -97,14 +95,14 @@ def _count_of(query: Select[tuple[int]]) -> Select[tuple[int]]:
     return select(func.count()).select_from(query.order_by(None).subquery())
 
 
-async def async_list_pending_question_ids(db: AsyncSession, limit: int) -> list[int]:
+async def list_pending_question_ids(db: AsyncSession, limit: int) -> list[int]:
     """Pending question ids, oldest first, at most `limit`."""
     query = _pending_question_select().limit(limit)
 
     return list((await db.scalars(query)).all())
 
 
-async def async_count_pending_questions(db: AsyncSession) -> int:
+async def count_pending_questions(db: AsyncSession) -> int:
     """The true total, unbounded by any run's limit or the daily cap."""
     return (await db.scalar(_count_of(_pending_question_select()))) or 0
 
@@ -115,7 +113,7 @@ def _created_since_count(hours: int) -> Select[tuple[int]]:
     return select(func.count(AiReview.id)).where(AiReview.created_at > cutoff)
 
 
-async def async_count_created_since(db: AsyncSession, hours: int) -> int:
+async def count_created_since(db: AsyncSession, hours: int) -> int:
     """AI reviews created in the last `hours`, for the daily cap."""
     return (await db.scalar(_created_since_count(hours))) or 0
 
@@ -144,7 +142,7 @@ def _stale_question_select(current_version: str) -> Select[tuple[int]]:
     )
 
 
-async def async_list_stale_question_ids(
+async def list_stale_question_ids(
     db: AsyncSession, current_version: str, limit: int
 ) -> list[int]:
     """Stale question ids, oldest first, at most `limit`."""
@@ -153,7 +151,7 @@ async def async_list_stale_question_ids(
     return list((await db.scalars(query)).all())
 
 
-async def async_count_stale_questions(db: AsyncSession, current_version: str) -> int:
+async def count_stale_questions(db: AsyncSession, current_version: str) -> int:
     """The true total, unbounded by any run's limit or the daily cap."""
     query = _count_of(_stale_question_select(current_version))
 
@@ -173,7 +171,7 @@ def _in_given_order(ids: list[int], eligible: set[int]) -> list[int]:
     return [question_id for question_id in ids if question_id in eligible]
 
 
-async def async_filter_reviewable_ids(db: AsyncSession, ids: list[int]) -> list[int]:
+async def filter_reviewable_ids(db: AsyncSession, ids: list[int]) -> list[int]:
     """Keep only UNREVIEWED AI questions, preserving the given order."""
     if not ids:
         return []

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.exceptions import RateLimitExceeded
 from physics_ai_tutor.core.jwt import create_access_token, decode_access_token
-from physics_ai_tutor.database.dependency import get_async_db
+from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.models.user import User
 from physics_ai_tutor.schemas.token import JWTPayload, UserRole
 from physics_ai_tutor.services import rate_limit_service, user_service
@@ -37,7 +37,7 @@ def set_access_token_cookie(response: Response, token: str) -> None:
 
 async def get_current_user(
     response: Response,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     token: str | None = Depends(cookie_scheme),
 ) -> JWTPayload:
     """Validate the access token cookie and refresh it if expiration is near.
@@ -129,7 +129,7 @@ def get_current_user_optional(
 
 async def get_current_db_user(
     payload: JWTPayload = Depends(get_current_user),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
 ) -> User:
     user = await user_service.get_user(db, int(payload.sub))
 
@@ -191,7 +191,7 @@ class AiAskRateLimit:
     bucket_key: str
 
     async def record(self, db: AsyncSession) -> None:
-        await rate_limit_service.async_record(db, AI_ASK_ACTION, self.bucket_key)
+        await rate_limit_service.record(db, AI_ASK_ACTION, self.bucket_key)
 
 
 def _ask_bucket_and_limits(
@@ -208,13 +208,13 @@ def _ask_bucket_and_limits(
 async def enforce_ai_ask_rate_limit(
     request: Request,
     user: JWTPayload | None = Depends(get_current_user_optional),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
 ) -> AiAskRateLimit:
     """Check the ask limit; the route records the hit on a cache miss ([70])."""
     bucket_key, limits = _ask_bucket_and_limits(request, user)
 
     try:
-        await rate_limit_service.async_check(db, AI_ASK_ACTION, bucket_key, limits)
+        await rate_limit_service.check(db, AI_ASK_ACTION, bucket_key, limits)
     except RateLimitExceeded:
         raise HTTPException(
             status_code=429,
@@ -226,12 +226,12 @@ async def enforce_ai_ask_rate_limit(
 
 async def enforce_login_rate_limit(
     request: Request,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
 ) -> None:
     bucket_key = f"ip:{get_client_ip(request)}"
 
     try:
-        await rate_limit_service.async_check(db, LOGIN_ACTION, bucket_key, LOGIN_LIMITS)
+        await rate_limit_service.check(db, LOGIN_ACTION, bucket_key, LOGIN_LIMITS)
     except RateLimitExceeded:
         raise HTTPException(
             status_code=429,
@@ -239,7 +239,7 @@ async def enforce_login_rate_limit(
         ) from None
 
     # Every login attempt counts, successful or not.
-    await rate_limit_service.async_record(db, LOGIN_ACTION, bucket_key)
+    await rate_limit_service.record(db, LOGIN_ACTION, bucket_key)
 
 
 def is_admin(current_user: JWTPayload | None) -> bool:

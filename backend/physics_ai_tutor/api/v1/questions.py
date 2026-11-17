@@ -13,7 +13,7 @@ from physics_ai_tutor.api.dependencies import (
     get_current_user_optional,
     is_admin,
 )
-from physics_ai_tutor.database.dependency import get_async_db
+from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.schemas.embedding import (
     SimilarQuestionRequest,
     SimilarQuestionResponse,
@@ -38,7 +38,7 @@ from physics_ai_tutor.services import (
     recommendation_service,
 )
 from physics_ai_tutor.services.embedding_service import (
-    async_search_similar_questions,
+    search_similar_questions,
 )
 from physics_ai_tutor.services.response_language import (
     ResponseLanguage,
@@ -150,7 +150,7 @@ async def get_questions(
     concept_id: int | None = Query(
         default=None, ge=1, description="Questions linked to exactly this sense."
     ),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
     # AI-verdict sorting and filtering and the id list are admin tools.
@@ -184,7 +184,7 @@ async def get_questions(
 async def get_exact_match_question(
     question: str = Query(..., min_length=1, max_length=200),
     lang: Language = Query(default=Language.JA),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
     result = await question_read_service.fetch_question_by_exact_text(
@@ -211,7 +211,7 @@ async def get_question(
     background_tasks: BackgroundTasks,
     question_id: int,
     lang: Language = Query(default=Language.JA),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
     # Rows approved before translation existed are filled on first view.
@@ -230,7 +230,7 @@ async def get_question(
 
     if is_admin(current_user):
         question_presentation_service.attach_generation_meta([question])
-        await question_presentation_service.async_attach_ai_reviews(db, [question])
+        await question_presentation_service.attach_ai_reviews(db, [question])
     await _queue_translations(background_tasks, db, needs, lang)
 
     return question
@@ -245,7 +245,7 @@ async def get_related_questions(
     question_id: int,
     limit: int = Query(default=5, ge=1, le=20),
     lang: Language = Query(default=Language.JA),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
     related = await recommendation_service.get_related_questions(
@@ -272,7 +272,7 @@ async def get_prerequisites(
     question_id: int,
     limit: int = Query(default=5, ge=1, le=20),
     lang: Language = Query(default=Language.JA),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
     """Defining QAs for the concepts this QA leans on ([38]).
@@ -298,11 +298,11 @@ async def get_prerequisites(
 )
 async def search_questions(
     request: SimilarQuestionRequest,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
     # Converted in [70]: this is the read that costs an OpenAI call.
-    return await async_search_similar_questions(
+    return await search_similar_questions(
         db=db,
         query=request.query,
         limit=request.limit,

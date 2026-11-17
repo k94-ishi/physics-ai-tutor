@@ -12,8 +12,8 @@ import pytest
 from sqlalchemy import select, update
 
 from physics_ai_tutor.core.config import settings
-from physics_ai_tutor.database.session import async_background_session
-from physics_ai_tutor.database.transaction import async_transaction
+from physics_ai_tutor.database.session import background_session
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models import BackgroundClaim, Question
 from physics_ai_tutor.repositories import background_claim_repository as claims
 from physics_ai_tutor.schemas.language import TextProvenance
@@ -42,8 +42,8 @@ def _approved(index: int) -> Question:
 
 async def _claim_in_own_session(key: int) -> bool:
     """Claim as a separate worker would: own session, own transaction."""
-    async with async_background_session() as db:
-        async with async_transaction(db, "test_claim"):
+    async with background_session() as db:
+        async with transaction(db, "test_claim"):
             return await claims.claim(db, KIND, key, TIMEOUT)
 
 
@@ -66,8 +66,8 @@ async def test_many_simultaneous_claimers_produce_exactly_one_winner(async_db):
 async def test_a_released_claim_can_be_taken_again(async_db):
     assert await _claim_in_own_session(99) is True
 
-    async with async_background_session() as db:
-        async with async_transaction(db, "test_release"):
+    async with background_session() as db:
+        async with transaction(db, "test_release"):
             await claims.release(db, KIND, 99)
 
     assert await _claim_in_own_session(99) is True
@@ -76,8 +76,8 @@ async def test_a_released_claim_can_be_taken_again(async_db):
 async def test_different_kinds_and_keys_do_not_collide(async_db):
     assert await _claim_in_own_session(1) is True
 
-    async with async_background_session() as db:
-        async with async_transaction(db, "test_claim"):
+    async with background_session() as db:
+        async with transaction(db, "test_claim"):
             # Same key, other kind of work.
             other_kind = await claims.claim(
                 db, claims.TRANSLATE_CONCEPT_NAME, 1, TIMEOUT
@@ -95,8 +95,8 @@ async def test_an_expired_claim_is_taken_over(async_db):
     # Nobody released it: the worker crashed.
     assert await _claim_in_own_session(55) is False
 
-    async with async_background_session() as db:
-        async with async_transaction(db, "age_the_claim"):
+    async with background_session() as db:
+        async with transaction(db, "age_the_claim"):
             await db.execute(
                 update(BackgroundClaim)
                 .where(BackgroundClaim.kind == KIND, BackgroundClaim.key == 55)
@@ -110,8 +110,8 @@ async def test_a_fresh_claim_is_not_taken_over(async_db):
     """The timeout must not be so eager that live work is stolen."""
     assert await _claim_in_own_session(56) is True
 
-    async with async_background_session() as db:
-        async with async_transaction(db, "age_the_claim"):
+    async with background_session() as db:
+        async with transaction(db, "age_the_claim"):
             await db.execute(
                 update(BackgroundClaim)
                 .where(BackgroundClaim.kind == KIND, BackgroundClaim.key == 56)
@@ -129,7 +129,7 @@ async def test_a_row_another_worker_holds_is_not_translated(async_db, monkeypatc
         calls.append(question)
         return f"[{target}] {question}", f"[{target}] {answer}"
 
-    monkeypatch.setattr(translation_service, "async_translate_qa", _translate)
+    monkeypatch.setattr(translation_service, "translate_qa", _translate)
 
     async_db.add(_approved(1))
     await async_db.commit()
@@ -145,7 +145,7 @@ async def test_a_row_another_worker_holds_is_not_translated(async_db, monkeypatc
     await async_db.refresh(row)
     assert row.question_en is None
     # The other worker's claim is left alone, not released by the loser.
-    async with async_background_session() as db:
+    async with background_session() as db:
         assert await claims.is_claimed(db, KIND, question_id) is True
 
 
@@ -153,7 +153,7 @@ async def test_a_translated_row_leaves_no_claim_behind(async_db, monkeypatch):
     async def _translate(question, answer, source, target):
         return f"[{target}] {question}", f"[{target}] {answer}"
 
-    monkeypatch.setattr(translation_service, "async_translate_qa", _translate)
+    monkeypatch.setattr(translation_service, "translate_qa", _translate)
 
     async_db.add(_approved(2))
     await async_db.commit()
@@ -164,7 +164,7 @@ async def test_a_translated_row_leaves_no_claim_behind(async_db, monkeypatch):
     row = await async_db.get(Question, question_id)
     await async_db.refresh(row)
     assert row.question_en is not None
-    async with async_background_session() as db:
+    async with background_session() as db:
         assert await claims.is_claimed(db, KIND, question_id) is False
 
 
@@ -174,7 +174,7 @@ async def test_a_failing_translation_still_releases_its_claim(async_db, monkeypa
     async def _boom(question, answer, source, target):
         raise RuntimeError("translator down")
 
-    monkeypatch.setattr(translation_service, "async_translate_qa", _boom)
+    monkeypatch.setattr(translation_service, "translate_qa", _boom)
 
     async_db.add(_approved(3))
     await async_db.commit()
@@ -182,7 +182,7 @@ async def test_a_failing_translation_still_releases_its_claim(async_db, monkeypa
 
     await background_translation_service.translate_missing([question_id])
 
-    async with async_background_session() as db:
+    async with background_session() as db:
         assert await claims.is_claimed(db, KIND, question_id) is False
 
 
@@ -191,15 +191,15 @@ async def test_the_claim_timeout_comes_from_the_settings(async_db, monkeypatch):
 
     assert await _claim_in_own_session(81) is True
 
-    async with async_background_session() as db:
-        async with async_transaction(db, "age_the_claim"):
+    async with background_session() as db:
+        async with transaction(db, "age_the_claim"):
             await db.execute(
                 update(BackgroundClaim)
                 .where(BackgroundClaim.kind == KIND, BackgroundClaim.key == 81)
                 .values(claimed_at=datetime.now(UTC) - timedelta(minutes=2))
             )
         # Two minutes old is expired at a one-minute timeout.
-        async with async_transaction(db, "test_claim"):
+        async with transaction(db, "test_claim"):
             assert (
                 await claims.claim(
                     db, KIND, 81, settings.background_claim_timeout_minutes

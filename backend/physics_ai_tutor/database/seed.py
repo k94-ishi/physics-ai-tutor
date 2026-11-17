@@ -20,7 +20,7 @@ from physics_ai_tutor.core.exceptions import ConceptExtractionError
 from physics_ai_tutor.database import seed_embeddings
 from physics_ai_tutor.database import seed_file as seed_file_module
 from physics_ai_tutor.database.database import AsyncSessionLocal
-from physics_ai_tutor.database.transaction import async_transaction
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.schemas.language import TextProvenance
 from physics_ai_tutor.schemas.question import (
@@ -83,7 +83,7 @@ async def _tag_names(question: Question, extras: SeedExtras) -> list[str] | None
     if extras.tags is not None:
         return extras.tags
     try:
-        return await concept_service.async_extract_concept_names(
+        return await concept_service.extract_concept_names(
             *question.original_text(), language=question.original_language
         )
     except ConceptExtractionError:
@@ -106,21 +106,19 @@ async def _seed(rows: list[tuple[QuestionCreate, SeedExtras]]) -> None:
             for question, extra in zip(questions, extras, strict=True)
         ]
         # One index for every row, as in import: a shared tag is made once.
-        plans = await concept_service.async_prepare_concepts_many(
+        plans = await concept_service.prepare_concepts_many(
             session,
             [
                 (row_names or [], question.original_language)
                 for row_names, question in zip(names, questions, strict=True)
             ],
         )
-        async with async_transaction(session, "seed_extras"):
+        async with transaction(session, "seed_extras"):
             for question, extra, row_names, plan in zip(
                 questions, extras, names, plans, strict=True
             ):
                 if row_names is not None:
-                    await concept_service.async_apply_concepts(
-                        session, question.id, plan
-                    )
+                    await concept_service.apply_concepts(session, question.id, plan)
                     if extra.tags is None:
                         concept_service.apply_levels_to_question(question, row_names)
                 # After extraction, which writes levels of its own.

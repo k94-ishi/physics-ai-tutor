@@ -43,7 +43,7 @@ def _result_from(response) -> GenerationResult:
     )
 
 
-async def _async_request(
+async def _request(
     system_prompt: str,
     user_prompt: str,
     temperature: float | None = None,
@@ -83,9 +83,9 @@ async def _async_request(
         ) from exc
 
 
-async def async_chat_completion(system_prompt: str, user_prompt: str) -> str:
+async def chat_completion(system_prompt: str, user_prompt: str) -> str:
     """Plain text completion for callers that need no usage metadata."""
-    response = await _async_request(system_prompt, user_prompt)
+    response = await _request(system_prompt, user_prompt)
     content = response.choices[0].message.content
 
     logger.info(
@@ -97,19 +97,19 @@ async def async_chat_completion(system_prompt: str, user_prompt: str) -> str:
     return content or ""
 
 
-async def async_generate_answer(
+async def generate_answer(
     system_prompt: str,
     user_prompt: str,
     temperature: float | None = None,
     max_tokens: int | None = None,
 ) -> GenerationResult:
     """Answer generation; records the model and token usage for the row."""
-    response = await _async_request(system_prompt, user_prompt, temperature, max_tokens)
+    response = await _request(system_prompt, user_prompt, temperature, max_tokens)
 
     return _result_from(response)
 
 
-async def async_stream_answer(
+async def stream_answer(
     system_prompt: str,
     user_prompt: str,
     max_tokens: int | None = None,

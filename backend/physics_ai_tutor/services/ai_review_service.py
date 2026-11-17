@@ -13,8 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from physics_ai_tutor.core import timing
 from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.prompt_library import load_library
-from physics_ai_tutor.database.session import async_background_session
-from physics_ai_tutor.database.transaction import async_transaction
+from physics_ai_tutor.database.session import background_session
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models import AiReview, AiReviewRun, Question
 from physics_ai_tutor.repositories import (
     ai_review_repository,
@@ -221,7 +221,7 @@ def _skip_reason(question: Question) -> str | None:
     return None
 
 
-async def async_grade_answer(
+async def grade_answer(
     question_text: str,
     answer_text: str,
     language: Language,
@@ -233,7 +233,7 @@ async def async_grade_answer(
     system_prompt, user_prompt = build_review_prompts(
         question_text, answer_text, language, concepts, context
     )
-    result = await deepseek_service.async_generate_answer(
+    result = await deepseek_service.generate_answer(
         system_prompt,
         user_prompt,
         temperature=temperature,
@@ -243,14 +243,12 @@ async def async_grade_answer(
     return GradedAnswer(result, _parse_output(result.content))
 
 
-async def _async_build_context(
-    db: AsyncSession, ids: list[int], language: Language
-) -> str:
+async def _build_context(db: AsyncSession, ids: list[int], language: Language) -> str:
     """The RAG context the answer was generated from, by reference ids."""
     if not ids:
         return ""
 
-    references = await rag_service.async_load_context_by_ids(db, ids, language)
+    references = await rag_service.load_context_by_ids(db, ids, language)
     if not references:
         return ""
 
@@ -260,9 +258,7 @@ async def _async_build_context(
     return f"\n{header}{blocks}\n"
 
 
-async def async_review_question(
-    db: AsyncSession, question: Question
-) -> AiReview | None:
+async def review_question(db: AsyncSession, question: Question) -> AiReview | None:
     """Grade one UNREVIEWED AI answer and store the verdict. Advisory only.
 
     Never raises and never touches the question's status; a reviewer
@@ -287,14 +283,14 @@ async def async_review_question(
             # The reads commit before the grading call, so no connection
             # waits out the LLM ([82]); a failed read still rolls back
             # without poisoning the session.
-            async with async_transaction(db, "ai_review_read"):
+            async with transaction(db, "ai_review_read"):
                 by_question = (
-                    await question_concept_repository.async_get_concepts_for_questions(
+                    await question_concept_repository.get_concepts_for_questions(
                         db, [question_id], language=language.value
                     )
                 )
-                context = await _async_build_context(db, reference_ids, language)
-            graded = await async_grade_answer(
+                context = await _build_context(db, reference_ids, language)
+            graded = await grade_answer(
                 text[0],
                 text[1],
                 language,
@@ -310,8 +306,8 @@ async def async_review_question(
         return None
 
     try:
-        async with async_transaction(db, "store_ai_review"):
-            row = await ai_review_repository.async_create(
+        async with transaction(db, "store_ai_review"):
+            row = await ai_review_repository.create(
                 db, _review_to_store(question_id, language, graded)
             )
     except Exception:
@@ -359,9 +355,9 @@ def _budget_left(used: int) -> int:
     return max(settings.ai_review_daily_cap - used, 0)
 
 
-async def async_remaining_daily_budget(db: AsyncSession) -> int:
+async def remaining_daily_budget(db: AsyncSession) -> int:
     """Reviewer calls left in the rolling 24 h window."""
-    used = await ai_review_repository.async_count_created_since(db, CAP_WINDOW_HOURS)
+    used = await ai_review_repository.count_created_since(db, CAP_WINDOW_HOURS)
 
     return _budget_left(used)
 
@@ -375,7 +371,7 @@ def _check_scope(scope: str) -> None:
         raise ValueError(f"Unknown scope: {scope}")
 
 
-async def async_eligible_question_ids(
+async def eligible_question_ids(
     db: AsyncSession,
     scope: str,
     question_ids: list[int] | None = None,
@@ -386,27 +382,25 @@ async def async_eligible_question_ids(
     bound = _scope_bound(limit)
 
     if scope == "pending":
-        return await ai_review_repository.async_list_pending_question_ids(db, bound)
+        return await ai_review_repository.list_pending_question_ids(db, bound)
     if scope == "stale":
-        return await ai_review_repository.async_list_stale_question_ids(
+        return await ai_review_repository.list_stale_question_ids(
             db, REVIEW_PROMPT_VERSION, bound
         )
 
-    ids = await ai_review_repository.async_filter_reviewable_ids(db, question_ids or [])
+    ids = await ai_review_repository.filter_reviewable_ids(db, question_ids or [])
 
     return ids[:bound]
 
 
-async def async_count_pending(db: AsyncSession) -> int:
+async def count_pending(db: AsyncSession) -> int:
     """Questions awaiting a first verdict, ignoring any run or cap limit."""
-    return await ai_review_repository.async_count_pending_questions(db)
+    return await ai_review_repository.count_pending_questions(db)
 
 
-async def async_count_stale(db: AsyncSession) -> int:
+async def count_stale(db: AsyncSession) -> int:
     """Questions whose verdict predates the current rubric."""
-    return await ai_review_repository.async_count_stale_questions(
-        db, REVIEW_PROMPT_VERSION
-    )
+    return await ai_review_repository.count_stale_questions(db, REVIEW_PROMPT_VERSION)
 
 
 def _reap_statement() -> Update:
@@ -446,7 +440,7 @@ def _new_run(
     )
 
 
-async def async_start_run(
+async def start_run(
     db: AsyncSession,
     scope: str,
     trigger: str,
@@ -461,18 +455,18 @@ async def async_start_run(
     """
     try:
         # One transaction: a refusal also undoes the reaping.
-        async with async_transaction(db, "start_ai_review_run"):
+        async with transaction(db, "start_ai_review_run"):
             await db.execute(_reap_statement())
 
             running = await db.scalar(_running_run_select())
             if running is not None:
                 raise RunInProgressError(str(running.id))
 
-            budget = await async_remaining_daily_budget(db)
+            budget = await remaining_daily_budget(db)
             if budget <= 0:
                 raise DailyCapExhaustedError(str(settings.ai_review_daily_cap))
 
-            eligible = await async_eligible_question_ids(db, scope, question_ids, limit)
+            eligible = await eligible_question_ids(db, scope, question_ids, limit)
             run = _new_run(scope, trigger, eligible[:budget], started_by)
             db.add(run)
     except IntegrityError as exc:
@@ -526,10 +520,10 @@ def _apply_item(run: AiReviewRun, result: ItemResult) -> None:
     run.heartbeat_at = datetime.now(UTC)
 
 
-async def async_review_question_with_outcome(
+async def review_question_with_outcome(
     db: AsyncSession, question: Question
 ) -> tuple[AiReview | None, Outcome]:
-    """As `async_review_question`, but says whether None meant skipped or failed."""
+    """As `review_question`, but says whether None meant skipped or failed."""
     if _skip_reason(question) is not None:
         logger.info(
             "AI review skipped: question_id=%d reason=%s",
@@ -538,7 +532,7 @@ async def async_review_question_with_outcome(
         )
         return None, Outcome.SKIPPED
 
-    row = await async_review_question(db, question)
+    row = await review_question(db, question)
     if row is None:
         return None, Outcome.FAILED
 
@@ -547,14 +541,14 @@ async def async_review_question_with_outcome(
 
 async def _still_running(db: AsyncSession, run_id: int) -> bool:
     """Whether this run is still ours to execute ([34])."""
-    async with async_transaction(db, "ai_review_run_status"):
+    async with transaction(db, "ai_review_run_status"):
         status = await db.scalar(
             select(AiReviewRun.status).where(AiReviewRun.id == run_id)
         )
     return status == "running"
 
 
-async def async_execute_run(
+async def execute_run(
     db: AsyncSession, run_id: int, *, stop_on_crash: bool = False
 ) -> AiReviewRun | None:
     """Process the run's question list, a few at a time ([72]).
@@ -581,7 +575,7 @@ async def async_execute_run(
 
     async def record(result: ItemResult) -> None:
         async with progress:
-            async with async_transaction(db, "ai_review_progress"):
+            async with transaction(db, "ai_review_progress"):
                 await db.refresh(run)
                 if run.status != "running":
                     taken_over.set()
@@ -594,7 +588,7 @@ async def async_execute_run(
                 return
 
             try:
-                async with async_background_session() as item_db:
+                async with background_session() as item_db:
                     # Another start may have reaped this run as timed out
                     # and begun its own. Checked per item so a takeover
                     # stops the queue rather than only the next item.
@@ -606,7 +600,7 @@ async def async_execute_run(
                     if question is None:
                         result = ItemResult(Outcome.SKIPPED)
                     else:
-                        row, outcome = await async_review_question_with_outcome(
+                        row, outcome = await review_question_with_outcome(
                             item_db, question
                         )
                         result = ItemResult(
@@ -637,24 +631,24 @@ async def async_execute_run(
         if crashed:
             error = f"question {crashed[0]} crashed; see server logs"
             logger.error("AI review run stopped: run_id=%d %s", run_id, error)
-            await _async_finish(db, run, "failed", error)
+            await _finish(db, run, "failed", error)
             return run
 
-        if await _async_finish(db, run, "done"):
+        if await _finish(db, run, "done"):
             return run
         logger.warning("AI review run was taken over: run_id=%d", run_id)
     except Exception:
         logger.exception("AI review run failed: run_id=%d", run_id)
-        await _async_finish(db, run, "failed", "unexpected error; see server logs")
+        await _finish(db, run, "failed", "unexpected error; see server logs")
 
     return run
 
 
-async def _async_finish(
+async def _finish(
     db: AsyncSession, run: AiReviewRun, status: str, error: str | None = None
 ) -> bool:
     """Close the run, but only while it is still ours. True when written."""
-    async with async_transaction(db, "finish_ai_review_run"):
+    async with transaction(db, "finish_ai_review_run"):
         result = cast(
             CursorResult,
             await db.execute(
@@ -669,12 +663,12 @@ async def _async_finish(
     return bool(updated)
 
 
-async def async_execute_run_in_background(run_id: int) -> None:
+async def execute_run_in_background(run_id: int) -> None:
     """Run the reviewer after the response is sent, on its own session ([72])."""
     with timing.request_path("background:ai_review_run"):
-        async with async_background_session() as db:
+        async with background_session() as db:
             try:
                 with timing.stage("ai_review_run", run_id=run_id):
-                    await async_execute_run(db, run_id)
+                    await execute_run(db, run_id)
             except Exception:
                 logger.exception("Background AI review run crashed: run_id=%d", run_id)

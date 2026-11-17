@@ -88,8 +88,8 @@ def parse_args() -> argparse.Namespace:
 
 async def _count_eligible(db: AsyncSession, scope: str) -> int:
     if scope == "pending":
-        return await ai_review_service.async_count_pending(db)
-    return await ai_review_service.async_count_stale(db)
+        return await ai_review_service.count_pending(db)
+    return await ai_review_service.count_stale(db)
 
 
 def main(
@@ -134,7 +134,7 @@ async def _review_scopes(
                 continue
 
             try:
-                run = await ai_review_service.async_start_run(
+                run = await ai_review_service.start_run(
                     db, scope=current_scope, trigger=trigger, limit=limit
                 )
             except ai_review_service.RunInProgressError:
@@ -146,7 +146,7 @@ async def _review_scopes(
                 # spending none of it on anything is a silent outage.
                 return EXIT_OK if reviewed_something else EXIT_FAILED
 
-            finished = await ai_review_service.async_execute_run(
+            finished = await ai_review_service.execute_run(
                 db, run.id, stop_on_crash=not continue_on_crash
             )
             assert finished is not None

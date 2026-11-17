@@ -22,7 +22,7 @@ async def test_create_embedding_persists(db, async_db):
     question = _create_question(db)
     db.commit()
 
-    created = await embedding_repository.async_create_embedding(
+    created = await embedding_repository.create_embedding(
         async_db,
         question_id=question.id,
         embedding=_vector(0),
@@ -66,7 +66,7 @@ async def test_search_similar_embeddings_orders_by_distance(async_db, db):
 
     db.commit()
 
-    results = await embedding_repository.async_search_similar_embeddings(
+    results = await embedding_repository.search_similar_embeddings(
         async_db,
         embedding=_vector(0),
         embedding_type="question",
@@ -106,7 +106,7 @@ async def test_search_similar_embeddings_filters_by_type(async_db, db):
 
     db.commit()
 
-    results = await embedding_repository.async_search_similar_embeddings(
+    results = await embedding_repository.search_similar_embeddings(
         async_db,
         embedding=_vector(0),
         embedding_type="question",
@@ -151,7 +151,7 @@ async def test_search_similar_embeddings_respects_limit(async_db, db):
 
     db.commit()
 
-    results = await embedding_repository.async_search_similar_embeddings(
+    results = await embedding_repository.search_similar_embeddings(
         async_db,
         embedding=_vector(0),
         embedding_type="question",
@@ -195,7 +195,7 @@ async def test_delete_by_question_id_removes_only_target_question_embeddings(
 
     db.commit()
 
-    await embedding_repository.async_delete_by_question_id(async_db, target.id)
+    await embedding_repository.delete_by_question_id(async_db, target.id)
     await async_db.commit()
 
     remaining = db.query(QuestionEmbedding).all()

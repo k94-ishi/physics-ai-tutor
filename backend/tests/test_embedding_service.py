@@ -6,7 +6,7 @@ from physics_ai_tutor.models import Question
 from physics_ai_tutor.schemas.embedding import SimilarQuestionResponse
 from physics_ai_tutor.services import embedding_service
 from physics_ai_tutor.services.embedding_service import (
-    async_create_embeddings as real_create_embeddings,
+    create_embeddings as real_create_embeddings,
 )
 from tests.conftest import patch_create_embeddings
 
@@ -30,13 +30,9 @@ async def test_search_similar_questions_calls_create_embeddings_with_query(
         return [[0.1] * 1536]
 
     patch_create_embeddings(monkeypatch, fake_create_embeddings)
-    monkeypatch.setattr(
-        embedding_service, "async_search_similar_embeddings", _no_results
-    )
+    monkeypatch.setattr(embedding_service, "search_similar_embeddings", _no_results)
 
-    await embedding_service.async_search_similar_questions(
-        async_db, "類似質問", limit=3
-    )
+    await embedding_service.search_similar_questions(async_db, "類似質問", limit=3)
 
     assert calls == [["類似質問"]]
 
@@ -58,11 +54,11 @@ async def test_search_similar_questions_returns_response_schema(async_db, monkey
 
     monkeypatch.setattr(
         embedding_service,
-        "async_search_similar_embeddings",
+        "search_similar_embeddings",
         fake_search_similar_embeddings,
     )
 
-    result = await embedding_service.async_search_similar_questions(
+    result = await embedding_service.search_similar_questions(
         async_db, "類似質問", limit=3
     )
 
@@ -132,9 +128,7 @@ async def test_async_embed_many_keeps_input_order_across_chunks(monkeypatch):
 
     patch_create_embeddings(monkeypatch, fake_create_embeddings)
 
-    vectors = await embedding_service.async_embed_many(
-        ["a", "bb", "ccc", "dddd", "eeeee"]
-    )
+    vectors = await embedding_service.embed_many(["a", "bb", "ccc", "dddd", "eeeee"])
 
     assert vectors == [[1.0], [2.0], [3.0], [4.0], [5.0]]
     assert calls == [["a", "bb"], ["ccc", "dddd"], ["eeeee"]]

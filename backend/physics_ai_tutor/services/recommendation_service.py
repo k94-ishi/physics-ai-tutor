@@ -13,7 +13,7 @@ from physics_ai_tutor.repositories import (
 from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.schemas.question import QuestionResponse
 from physics_ai_tutor.services.question_presentation_service import (
-    async_prepare_for_response,
+    prepare_for_response,
 )
 from physics_ai_tutor.services.response_language import (
     ResponseLanguage,
@@ -52,7 +52,7 @@ async def _embedding_neighbours(
         db, question_id, "question", language=search_language
     )
     if source_embedding is None:
-        source_question = await question_repository.async_get_question(db, question_id)
+        source_question = await question_repository.get_question(db, question_id)
         if source_question is not None:
             search_language = source_question.original_language
             source_embedding = await embedding_repository.get_embedding(
@@ -61,7 +61,7 @@ async def _embedding_neighbours(
     if source_embedding is None:
         return similarity, questions_by_id
 
-    rows = await embedding_repository.async_search_similar_embeddings(
+    rows = await embedding_repository.search_similar_embeddings(
         db,
         embedding=source_embedding,
         embedding_type="question",
@@ -84,17 +84,15 @@ async def _concept_neighbours(
     A RAG answer also brings the concepts of the QAs it was grounded in
     (`retrieved_question_ids`), with no extra search or LLM call.
     """
-    source_question = await question_repository.async_get_question(db, question_id)
+    source_question = await question_repository.get_question(db, question_id)
     reference_ids = source_question.retrieved_question_ids if source_question else []
 
     concept_ids = set(
-        await question_concept_repository.async_get_concept_ids_for_question(
-            db, question_id
-        )
+        await question_concept_repository.get_concept_ids_for_question(db, question_id)
     )
     for reference_id in reference_ids:
         concept_ids.update(
-            await question_concept_repository.async_get_concept_ids_for_question(
+            await question_concept_repository.get_concept_ids_for_question(
                 db, reference_id
             )
         )
@@ -129,7 +127,7 @@ async def _load_missing(
     for candidate_id in candidate_ids:
         if candidate_id in questions_by_id:
             continue
-        candidate = await question_repository.async_get_question(db, candidate_id)
+        candidate = await question_repository.get_question(db, candidate_id)
         if candidate is not None and candidate.status not in exclude_statuses:
             questions_by_id[candidate_id] = candidate
 
@@ -185,7 +183,7 @@ async def get_related_questions(
     # Filter before slicing, so a student still gets `limit` readable rows.
     ranked, missing = response.readable([candidate for _, candidate in scored])
     top_questions = ranked[:limit]
-    needs = await async_prepare_for_response(db, top_questions, response)
+    needs = await prepare_for_response(db, top_questions, response)
 
     logger.info(
         "Related questions computed: question_id=%d candidates=%d returned=%d",

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def async_transaction(db: AsyncSession, operation: str) -> AsyncIterator[None]:
+async def transaction(db: AsyncSession, operation: str) -> AsyncIterator[None]:
     """Commit when the block succeeds; roll back, log and re-raise otherwise."""
     try:
         yield

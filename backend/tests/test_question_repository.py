@@ -15,7 +15,7 @@ def _create(db, question: str = "テスト質問", answer: str = "テスト回�
 
 @pytest.mark.anyio
 async def test_create_question_persists(async_db):
-    created = await question_repository.async_create_question(
+    created = await question_repository.create_question(
         async_db, texts={Language.JA: ("質問1", "回答1")}
     )
 
@@ -155,7 +155,7 @@ async def test_get_questions_keyword_search_answer_only(db, async_db):
 async def test_get_question_found(db, async_db):
     created = _create(db)
 
-    found = await question_repository.async_get_question(async_db, created.id)
+    found = await question_repository.get_question(async_db, created.id)
 
     assert found is not None
     assert found.id == created.id
@@ -163,7 +163,7 @@ async def test_get_question_found(db, async_db):
 
 @pytest.mark.anyio
 async def test_get_question_not_found(async_db):
-    found = await question_repository.async_get_question(async_db, 99999)
+    found = await question_repository.get_question(async_db, 99999)
 
     assert found is None
 
@@ -172,8 +172,8 @@ async def test_get_question_not_found(async_db):
 async def test_async_get_question_applies_exclude_statuses(db, async_db):
     created = _create(db, "却下済み", "回答", status="REJECTED")
 
-    found = await question_repository.async_get_question(async_db, created.id)
-    hidden = await question_repository.async_get_question(
+    found = await question_repository.get_question(async_db, created.id)
+    hidden = await question_repository.get_question(
         async_db, created.id, exclude_statuses=["REJECTED"]
     )
 
@@ -192,7 +192,7 @@ async def test_delete_existing_question_returns_true(db, async_db):
     db.expire_all()
 
     assert result is True
-    assert await question_repository.async_get_question(async_db, created_id) is None
+    assert await question_repository.get_question(async_db, created_id) is None
 
 
 @pytest.mark.anyio
@@ -206,7 +206,7 @@ async def test_delete_nonexistent_question_returns_false(db, async_db):
 async def test_get_by_exact_text_found(db, async_db):
     created = _create(db, "完全一致質問", "回答")
 
-    found = await question_repository.async_get_by_exact_text(async_db, "完全一致質問")
+    found = await question_repository.get_by_exact_text(async_db, "完全一致質問")
 
     assert found is not None
     assert found.id == created.id
@@ -214,9 +214,7 @@ async def test_get_by_exact_text_found(db, async_db):
 
 @pytest.mark.anyio
 async def test_get_by_exact_text_not_found(async_db):
-    found = await question_repository.async_get_by_exact_text(
-        async_db, "存在しない質問"
-    )
+    found = await question_repository.get_by_exact_text(async_db, "存在しない質問")
 
     assert found is None
 
@@ -225,7 +223,7 @@ async def test_get_by_exact_text_not_found(async_db):
 async def test_get_by_exact_text_excludes_status(db, async_db):
     _create(db, "却下済み質問", "回答", status="REJECTED")
 
-    found = await question_repository.async_get_by_exact_text(
+    found = await question_repository.get_by_exact_text(
         async_db, "却下済み質問", exclude_statuses=["REJECTED"]
     )
 
@@ -236,7 +234,7 @@ async def test_get_by_exact_text_excludes_status(db, async_db):
 async def test_get_by_exact_text_includes_unreviewed_by_default(db, async_db):
     created = _create(db, "未レビュー質問", "回答", status="UNREVIEWED")
 
-    found = await question_repository.async_get_by_exact_text(
+    found = await question_repository.get_by_exact_text(
         async_db, "未レビュー質問", exclude_statuses=["REJECTED"]
     )
 
@@ -246,7 +244,7 @@ async def test_get_by_exact_text_includes_unreviewed_by_default(db, async_db):
 
 @pytest.mark.anyio
 async def test_create_question_carries_status_and_source(async_db):
-    created = await question_repository.async_create_question(
+    created = await question_repository.create_question(
         async_db,
         texts={Language.JA: ("質問", "回答")},
         status="UNREVIEWED",

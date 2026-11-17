@@ -2,7 +2,7 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from physics_ai_tutor.database.transaction import async_transaction
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.repositories import question_ask_repository
 from physics_ai_tutor.schemas.ask_history import MyQuestionEntry, MyQuestionsResponse
 from physics_ai_tutor.schemas.language import Language
@@ -20,7 +20,7 @@ async def record_ask(
 ) -> None:
     """As `record_ask`; still best effort ([70])."""
     try:
-        async with async_transaction(db, "record_ask"):
+        async with transaction(db, "record_ask"):
             await question_ask_repository.create(
                 db, question_id, user_id, Language(language).value, cache_hit=cache_hit
             )

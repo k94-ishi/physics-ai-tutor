@@ -22,7 +22,7 @@ from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.api import dependencies
-from physics_ai_tutor.database.dependency import get_async_db
+from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.main import app
 from physics_ai_tutor.models import Question
 from physics_ai_tutor.schemas.language import TextProvenance
@@ -44,11 +44,11 @@ async def async_client_app():
     """The app over an in-process async transport, on the test database."""
     reset_database()
 
-    async def override_get_async_db():
+    async def override_get_db():
         async with AsyncSession(async_engine, expire_on_commit=False) as session:
             yield session
 
-    app.dependency_overrides[get_async_db] = override_get_async_db
+    app.dependency_overrides[get_db] = override_get_db
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -107,7 +107,7 @@ async def test_other_requests_are_served_while_a_generation_is_in_flight(
     started, release = asyncio.Event(), asyncio.Event()
     monkeypatch.setattr(
         deepseek_service,
-        "async_generate_answer",
+        "generate_answer",
         _parked_generation("遅い回答", started, release),
     )
 
@@ -141,7 +141,7 @@ async def test_many_slow_generations_run_at_the_same_time(
     blocking call, 12 asks take 12 x SLOW_SECONDS.
     """
     monkeypatch.setattr(
-        deepseek_service, "async_generate_answer", _slow_generation("同時回答")
+        deepseek_service, "generate_answer", _slow_generation("同時回答")
     )
     # Anonymous callers get 3 asks an hour; this test is about the loop,
     # not the limiter, so give it room.
@@ -175,9 +175,7 @@ async def test_search_is_served_alongside_a_pending_embedding_call(
         await release.wait()
         return [[0.1] * 1536 for _ in texts]
 
-    monkeypatch.setattr(
-        embedding_service, "async_create_embeddings", _parked_embeddings
-    )
+    monkeypatch.setattr(embedding_service, "create_embeddings", _parked_embeddings)
 
     search = asyncio.create_task(
         async_client_app.post(SEARCH_PATH, json={"query": "埋め込みが遅い検索"})

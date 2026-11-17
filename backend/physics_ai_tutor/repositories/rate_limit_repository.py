@@ -19,7 +19,7 @@ def _count_select(action: str, bucket_key: str, window_seconds: int):
     )
 
 
-async def async_count_recent_hits(
+async def count_recent_hits(
     db: AsyncSession,
     action: str,
     bucket_key: str,
@@ -28,7 +28,7 @@ async def async_count_recent_hits(
     return (await db.scalar(_count_select(action, bucket_key, window_seconds))) or 0
 
 
-async def async_record_hit(
+async def record_hit(
     db: AsyncSession,
     action: str,
     bucket_key: str,
@@ -46,7 +46,7 @@ def _delete_old_statement(max_age_seconds: int):
     return sql_delete(RateLimitHit).where(RateLimitHit.created_at < cutoff)
 
 
-async def async_delete_hits_older_than(
+async def delete_hits_older_than(
     db: AsyncSession,
     max_age_seconds: int,
 ) -> int:

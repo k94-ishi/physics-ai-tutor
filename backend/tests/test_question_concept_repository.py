@@ -25,7 +25,7 @@ def _create_concept(db, name="概念"):
     return c
 
 
-# Production links through `async_link_many` ([91]); these test it directly.
+# Production links through `link_many` ([91]); these test it directly.
 
 
 @pytest.mark.anyio
@@ -34,11 +34,9 @@ async def test_link_creates_relation(db, async_db):
     concept = _create_concept(db)
     db.commit()
 
-    await question_concept_repository.async_link_many(
-        async_db, question.id, [concept.id]
-    )
+    await question_concept_repository.link_many(async_db, question.id, [concept.id])
 
-    concepts = await question_concept_repository.async_get_concepts_for_question(
+    concepts = await question_concept_repository.get_concepts_for_question(
         async_db, question.id
     )
     assert [c.id for c in concepts] == [concept.id]
@@ -51,11 +49,11 @@ async def test_link_is_idempotent(db, async_db):
     db.commit()
 
     # A repeated id in one call, and the same link again in a second call.
-    link_many = question_concept_repository.async_link_many
+    link_many = question_concept_repository.link_many
     await link_many(async_db, question.id, [concept.id, concept.id])
     await link_many(async_db, question.id, [concept.id])
 
-    concepts = await question_concept_repository.async_get_concepts_for_question(
+    concepts = await question_concept_repository.get_concepts_for_question(
         async_db, question.id
     )
     assert len(concepts) == 1
@@ -66,7 +64,7 @@ async def test_get_concepts_for_question_empty(db, async_db):
     question = _create_question(db)
     db.commit()
 
-    concepts = await question_concept_repository.async_get_concepts_for_question(
+    concepts = await question_concept_repository.get_concepts_for_question(
         async_db, question.id
     )
     assert concepts == []
@@ -87,7 +85,7 @@ async def test_get_concepts_for_questions_groups_by_question(db, async_db):
 
     db.commit()
 
-    result = await question_concept_repository.async_get_concepts_for_questions(
+    result = await question_concept_repository.get_concepts_for_questions(
         async_db, [q1.id, q2.id, q3.id]
     )
 
@@ -98,9 +96,7 @@ async def test_get_concepts_for_questions_groups_by_question(db, async_db):
 
 @pytest.mark.anyio
 async def test_get_concepts_for_questions_empty_ids_returns_empty_dict(async_db):
-    result = await question_concept_repository.async_get_concepts_for_questions(
-        async_db, []
-    )
+    result = await question_concept_repository.get_concepts_for_questions(async_db, [])
 
     assert result == {}
 
@@ -169,10 +165,10 @@ async def test_concept_readers_return_the_linked_concept(db, async_db):
     link_concept(db, question_id=question.id, concept_id=concept.id)
     db.commit()
 
-    concepts = await question_concept_repository.async_get_concepts_for_question(
+    concepts = await question_concept_repository.get_concepts_for_question(
         async_db, question.id
     )
-    ids = await question_concept_repository.async_get_concept_ids_for_question(
+    ids = await question_concept_repository.get_concept_ids_for_question(
         async_db, question.id
     )
 
@@ -190,9 +186,9 @@ async def test_delete_by_question_id_removes_all_links(db, async_db):
     link_concept(db, question_id=question.id, concept_id=c2.id)
     db.commit()
 
-    await question_concept_repository.async_delete_by_question_id(async_db, question.id)
+    await question_concept_repository.delete_by_question_id(async_db, question.id)
 
-    concepts = await question_concept_repository.async_get_concepts_for_question(
+    concepts = await question_concept_repository.get_concepts_for_question(
         async_db, question.id
     )
     assert concepts == []

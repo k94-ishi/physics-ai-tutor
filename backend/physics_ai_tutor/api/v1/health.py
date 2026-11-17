@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from physics_ai_tutor.database.dependency import get_async_db
+from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.services import health_service
 
 router = APIRouter(tags=["health"])
@@ -14,7 +14,7 @@ async def helath_check():
 
 
 @router.get("/db-health")
-async def db_health_check(db: AsyncSession = Depends(get_async_db)):
+async def db_health_check(db: AsyncSession = Depends(get_db)):
     await health_service.check_database(db)
 
     return {

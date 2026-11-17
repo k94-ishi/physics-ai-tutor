@@ -16,7 +16,7 @@ from physics_ai_tutor.core.exceptions import (
     GoogleAuthError,
 )
 from physics_ai_tutor.core.jwt import create_access_token
-from physics_ai_tutor.database.dependency import get_async_db
+from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.schemas.auth import AuthProviders, CurrentUser, LoginRequest
 from physics_ai_tutor.services import google_auth_service
 from physics_ai_tutor.services.auth_service import authenticate_user
@@ -43,7 +43,7 @@ async def get_providers():
 async def login(
     data: LoginRequest,
     response: Response,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
 ):
     user = await authenticate_user(db, data.email, data.password)
 
@@ -123,7 +123,7 @@ async def google_callback(
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     _: None = Depends(_require_google_enabled),
 ):
     """Finish the Google flow and issue the same session cookie as /login."""

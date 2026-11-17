@@ -120,7 +120,7 @@ wait for the slowest endpoint from "whole answer" to "first words".
        4. ~~[110] Sync engine, SessionLocal, get_db, background_session, transaction()~~ done 2026-11-16
        5. ~~[111] Test-only sync helpers in question_repository~~ done 2026-11-16
        6. ~~[112] Test-only sync helpers in the concept and embedding repositories~~ done 2026-11-16
-   16. [98] Rename pass: drop the async_ prefixes
+   16. ~~[98] Rename pass: drop the async_ prefixes~~ done 2026-11-17
    17. [99] Async end state: architecture test, docs, connection budget (closes [73])
    Re-split 2026-11-13 into ~10-test slices; [87] can run beside the concept chain.
 9. [74] Latency quick wins independent of async: pgvector HNSW index,

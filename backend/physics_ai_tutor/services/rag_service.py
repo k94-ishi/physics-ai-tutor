@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.core import prompts, timing
-from physics_ai_tutor.database.transaction import async_transaction
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.repositories import (
     question_concept_repository,
     question_repository,
@@ -61,14 +61,14 @@ def _scored(results) -> list[tuple]:
     ]
 
 
-async def async_retrieve_context(
+async def retrieve_context(
     db: AsyncSession, query: str, language: Language = Language.JA
 ) -> list[RetrievedQuestion]:
     """Reuse the existing similarity search + concept lookup to gather
     grounding context for a RAG answer. Only APPROVED questions are used
     as grounding, and only those above RAG_MIN_SCORE similarity.
     """
-    results = await embedding_service.async_search_similar_questions(
+    results = await embedding_service.search_similar_questions(
         db,
         query=query,
         limit=RAG_TOP_K,
@@ -78,7 +78,7 @@ async def async_retrieve_context(
 
     scored = _scored(results)
 
-    concepts_by_id = await question_concept_repository.async_get_concepts_for_questions(
+    concepts_by_id = await question_concept_repository.get_concepts_for_questions(
         db, [result.id for result, _ in scored], language=language.value
     )
 
@@ -94,7 +94,7 @@ async def async_retrieve_context(
     ]
 
 
-async def async_load_context_by_ids(
+async def load_context_by_ids(
     db: AsyncSession, ids: list[int], language: Language = Language.JA
 ) -> list[RetrievedQuestion]:
     """Build grounding context from client-selected question IDs (e.g. the
@@ -106,9 +106,7 @@ async def async_load_context_by_ids(
     capped_ids = ids[:RAG_TOP_K]
     questions_by_id = {
         question.id: question
-        for question in await question_repository.async_get_questions_by_ids(
-            db, capped_ids
-        )
+        for question in await question_repository.get_questions_by_ids(db, capped_ids)
         if question.status == QuestionStatus.APPROVED
     }
     ordered_questions = [
@@ -117,7 +115,7 @@ async def async_load_context_by_ids(
         if question_id in questions_by_id
     ]
 
-    concepts_by_id = await question_concept_repository.async_get_concepts_for_questions(
+    concepts_by_id = await question_concept_repository.get_concepts_for_questions(
         db, [question.id for question in ordered_questions], language=language.value
     )
 
@@ -138,7 +136,7 @@ async def async_load_context_by_ids(
     return context
 
 
-async def async_generate_rag_answer(
+async def generate_rag_answer(
     db: AsyncSession,
     question: str,
     retrieved_question_ids: list[int] | None = None,
@@ -150,20 +148,18 @@ async def async_generate_rag_answer(
     with timing.stage("rag_context") as stage:
         # Commit the retrieval reads so no connection waits out the
         # generation call below ([82]).
-        async with async_transaction(db, "rag_context_read"):
+        async with transaction(db, "rag_context_read"):
             if retrieved_question_ids:
                 stage.note(source="client_ids")
-                context = await async_load_context_by_ids(
-                    db, retrieved_question_ids, lang
-                )
+                context = await load_context_by_ids(db, retrieved_question_ids, lang)
             else:
                 stage.note(source="search")
-                context = await async_retrieve_context(db, question, lang)
+                context = await retrieve_context(db, question, lang)
         stage.note(count=len(context))
 
     user_prompt = build_context_prompt(question, context, lang)
 
-    result = await deepseek_service.async_generate_answer(
+    result = await deepseek_service.generate_answer(
         prompts.RAG_SYSTEM_PROMPTS[lang], user_prompt
     )
 
@@ -176,13 +172,13 @@ async def async_generate_rag_answer(
     return result, [item.id for item in context]
 
 
-async def async_stream_rag_answer(
+async def stream_rag_answer(
     db: AsyncSession,
     question: str,
     retrieved_question_ids: list[int] | None = None,
     language: Language | str = Language.JA,
 ) -> AsyncIterator[str | tuple[deepseek_service.GenerationResult, list[int]]]:
-    """As `async_generate_rag_answer`, streamed ([71]).
+    """As `generate_rag_answer`, streamed ([71]).
 
     Yields text deltas, then one `(result, context_ids)` tuple last.
     """
@@ -191,21 +187,19 @@ async def async_stream_rag_answer(
     with timing.stage("rag_context") as stage:
         # Commit the retrieval reads: the stream below stays open for the
         # whole generation, which is the worst place to park one ([82]).
-        async with async_transaction(db, "rag_context_read"):
+        async with transaction(db, "rag_context_read"):
             if retrieved_question_ids:
                 stage.note(source="client_ids")
-                context = await async_load_context_by_ids(
-                    db, retrieved_question_ids, lang
-                )
+                context = await load_context_by_ids(db, retrieved_question_ids, lang)
             else:
                 stage.note(source="search")
-                context = await async_retrieve_context(db, question, lang)
+                context = await retrieve_context(db, question, lang)
         stage.note(count=len(context))
 
     user_prompt = build_context_prompt(question, context, lang)
     context_ids = [item.id for item in context]
 
-    async for piece in deepseek_service.async_stream_answer(
+    async for piece in deepseek_service.stream_answer(
         prompts.RAG_SYSTEM_PROMPTS[lang], user_prompt
     ):
         if isinstance(piece, str):

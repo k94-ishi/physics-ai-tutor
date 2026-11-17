@@ -5,7 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, R
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.api.dependencies import require_admin
-from physics_ai_tutor.database.dependency import get_async_db
+from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.schemas.admin_stats import (
     AdminStatsResponse,
     ReviewAgreementResponse,
@@ -35,7 +35,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 )
 async def get_usage_stats(
     days: int = Query(default=14, ge=1, le=90),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
 ):
     return await stats_service.fetch_usage_stats(db, days)
 
@@ -44,7 +44,7 @@ async def get_usage_stats(
 async def export_reviews(
     since: date | None = Query(default=None),
     all: bool = Query(default=False),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """The review dataset as JSONL, for when the CLI has no DB access.
 
@@ -75,7 +75,7 @@ async def export_reviews(
 )
 async def get_review_agreement(
     since: date | None = Query(default=None),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """How often the AI pre-reviewer agreed with the teacher who came after."""
     start = (
@@ -91,11 +91,11 @@ async def get_review_agreement(
 async def start_ai_review_run(
     data: StartRunRequest,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
     try:
-        run = await ai_review_service.async_start_run(
+        run = await ai_review_service.start_run(
             db,
             scope=data.scope.value,
             trigger="manual",
@@ -123,7 +123,7 @@ async def start_ai_review_run(
         run.requested_count,
     )
     # Async so the run grades a few questions at a time ([72]).
-    background_tasks.add_task(ai_review_service.async_execute_run_in_background, run.id)
+    background_tasks.add_task(ai_review_service.execute_run_in_background, run.id)
 
     return run
 
@@ -135,7 +135,7 @@ async def start_ai_review_run(
 )
 async def list_ai_review_runs(
     limit: int = Query(default=20, ge=1, le=100),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
 ):
     return await ai_review_service.list_runs(db, limit)
 
@@ -147,7 +147,7 @@ async def list_ai_review_runs(
 )
 async def get_ai_review_run(
     run_id: int,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
 ):
     run = await ai_review_service.get_run(db, run_id)
 
@@ -163,7 +163,7 @@ async def get_ai_review_run(
     dependencies=[Depends(require_admin)],
 )
 async def get_ai_review_pending_count(
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """How many questions await review, and how many a run could do now.
 
@@ -172,9 +172,9 @@ async def get_ai_review_pending_count(
     """
     from physics_ai_tutor.core.config import settings
 
-    remaining = await ai_review_service.async_remaining_daily_budget(db)
-    pending = await ai_review_service.async_count_pending(db)
-    stale = await ai_review_service.async_count_stale(db)
+    remaining = await ai_review_service.remaining_daily_budget(db)
+    pending = await ai_review_service.count_pending(db)
+    stale = await ai_review_service.count_stale(db)
 
     return PendingCountResponse(
         pending=pending,

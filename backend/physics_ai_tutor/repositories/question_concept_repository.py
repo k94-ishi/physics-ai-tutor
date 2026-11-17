@@ -14,14 +14,14 @@ def _concepts_for_question_select(question_id: int):
     )
 
 
-async def async_get_concepts_for_question(
+async def get_concepts_for_question(
     db: AsyncSession, question_id: int
 ) -> list[Concept]:
     """The concepts linked to one question."""
     return list((await db.scalars(_concepts_for_question_select(question_id))).all())
 
 
-async def async_get_concepts_for_questions(
+async def get_concepts_for_questions(
     db: AsyncSession,
     question_ids: list[int],
     language: str = "ja",
@@ -67,9 +67,7 @@ def _concept_ids_select(question_id: int):
     )
 
 
-async def async_get_concept_ids_for_question(
-    db: AsyncSession, question_id: int
-) -> list[int]:
+async def get_concept_ids_for_question(db: AsyncSession, question_id: int) -> list[int]:
     """The ids of the concepts linked to one question."""
     return list((await db.scalars(_concept_ids_select(question_id))).all())
 
@@ -112,7 +110,7 @@ async def approved_links_sharing_concepts(
     return [(concept, question) for concept, question in rows]
 
 
-async def async_delete_by_question_id(db: AsyncSession, question_id: int) -> None:
+async def delete_by_question_id(db: AsyncSession, question_id: int) -> None:
     """Remove every concept link of one question."""
     await db.execute(
         sql_delete(QuestionConcept).where(QuestionConcept.question_id == question_id)
@@ -131,18 +129,16 @@ def _context_question_select(concept_id: int, language: str):
     )
 
 
-async def async_context_question(
+async def context_question(
     db: AsyncSession, concept_id: int, language: str
 ) -> str | None:
     """A question text in `language` that uses the concept, for translation."""
     return (await db.scalars(_context_question_select(concept_id, language))).first()
 
 
-async def async_link_many(
-    db: AsyncSession, question_id: int, concept_ids: list[int]
-) -> None:
+async def link_many(db: AsyncSession, question_id: int, concept_ids: list[int]) -> None:
     """Link a question to several concepts with one existence check."""
-    existing = set(await async_get_concept_ids_for_question(db, question_id))
+    existing = set(await get_concept_ids_for_question(db, question_id))
     new = [cid for cid in dict.fromkeys(concept_ids) if cid not in existing]
     db.add_all(QuestionConcept(question_id=question_id, concept_id=cid) for cid in new)
     await db.flush()

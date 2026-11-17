@@ -3,7 +3,7 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.core.security import hash_password, verify_password
-from physics_ai_tutor.database.transaction import async_transaction
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models.user import User
 from physics_ai_tutor.repositories import user_repository
 
@@ -25,7 +25,7 @@ async def create_user(
         role=role,
     )
 
-    async with async_transaction(db, "create_user"):
+    async with transaction(db, "create_user"):
         await user_repository.create_user(db, user)
     await db.refresh(user)
 
@@ -60,7 +60,7 @@ async def delete_user(
 
     user_id = user.id
 
-    async with async_transaction(db, "delete_user"):
+    async with transaction(db, "delete_user"):
         await user_repository.delete_user(db, user)
 
     logger.info("User deleted: user_id=%s", user_id)
@@ -86,7 +86,7 @@ async def change_password(
         )
         return False
 
-    async with async_transaction(db, "change_password"):
+    async with transaction(db, "change_password"):
         user.hashed_password = hash_password(new_password)
 
     logger.info("Password changed: user_id=%s", user.id)

@@ -51,7 +51,7 @@ def _translated(content: str, source: Language, target: Language) -> tuple[str, 
     return translated
 
 
-async def async_translate_qa(
+async def translate_qa(
     question: str,
     answer: str,
     source: Language,
@@ -63,7 +63,7 @@ async def async_translate_qa(
     twin was removed in [102].
     """
     try:
-        content = await deepseek_service.async_chat_completion(
+        content = await deepseek_service.chat_completion(
             prompts.TRANSLATE_SYSTEM_PROMPT,
             _user_prompt(question, answer, source, target),
         )

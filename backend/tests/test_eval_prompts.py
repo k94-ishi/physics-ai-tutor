@@ -29,7 +29,7 @@ def _patch_grade(monkeypatch, grade):
     async def _async_grade(*args, **kwargs):
         return grade(*args, **kwargs)
 
-    monkeypatch.setattr(ai_review_service, "async_grade_answer", _async_grade)
+    monkeypatch.setattr(ai_review_service, "grade_answer", _async_grade)
 
 
 def _graded(verdict, reasons=(), confidence=0.9):

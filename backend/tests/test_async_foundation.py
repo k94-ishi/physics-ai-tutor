@@ -11,7 +11,7 @@ from sqlalchemy import select, text
 
 from physics_ai_tutor.database import database
 from physics_ai_tutor.database import session as session_module
-from physics_ai_tutor.database.transaction import async_transaction
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models import User
 
 pytestmark = pytest.mark.anyio
@@ -24,11 +24,11 @@ async def test_async_session_reaches_the_database(async_db):
 
 
 async def test_async_transaction_commits_on_success(async_db):
-    async with async_transaction(async_db, "test_commit"):
+    async with transaction(async_db, "test_commit"):
         async_db.add(User(email="async@example.com", hashed_password="x", role="user"))
 
     # A second session only sees it if the first one really committed.
-    async with session_module.async_background_session() as other:
+    async with session_module.background_session() as other:
         found = await other.scalar(
             select(User).where(User.email == "async@example.com")
         )
@@ -39,7 +39,7 @@ async def test_async_transaction_commits_on_success(async_db):
 async def test_async_transaction_rolls_back_and_reraises(async_db, caplog):
     with caplog.at_level(logging.WARNING):
         with pytest.raises(RuntimeError):
-            async with async_transaction(async_db, "test_rollback"):
+            async with transaction(async_db, "test_rollback"):
                 async_db.add(
                     User(email="doomed@example.com", hashed_password="x", role="user")
                 )
@@ -48,7 +48,7 @@ async def test_async_transaction_rolls_back_and_reraises(async_db, caplog):
 
     assert "Rolling back transaction: operation=test_rollback" in caplog.text
 
-    async with session_module.async_background_session() as other:
+    async with session_module.background_session() as other:
         found = await other.scalar(
             select(User).where(User.email == "doomed@example.com")
         )
@@ -57,7 +57,7 @@ async def test_async_transaction_rolls_back_and_reraises(async_db, caplog):
 
 
 async def test_async_background_session_is_usable_and_closed():
-    async with session_module.async_background_session() as db:
+    async with session_module.background_session() as db:
         assert await db.scalar(text("SELECT 1")) == 1
 
     # Exiting the context must have returned the connection to the pool.
@@ -68,7 +68,7 @@ async def test_attributes_are_readable_after_commit(async_db):
     """`expire_on_commit=False`: a service may return an object it saved."""
     user = User(email="kept@example.com", hashed_password="x", role="user")
 
-    async with async_transaction(async_db, "test_expire"):
+    async with transaction(async_db, "test_expire"):
         async_db.add(user)
 
     # Without expire_on_commit=False this raises: it would need an await.

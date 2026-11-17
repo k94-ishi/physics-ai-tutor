@@ -9,7 +9,7 @@ from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.exceptions import ConceptExtractionError, TranslationError
 from physics_ai_tutor.core.prompt_library import load_library
 from physics_ai_tutor.core.text import concept_pair_text, normalize_key
-from physics_ai_tutor.database.transaction import async_transaction
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models import Concept
 from physics_ai_tutor.repositories import (
     concept_repository,
@@ -133,11 +133,11 @@ def _user_prompt(question: str, answer: str, language: str) -> str:
     )
 
 
-async def async_extract_concept_names(
+async def extract_concept_names(
     question: str, answer: str, language: str = "ja"
 ) -> list[str]:
     """As `extract_concept_names`, on the event loop ([91])."""
-    content = await deepseek_service.async_chat_completion(
+    content = await deepseek_service.chat_completion(
         _SYSTEM_PROMPT, _user_prompt(question, answer, language)
     )
     return _extracted_lines(content)
@@ -208,7 +208,7 @@ def _pair_texts(name: ConceptName, pool: list[Concept]) -> list[str]:
     return [concept_pair_text(name.ja, name.en), *(_sense_pair_text(c) for c in pool)]
 
 
-async def _async_resolve_sense(
+async def _resolve_sense(
     index: SenseIndex, name: ConceptName, pending: Pending
 ) -> tuple[Concept | None, list[float] | None]:
     """As `_resolve_sense`; the embedding call runs with no session in use."""
@@ -217,7 +217,7 @@ async def _async_resolve_sense(
         return None, None
     if len(full) == 1:
         return full[0], None
-    vectors = await embedding_service.async_create_embeddings(_pair_texts(name, pool))
+    vectors = await embedding_service.create_embeddings(_pair_texts(name, pool))
     return _choose(name, full, pool, vectors)
 
 
@@ -271,7 +271,7 @@ class PlannedSense:
     aliases: list[tuple[str, str]]
 
 
-async def async_prepare_concepts(
+async def prepare_concepts(
     db: AsyncSession, concept_names: list[str], language: str
 ) -> list[PlannedSense]:
     """Resolve extracted pairs to senses without writing ([91]).
@@ -279,13 +279,13 @@ async def async_prepare_concepts(
     The index is read in its own short transaction; any embedding call
     happens after it, so no connection waits on OpenAI ([82]).
     """
-    return (await async_prepare_concepts_many(db, [(concept_names, language)]))[0]
+    return (await prepare_concepts_many(db, [(concept_names, language)]))[0]
 
 
-async def async_prepare_concepts_many(
+async def prepare_concepts_many(
     db: AsyncSession, items: list[tuple[list[str], str]]
 ) -> list[list[PlannedSense]]:
-    """`async_prepare_concepts` for several questions sharing one index ([94]).
+    """`prepare_concepts` for several questions sharing one index ([94]).
 
     The index is read once for every pair of every question, and a sense
     planned for one question can be matched by a later one, so an import
@@ -293,20 +293,18 @@ async def async_prepare_concepts_many(
     """
     parsed = [_parse_names(names, language) for names, language in items]
     keys = set().union(*(_all_keys(names) for names in parsed)) if parsed else set()
-    async with async_transaction(db, "concept_index_read"):
-        index = await concept_term_repository.async_senses_by_words(db, keys)
-    return [await _async_plan(index, names) for names in parsed]
+    async with transaction(db, "concept_index_read"):
+        index = await concept_term_repository.senses_by_words(db, keys)
+    return [await _plan(index, names) for names in parsed]
 
 
-async def _async_plan(
-    index: SenseIndex, names: list[ConceptName]
-) -> list[PlannedSense]:
+async def _plan(index: SenseIndex, names: list[ConceptName]) -> list[PlannedSense]:
     pending: Pending = set()
     plans: dict[int, PlannedSense] = {}
     for name in names:
-        concept, embedding = await _async_resolve_sense(index, name, pending)
+        concept, embedding = await _resolve_sense(index, name, pending)
         if concept is None:
-            concept = await _async_build_sense(name, embedding)
+            concept = await _build_sense(name, embedding)
             plans[id(concept)] = PlannedSense(concept, new=True, aliases=[])
             # Later pairs of this question may share a word with it.
             for key in _word_keys(name):
@@ -327,12 +325,10 @@ async def _async_plan(
     return list(plans.values())
 
 
-async def _async_build_sense(
-    name: ConceptName, embedding: list[float] | None
-) -> Concept:
+async def _build_sense(name: ConceptName, embedding: list[float] | None) -> Concept:
     if embedding is None:
         embedding = (
-            await embedding_service.async_create_embeddings(
+            await embedding_service.create_embeddings(
                 [concept_pair_text(name.ja, name.en)]
             )
         )[0]
@@ -346,26 +342,26 @@ async def _async_build_sense(
     )
 
 
-async def async_attach_concepts(
+async def attach_concepts(
     db: AsyncSession, question_id: int, concept_names: list[str], language: str = "ja"
 ) -> list[Concept]:
     """Prepare and apply for one question: plan, then one short write ([95])."""
-    plans = await async_prepare_concepts(db, concept_names, language)
-    async with async_transaction(db, "attach_concepts"):
-        return await async_apply_concepts(db, question_id, plans)
+    plans = await prepare_concepts(db, concept_names, language)
+    async with transaction(db, "attach_concepts"):
+        return await apply_concepts(db, question_id, plans)
 
 
-async def async_apply_concepts(
+async def apply_concepts(
     db: AsyncSession, question_id: int, plans: list[PlannedSense]
 ) -> list[Concept]:
-    """Write a plan from `async_prepare_concepts`; call inside a transaction."""
+    """Write a plan from `prepare_concepts`; call inside a transaction."""
     for plan in plans:
         if plan.new:
             db.add(plan.concept)
     await db.flush()
     for plan in plans:
         for lang, word in plan.aliases:
-            await concept_sense_service.async_add_term(
+            await concept_sense_service.add_term(
                 db,
                 plan.concept,
                 lang,
@@ -373,7 +369,7 @@ async def async_apply_concepts(
                 concept_sense_service.TermSource.EXTRACTED,
             )
     concepts = [plan.concept for plan in plans]
-    await question_concept_repository.async_link_many(
+    await question_concept_repository.link_many(
         db, question_id, [concept.id for concept in concepts]
     )
     return concepts
@@ -389,9 +385,9 @@ def _missing_and_present(concept: Concept) -> tuple[list[str], list[str]]:
     return missing, present
 
 
-async def async_translate_missing_name(db: AsyncSession, concept_id: int) -> bool:
+async def translate_missing_name(db: AsyncSession, concept_id: int) -> bool:
     """As `translate_missing_name`, on the event loop ([72])."""
-    async with async_transaction(db, "concept_name_read"):
+    async with transaction(db, "concept_name_read"):
         concept = await db.get(Concept, concept_id)
         if concept is None:
             plan = None
@@ -403,7 +399,7 @@ async def async_translate_missing_name(db: AsyncSession, concept_id: int) -> boo
                 source, target = Language(present[0]), Language(missing[0])
                 word = concept_sense_service.preferred_term(concept, source.value)
                 assert word is not None
-                context = await question_concept_repository.async_context_question(
+                context = await question_concept_repository.context_question(
                     db, concept_id, source.value
                 )
                 plan = (source, target, word.term, context)
@@ -414,15 +410,15 @@ async def async_translate_missing_name(db: AsyncSession, concept_id: int) -> boo
     source, target, word_text, context = plan
 
     try:
-        translated, _ = await translation_service.async_translate_qa(
+        translated, _ = await translation_service.translate_qa(
             word_text, context or word_text, source, target
         )
     except TranslationError:
         logger.warning("Concept name translation failed: concept_id=%d", concept_id)
         return False
 
-    async with async_transaction(db, "translate_concept_name"):
-        added = await concept_sense_service.async_add_term(
+    async with transaction(db, "translate_concept_name"):
+        added = await concept_sense_service.add_term(
             db,
             concept,
             target.value,

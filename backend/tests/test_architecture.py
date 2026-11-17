@@ -109,7 +109,7 @@ def test_only_the_database_layer_builds_sessions():
 
 
 def test_async_code_never_uses_the_sync_transaction_helper():
-    """An `async def` that commits must use `async_transaction` ([69]).
+    """An `async def` that commits must use `transaction` ([69]).
 
     `transaction()` on an `AsyncSession` would call `commit()` without
     awaiting it: the block would look fine and write nothing.
@@ -179,30 +179,21 @@ def test_the_checks_catch_a_violation():
 # part in ([82]).
 LLM_CALLS = {
     "generate_answer",
-    "async_generate_answer",
     "chat_completion",
-    "async_chat_completion",
-    "async_stream_answer",
+    "stream_answer",
     "create_embeddings",
-    "async_create_embeddings",
     "translate_qa",
-    "async_translate_qa",
     "extract_concept_names",
-    "async_extract_concept_names",
-    "async_prepare_concepts",
+    "prepare_concepts",
     "grade_answer",
-    "async_grade_answer",
     "embed_language",
     "prepare_translation",
-    "async_prepare_translation",
     "translate_into",
     "translate_missing",
     "refresh_machine_translations",
     "embed_query",
-    "async_embed_query",
     "generate_rag_answer",
-    "async_generate_rag_answer",
-    "async_stream_rag_answer",
+    "stream_rag_answer",
 }
 
 # Sync admin-only paths that keep their transaction across an LLM call on
@@ -231,7 +222,7 @@ def _llm_calls_inside_transactions(tree: ast.AST) -> dict[str, list[str]]:
                 continue
             in_transaction = any(
                 isinstance(item.context_expr, ast.Call)
-                and call_name(item.context_expr) in {"transaction", "async_transaction"}
+                and call_name(item.context_expr) in {"transaction"}
                 for item in block.items
             )
             if not in_transaction:
@@ -284,8 +275,8 @@ def test_the_llm_transaction_check_catches_a_violation():
         "    with transaction(db, 'x'):\n"
         "        deepseek_service.generate_answer(a, b)\n"
         "async def g(db):\n"
-        "    async with async_transaction(db, 'x'):\n"
-        "        await embedding_service.async_create_embeddings(t)\n"
+        "    async with transaction(db, 'x'):\n"
+        "        await embedding_service.create_embeddings(t)\n"
     )
     found = _llm_calls_inside_transactions(sample)
     assert "f" in found and "g" in found

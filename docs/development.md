@@ -205,8 +205,8 @@ Layout of `backend/tests/`:
 | `test_seed.py` | One offline seed per module (OpenAI and DeepSeek forbidden), then read-only checks and export round trips |
 | `test_security.py` | Production password hashing parameters (the test hasher is cheaper) |
 | `test_comment_style.py` | Comments are English (Japanese only as quoted data) ([65]) |
-| `test_architecture.py` | Layering rules: routers call services only; only `async_transaction()` commits; sessions come from `database/`; async code never uses the sync helper ([69]) |
-| `test_async_foundation.py` | Async engine, session, `async_transaction` commit/rollback, pool sizing ([69]) |
+| `test_architecture.py` | Layering rules: routers call services only; only `transaction()` commits; sessions come from `database/`; async code never uses the sync helper ([69]) |
+| `test_async_foundation.py` | Async engine, session, `transaction` commit/rollback, pool sizing ([69]) |
 | `test_async_hot_path.py` | A pending generation does not hold the server; concurrent generations overlap ([70]) |
 | `test_llm_connection_discipline.py` | No transaction is open at the moment any LLM seam is called ([82]) |
 | `test_background_concurrency.py` | Background items overlap up to the limit; takeover stops a run; one call per row ([72]) |
@@ -223,15 +223,15 @@ Conventions:
 - API tests use the `client` fixtures and assert on HTTP responses; service
   and repository tests take the `db` session directly.
 - Anything that calls OpenAI or DeepSeek must be mocked. `conftest.py`
-  already patches `embedding_service.async_create_embeddings`,
-  `concept_service.async_extract_concept_names` and
-  `translation_service.async_translate_qa` (which returns `"[en] <text>"`
+  already patches `embedding_service.create_embeddings`,
+  `concept_service.extract_concept_names` and
+  `translation_service.translate_qa` (which returns `"[en] <text>"`
   style markers so tests can assert on translations).
 - Patch LLM seams through the `conftest` helpers, never with a bare
   `monkeypatch.setattr` ([70]): `patch_generation`,
   `patch_chat_completion`, `patch_create_embeddings`,
   `patch_extract_concept_names` and `patch_rag_answer` each take a plain
-  sync stub and install it on the `async_` function the app awaits. A
+  sync stub and install it on the async function the app awaits. A
   sync function there would be awaited and fail with a confusing
   `TypeError`. Since [108] the app has no sync seam left to patch.
 - A test that calls converted (async) code is `async def`, marked
@@ -310,13 +310,13 @@ enforced by `tests/test_architecture.py`:
   domain errors to HTTP. They never import `repositories`, open a session,
   or call `db.query/get/add/commit/...`.
 - **Services** own the use case and its transaction. Wrap the writes of a
-  use case in `async with async_transaction(db, "operation"):`
+  use case in `async with transaction(db, "operation"):`
   (`database/transaction.py`): it commits on success, and on any error
   rolls back, logs `Rolling back transaction: operation=...` and re-raises.
   For best-effort work, put the `async with` inside your own `try/except`.
   It is the only code that calls `commit()` or `rollback()`.
 - **Repositories** query and flush; they never commit.
-- **No transaction waits on an LLM** ([82]). An `async_transaction()`
+- **No transaction waits on an LLM** ([82]). An `transaction()`
   block must not contain a call to OpenAI or
   DeepSeek: the block holds a pooled connection, and a connection parked
   behind a 20-second network call is what capped the backend at ~15
@@ -341,7 +341,7 @@ enforced by `tests/test_architecture.py`:
   and return what a strict response left out as `TranslationNeeds`; the
   router hands those to the background translator in one call. List
   filters travel as one `QuestionFilters` object from router to repository.
-- **Background tasks** open their session with `async_background_session()`
+- **Background tasks** open their session with `background_session()`
   (`database/session.py`); tests point that one helper at the test
   database. CLIs open `AsyncSessionLocal` and run through `asyncio.run`
   (all of them since [109]).

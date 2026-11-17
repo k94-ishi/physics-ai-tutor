@@ -13,7 +13,7 @@ from physics_ai_tutor.database.database import AsyncSessionLocal
 
 
 @asynccontextmanager
-async def async_background_session() -> AsyncIterator[AsyncSession]:
-    """A fresh session that is always closed; requests use `get_async_db`."""
+async def background_session() -> AsyncIterator[AsyncSession]:
+    """A fresh session that is always closed; requests use `get_db`."""
     async with AsyncSessionLocal() as db:
         yield db

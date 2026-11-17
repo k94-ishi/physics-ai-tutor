@@ -5,11 +5,11 @@ import sys
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.database.database import AsyncSessionLocal
-from physics_ai_tutor.database.transaction import async_transaction
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.repositories import question_repository
 from physics_ai_tutor.schemas.language import Language
 from physics_ai_tutor.services.question_translation_service import (
-    async_translate_missing_languages,
+    translate_missing_languages,
 )
 
 
@@ -48,14 +48,14 @@ async def _run(language: str | None, limit: int | None, dry_run: bool) -> int:
     failures = 0
     async with AsyncSessionLocal() as db:
         # A short read, released before any LLM call ([82]).
-        async with async_transaction(db, "translate_missing_scan"):
+        async with transaction(db, "translate_missing_scan"):
             missing = await _missing_ids(db, languages, limit)
         for question_id, lang in missing:
             if dry_run:
                 print(f"would translate: id={question_id} missing={lang}")
                 continue
 
-            filled = await async_translate_missing_languages(db, question_id)
+            filled = await translate_missing_languages(db, question_id)
             if filled:
                 print(f"translated: id={question_id} -> {','.join(filled)}")
             else:

@@ -62,7 +62,7 @@ traffic first, then by which sync functions can be deleted soonest.
 | 16d | [110] | Sync engine, SessionLocal, get_db, background_session, transaction() | done 2026-11-16 |
 | 16e | [111] | Test-only sync helpers in question_repository | done 2026-11-16 |
 | 16f | [112] | Test-only sync helpers in the concept and embedding repositories | done 2026-11-16 |
-| 17 | [98] | Rename pass: drop the async_ prefixes | open |
+| 17 | [98] | Rename pass: drop the async_ prefixes | done 2026-11-17 |
 | 18 | [99] | Async end state: architecture test, docs, connection budget (closes [73]) | open |
 
 Chains: concepts [84]→[89]→[90]→[91], review [85]→[92], writes [86]→[93]→[94]→[95], admin stats [87]→[96]→[97] ([103]→[104]→[105]→[106]), end [88] ([107]→[108]→[109]→[110]→[111]→[112])→[98]→[99]. [87] needs only [83] and can run beside the concept chain. [76] (batch embeddings on import) is

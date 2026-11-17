@@ -14,7 +14,7 @@ from tests.conftest import (
 )
 
 # Captured before conftest's autouse mock replaces the seam ([102]).
-_real_async_translate_qa = translation_service.async_translate_qa
+_real_async_translate_qa = translation_service.translate_qa
 
 
 def real_translate_qa(*args, **kwargs):

@@ -10,7 +10,7 @@ from physics_ai_tutor.api.dependencies import (
     is_admin,
     require_admin,
 )
-from physics_ai_tutor.database.dependency import get_async_db
+from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.schemas.concept import (
     AdminConceptListResponse,
     AdminConceptResponse,
@@ -42,7 +42,7 @@ async def search_concepts(
     q: str = Query(default="", max_length=100),
     lang: Language = Query(default=Language.JA),
     limit: int = Query(default=20, ge=1, le=50),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     current_user: JWTPayload | None = Depends(get_current_user_optional),
 ):
     """Concept senses by any of their words, in either language ([55])."""
@@ -84,7 +84,7 @@ async def list_concepts(
     review_filter: str = Query(default="all", pattern="^(all|review|shared)$"),
     page: int = Query(default=1, ge=1),
     size: int = Query(default=30, ge=1, le=100),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     _: JWTPayload = Depends(require_admin),
 ):
     return await concept_sense_service.list_for_admin(db, q, review_filter, page, size)
@@ -94,7 +94,7 @@ async def list_concepts(
 async def get_concept(
     concept_id: int,
     lang: Language = Query(default=Language.JA),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     _: JWTPayload = Depends(require_admin),
 ):
     return await _detail(db, concept_id, lang)
@@ -105,7 +105,7 @@ async def update_gloss(
     concept_id: int,
     data: ConceptGlossUpdate,
     lang: Language = Query(default=Language.JA),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     _: JWTPayload = Depends(require_admin),
 ):
     with _http_errors():
@@ -122,7 +122,7 @@ async def add_term(
     concept_id: int,
     data: ConceptTermCreate,
     lang: Language = Query(default=Language.JA),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     _: JWTPayload = Depends(require_admin),
 ):
     with _http_errors():
@@ -137,7 +137,7 @@ async def update_term(
     term_id: int,
     data: ConceptTermUpdate,
     lang: Language = Query(default=Language.JA),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     _: JWTPayload = Depends(require_admin),
 ):
     with _http_errors():
@@ -150,7 +150,7 @@ async def update_term(
 @admin_router.delete("/terms/{term_id}", status_code=204)
 async def delete_term(
     term_id: int,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     _: JWTPayload = Depends(require_admin),
 ):
     with _http_errors():
@@ -163,7 +163,7 @@ async def merge_concepts(
     concept_id: int,
     data: ConceptMergeRequest,
     lang: Language = Query(default=Language.JA),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     _: JWTPayload = Depends(require_admin),
 ):
     if data.into_id == concept_id:
@@ -182,7 +182,7 @@ async def split_concept(
     concept_id: int,
     data: ConceptSplitRequest,
     lang: Language = Query(default=Language.JA),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     _: JWTPayload = Depends(require_admin),
 ):
     with _http_errors():

@@ -10,10 +10,10 @@ from physics_ai_tutor.core.config import settings
 from physics_ai_tutor.core.exceptions import EmbeddingGenerationError
 from physics_ai_tutor.core.openai import async_client
 from physics_ai_tutor.core.text import normalize_text
-from physics_ai_tutor.database.transaction import async_transaction
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.repositories import query_embedding_repository
 from physics_ai_tutor.repositories.embedding_repository import (
-    async_search_similar_embeddings,
+    search_similar_embeddings,
 )
 from physics_ai_tutor.schemas.embedding import SimilarQuestionResponse
 from physics_ai_tutor.schemas.language import Language
@@ -66,16 +66,16 @@ def _chunks(texts: list[str]) -> list[list[str]]:
     return chunks
 
 
-async def async_embed_many(texts: list[str]) -> list[list[float]]:
+async def embed_many(texts: list[str]) -> list[list[float]]:
     """Embeddings for many texts, one request per chunk, in input order ([76]).
 
-    `async_create_embeddings` is called per chunk, so preloaded seed
+    `create_embeddings` is called per chunk, so preloaded seed
     vectors and the test seam apply unchanged. The result lines up with
     `texts` by index; callers keep their own (row, language, kind) mapping.
     """
     vectors: list[list[float]] = []
     for chunk in _chunks(texts):
-        vectors.extend(await async_create_embeddings(chunk))
+        vectors.extend(await create_embeddings(chunk))
     assert len(vectors) == len(texts)
     return vectors
 
@@ -108,17 +108,17 @@ def _similar_responses(
     return responses
 
 
-async def async_create_embeddings(texts: list[str]) -> list[list[float]]:
+async def create_embeddings(texts: list[str]) -> list[list[float]]:
     """Embeddings for `texts`; preloaded vectors first, OpenAI for the rest."""
     keys = [vector_key(settings.embedding_model, text) for text in texts]
     missing = [
         text for text, key in zip(texts, keys, strict=True) if key not in _preloaded
     ]
-    fetched = iter(await _async_request_embeddings(missing) if missing else [])
+    fetched = iter(await _request_embeddings(missing) if missing else [])
     return [_preloaded[key] if key in _preloaded else next(fetched) for key in keys]
 
 
-async def _async_request_embeddings(texts: list[str]) -> list[list[float]]:
+async def _request_embeddings(texts: list[str]) -> list[list[float]]:
     logger.debug("Generating embeddings: count=%d", len(texts))
 
     try:
@@ -140,7 +140,7 @@ async def _async_request_embeddings(texts: list[str]) -> list[list[float]]:
     return [item.embedding for item in response.data]
 
 
-async def async_embed_query(db: AsyncSession, text: str) -> list[float]:
+async def embed_query(db: AsyncSession, text: str) -> list[float]:
     """Embed a search query through the cache ([49]).
 
     Keyed by (hash of the normalised text, model): a repeated search - a
@@ -154,37 +154,37 @@ async def async_embed_query(db: AsyncSession, text: str) -> list[float]:
     with timing.stage("embed_query") as stage:
         # The lookup commits so the connection is back in the pool before
         # the OpenAI call a miss triggers ([82]).
-        async with async_transaction(db, "query_embedding_lookup"):
-            cached = await query_embedding_repository.async_get(db, text_hash, model)
+        async with transaction(db, "query_embedding_lookup"):
+            cached = await query_embedding_repository.get(db, text_hash, model)
 
         if cached is not None:
             stage.note(cache="hit")
             try:
-                async with async_transaction(db, "touch_query_embedding"):
-                    await query_embedding_repository.async_touch(db, cached)
+                async with transaction(db, "touch_query_embedding"):
+                    await query_embedding_repository.touch(db, cached)
             except Exception:
                 # Hit bookkeeping must never break a search.
                 logger.warning("query embedding touch failed", exc_info=True)
             return list(cached.embedding)
 
         stage.note(cache="miss")
-        embedding = (await async_create_embeddings([normalized]))[0]
+        embedding = (await create_embeddings([normalized]))[0]
 
     try:
-        async with async_transaction(db, "cache_query_embedding"):
-            row = await query_embedding_repository.async_create(
+        async with transaction(db, "cache_query_embedding"):
+            row = await query_embedding_repository.create(
                 db, text_hash, normalized, model, embedding
             )
     except IntegrityError:
         # Two identical searches raced; the other one won and that is fine.
-        existing = await query_embedding_repository.async_get(db, text_hash, model)
+        existing = await query_embedding_repository.get(db, text_hash, model)
         assert existing is not None
         return list(existing.embedding)
 
     return list(row.embedding)
 
 
-async def async_search_similar_questions(
+async def search_similar_questions(
     db: AsyncSession,
     query: str,
     limit: int = 10,
@@ -193,12 +193,12 @@ async def async_search_similar_questions(
 ) -> list[SimilarQuestionResponse]:
     """Questions whose embedding in `language` is closest to the query."""
     lang = Language(language)
-    query_embedding = await async_embed_query(db, query)
+    query_embedding = await embed_query(db, query)
 
     # Same-language search only: every row is embedded in each language it
     # has text for, so cross-language scoring is not needed.
     with timing.stage("vector_search", limit=limit) as stage:
-        results = await async_search_similar_embeddings(
+        results = await search_similar_embeddings(
             db=db,
             embedding=query_embedding,
             embedding_type="question",

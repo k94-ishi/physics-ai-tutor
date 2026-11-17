@@ -51,7 +51,7 @@ async def test_retrieve_context_filters_by_min_score(async_db, db, monkeypatch):
 
     db.commit()
 
-    context = await rag_service.async_retrieve_context(async_db, "クエリ")
+    context = await rag_service.retrieve_context(async_db, "クエリ")
 
     assert [c.id for c in context] == [near.id]
     assert context[0].score == pytest.approx(1.0, abs=1e-3)
@@ -72,7 +72,7 @@ async def test_retrieve_context_excludes_unreviewed_and_rejected(
 
     db.commit()
 
-    context = await rag_service.async_retrieve_context(async_db, "クエリ")
+    context = await rag_service.retrieve_context(async_db, "クエリ")
 
     assert [c.id for c in context] == [approved.id]
 
@@ -96,7 +96,7 @@ async def test_retrieve_context_includes_concepts(async_db, db, monkeypatch):
 
     db.commit()
 
-    context = await rag_service.async_retrieve_context(async_db, "クエリ")
+    context = await rag_service.retrieve_context(async_db, "クエリ")
 
     assert context[0].concepts == ["力学"]
 
@@ -111,7 +111,7 @@ async def test_retrieve_context_respects_top_k_limit(async_db, db, monkeypatch):
 
     db.commit()
 
-    context = await rag_service.async_retrieve_context(async_db, "クエリ")
+    context = await rag_service.retrieve_context(async_db, "クエリ")
 
     assert len(context) == rag_service.RAG_TOP_K
 
@@ -157,9 +157,7 @@ async def test_generate_rag_answer_uses_rag_system_prompt_and_returns_ids(
 
     db.commit()
 
-    result, ids = await rag_service.async_generate_rag_answer(
-        async_db, "力の説明をして"
-    )
+    result, ids = await rag_service.generate_rag_answer(async_db, "力の説明をして")
 
     assert result.content == "生成された回答"
     assert result.model == "mock-model"
@@ -177,7 +175,7 @@ async def test_generate_rag_answer_without_context_still_answers(
 
     db.commit()
 
-    result, ids = await rag_service.async_generate_rag_answer(
+    result, ids = await rag_service.generate_rag_answer(
         async_db, "誰も答えたことのない質問"
     )
 
@@ -192,9 +190,7 @@ async def test_load_context_by_ids_preserves_order(async_db, db):
 
     db.commit()
 
-    context = await rag_service.async_load_context_by_ids(
-        async_db, [second.id, first.id]
-    )
+    context = await rag_service.load_context_by_ids(async_db, [second.id, first.id])
 
     assert [c.id for c in context] == [second.id, first.id]
 
@@ -206,7 +202,7 @@ async def test_load_context_by_ids_excludes_unapproved(async_db, db):
 
     db.commit()
 
-    context = await rag_service.async_load_context_by_ids(
+    context = await rag_service.load_context_by_ids(
         async_db, [approved.id, unreviewed.id]
     )
 
@@ -219,9 +215,7 @@ async def test_load_context_by_ids_caps_at_top_k(async_db, db):
 
     db.commit()
 
-    context = await rag_service.async_load_context_by_ids(
-        async_db, [q.id for q in questions]
-    )
+    context = await rag_service.load_context_by_ids(async_db, [q.id for q in questions])
 
     assert len(context) == rag_service.RAG_TOP_K
 
@@ -241,7 +235,7 @@ async def test_load_context_by_ids_includes_concepts(async_db, db):
 
     db.commit()
 
-    context = await rag_service.async_load_context_by_ids(async_db, [question.id])
+    context = await rag_service.load_context_by_ids(async_db, [question.id])
 
     assert context[0].concepts == ["力学"]
 
@@ -250,7 +244,7 @@ async def test_load_context_by_ids_includes_concepts(async_db, db):
 async def test_load_context_by_ids_empty_list_returns_empty(async_db, db):
     db.commit()
 
-    assert await rag_service.async_load_context_by_ids(async_db, []) == []
+    assert await rag_service.load_context_by_ids(async_db, []) == []
 
 
 @pytest.mark.anyio
@@ -269,7 +263,7 @@ async def test_generate_rag_answer_with_ids_skips_embedding_search(
 
     db.commit()
 
-    result, ids = await rag_service.async_generate_rag_answer(
+    result, ids = await rag_service.generate_rag_answer(
         async_db, "力の説明をして", retrieved_question_ids=[question.id]
     )
 
@@ -288,7 +282,7 @@ async def test_generate_rag_answer_falls_back_to_search_when_no_approved_ids(
 
     db.commit()
 
-    result, ids = await rag_service.async_generate_rag_answer(
+    result, ids = await rag_service.generate_rag_answer(
         async_db, "力の説明をして", retrieved_question_ids=None
     )
 

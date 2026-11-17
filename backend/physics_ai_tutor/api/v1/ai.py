@@ -13,7 +13,7 @@ from physics_ai_tutor.api.dependencies import (
     get_current_user_optional,
 )
 from physics_ai_tutor.core.exceptions import DeepSeekGenerationError
-from physics_ai_tutor.database.dependency import get_async_db
+from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.schemas.ai import AskAiRequest, AskAiResponse
 from physics_ai_tutor.schemas.token import JWTPayload
 from physics_ai_tutor.services import ai_service
@@ -27,7 +27,7 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 async def ask_ai(
     request: AskAiRequest,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     rate_limit: AiAskRateLimit = Depends(enforce_ai_ask_rate_limit),
     user: JWTPayload | None = Depends(get_current_user_optional),
 ):
@@ -48,7 +48,7 @@ async def ask_ai(
 @router.post("/ask/stream")
 async def ask_ai_stream(
     request: AskAiRequest,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     rate_limit: AiAskRateLimit = Depends(enforce_ai_ask_rate_limit),
     user: JWTPayload | None = Depends(get_current_user_optional),
 ):

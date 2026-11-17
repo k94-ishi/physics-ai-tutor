@@ -35,7 +35,7 @@ def patch_stream(monkeypatch, pieces, model="mock-model"):
             completion_tokens=22,
         )
 
-    monkeypatch.setattr(deepseek_service, "async_stream_answer", _stream)
+    monkeypatch.setattr(deepseek_service, "stream_answer", _stream)
 
 
 def parse_events(body: str) -> list[tuple[str, dict]]:
@@ -127,7 +127,7 @@ def test_a_cache_hit_streams_the_stored_answer_without_generating(
     def _never(*args, **kwargs):
         raise AssertionError("a cache hit must not call DeepSeek")
 
-    monkeypatch.setattr(deepseek_service, "async_stream_answer", _never)
+    monkeypatch.setattr(deepseek_service, "stream_answer", _never)
 
     response = client.post(STREAM_PATH, json={"question": "キャッシュ済みの質問です"})
     events = parse_events(response.text)
@@ -209,7 +209,7 @@ def test_generation_failure_arrives_as_an_error_event(client, monkeypatch, db):
         raise DeepSeekGenerationError("boom")
         yield ""  # pragma: no cover - makes this an async generator
 
-    monkeypatch.setattr(deepseek_service, "async_stream_answer", _fail)
+    monkeypatch.setattr(deepseek_service, "stream_answer", _fail)
 
     response = client.post(STREAM_PATH, json={"question": "失敗する質問です"})
     events = parse_events(response.text)

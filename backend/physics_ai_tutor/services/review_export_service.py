@@ -84,11 +84,11 @@ async def iter_export_rows(
         ids = [question.id for review, question in rows if review.language == language]
         concepts_by_language[
             language
-        ] = await question_concept_repository.async_get_concepts_for_questions(
+        ] = await question_concept_repository.get_concepts_for_questions(
             db, ids, language=language
         )
 
-    ai_by_question = await review_metrics_repository.async_ai_reviews_by_question(
+    ai_by_question = await review_metrics_repository.ai_reviews_by_question(
         db, {question.id for _, question in rows}
     )
 

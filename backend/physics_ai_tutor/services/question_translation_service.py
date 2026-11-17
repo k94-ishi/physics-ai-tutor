@@ -19,7 +19,7 @@ from physics_ai_tutor.core.exceptions import (
     EmbeddingGenerationError,
     TranslationError,
 )
-from physics_ai_tutor.database.transaction import async_transaction
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.repositories import (
     embedding_repository,
@@ -54,7 +54,7 @@ def _source_text(
     return src, text
 
 
-async def async_prepare_translation(
+async def prepare_translation(
     question: Question, target: Language, source: Language | None = None
 ) -> PreparedTranslation | None:
     """As `prepare_translation`, on the event loop."""
@@ -62,13 +62,13 @@ async def async_prepare_translation(
 
     try:
         with timing.stage("translate_qa", question_id=question.id, target=target.value):
-            translated_q, translated_a = await translation_service.async_translate_qa(
+            translated_q, translated_a = await translation_service.translate_qa(
                 text[0], text[1], source=src, target=target
             )
         with timing.stage(
             "embed_language", question_id=question.id, target=target.value
         ):
-            question_vec, answer_vec = await embedding_service.async_create_embeddings(
+            question_vec, answer_vec = await embedding_service.create_embeddings(
                 [translated_q, translated_a]
             )
     except (TranslationError, EmbeddingGenerationError):
@@ -83,7 +83,7 @@ async def async_prepare_translation(
     return PreparedTranslation(translated_q, translated_a, question_vec, answer_vec)
 
 
-async def async_write_embeddings(
+async def write_embeddings(
     db: AsyncSession,
     question_id: int,
     language: Language,
@@ -91,15 +91,13 @@ async def async_write_embeddings(
     answer_vector: list[float],
 ) -> None:
     """Replace one language's embedding rows; the caller commits."""
-    await embedding_repository.async_delete_by_question_id(
-        db, question_id, language=language
-    )
+    await embedding_repository.delete_by_question_id(db, question_id, language=language)
 
     for embedding_type, vector in (
         ("question", question_vector),
         ("answer", answer_vector),
     ):
-        await embedding_repository.async_create_embedding(
+        await embedding_repository.create_embedding(
             db,
             question_id=question_id,
             embedding=vector,
@@ -109,7 +107,7 @@ async def async_write_embeddings(
         )
 
 
-async def async_apply_translation(
+async def apply_translation(
     db: AsyncSession,
     question: Question,
     target: Language,
@@ -120,18 +118,18 @@ async def async_apply_translation(
         target, prepared.question, prepared.answer, TextProvenance.MACHINE
     )
     await db.flush()
-    await async_write_embeddings(
+    await write_embeddings(
         db, question.id, target, prepared.question_vector, prepared.answer_vector
     )
 
     logger.info("Question translated: question_id=%d target=%s", question.id, target)
 
 
-async def async_translate_missing_languages(
+async def translate_missing_languages(
     db: AsyncSession, question_id: int
 ) -> list[Language]:
     """As `translate_missing_languages`; the post-ask background task."""
-    async with async_transaction(db, "translate_missing_read"):
+    async with transaction(db, "translate_missing_read"):
         question = await db.get(Question, question_id)
 
     if question is None:
@@ -141,11 +139,11 @@ async def async_translate_missing_languages(
     for lang in Language:
         if question.has(lang):
             continue
-        prepared = await async_prepare_translation(question, lang)
+        prepared = await prepare_translation(question, lang)
         if prepared is None:
             continue
-        async with async_transaction(db, "translate_missing_write"):
-            await async_apply_translation(db, question, lang, prepared)
+        async with transaction(db, "translate_missing_write"):
+            await apply_translation(db, question, lang, prepared)
         filled.append(lang)
     return filled
 
@@ -168,7 +166,7 @@ def draft_of(question: Question) -> Question:
     return Question(**{name: getattr(question, name) for name in _DRAFT_COLUMNS})
 
 
-async def async_prepare_refresh(
+async def prepare_refresh(
     draft: Question, edited: Language
 ) -> dict[Language, PreparedTranslation]:
     """After a human edit in `edited`, prepare new machine counterparts.
@@ -183,7 +181,7 @@ async def async_prepare_refresh(
             continue
         if draft.provenance_of(lang) != TextProvenance.MACHINE and draft.has(lang):
             continue
-        translation = await async_prepare_translation(draft, lang, source=edited)
+        translation = await prepare_translation(draft, lang, source=edited)
         if translation is None:
             continue
         prepared[lang] = translation

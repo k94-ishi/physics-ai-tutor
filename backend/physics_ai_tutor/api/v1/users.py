@@ -9,7 +9,7 @@ from physics_ai_tutor.api.dependencies import (
     get_current_user,
     require_admin,
 )
-from physics_ai_tutor.database.dependency import get_async_db
+from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.models.user import User
 from physics_ai_tutor.schemas.ask_history import MyQuestionsResponse
 from physics_ai_tutor.schemas.auth import CurrentUser
@@ -38,7 +38,7 @@ async def get_me(
 async def change_my_password(
     data: PasswordChangeRequest,
     user: User = Depends(get_current_db_user),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
 ):
     changed = await user_service.change_password(
         db, user, data.current_password, data.new_password
@@ -59,7 +59,7 @@ async def get_my_questions(
     size: int = Query(default=20, ge=1, le=100),
     lang: Language = Query(default=Language.JA),
     payload: JWTPayload = Depends(get_current_user),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """The caller's ask history with each question's current state.
 
@@ -82,7 +82,7 @@ async def get_my_profile(
 @router.delete("/me", status_code=204)
 async def delete_my_account(
     user: User = Depends(get_current_db_user),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """Self-service account deletion for students.
 
@@ -108,7 +108,7 @@ async def delete_my_account(
 
 @router.get("", response_model=list[UserResponse])
 async def list_users(
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     _: JWTPayload = Depends(require_admin),
 ):
     return await user_service.list_users(db)
@@ -117,7 +117,7 @@ async def list_users(
 @router.post("", response_model=UserResponse, status_code=201)
 async def create_user(
     data: UserCreate,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
     if await user_service.email_registered(db, data.email):
@@ -140,7 +140,7 @@ async def create_user(
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user(
     user_id: int,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     _: JWTPayload = Depends(require_admin),
 ):
     user = await user_service.get_user(db, user_id)
@@ -157,7 +157,7 @@ async def get_user(
 @router.delete("/{user_id}", status_code=204)
 async def delete_user(
     user_id: int,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
     if str(user_id) == current_user.sub:

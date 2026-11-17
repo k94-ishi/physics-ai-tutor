@@ -66,7 +66,7 @@ async def move_links(
     )
 
 
-async def async_get_many(db: AsyncSession, concept_ids: list[int]) -> list[Concept]:
+async def get_many(db: AsyncSession, concept_ids: list[int]) -> list[Concept]:
     """Concepts by id; `Concept.terms` loads eagerly (selectin)."""
     if not concept_ids:
         return []
@@ -205,7 +205,7 @@ def _word_rows_select(keys: set[WordKey]):
     ).where(tuple_(ConceptTerm.language, ConceptTerm.normalized).in_(list(keys)))
 
 
-async def async_senses_by_words(
+async def senses_by_words(
     db: AsyncSession, keys: set[WordKey]
 ) -> dict[WordKey, list[Concept]]:
     """For each (language, normalized) word, the senses that have it.
@@ -215,7 +215,7 @@ async def async_senses_by_words(
     if not keys:
         return {}
     rows = (await db.execute(_word_rows_select(keys))).all()
-    found = await async_get_many(db, list({cid for _, _, cid in rows}))
+    found = await get_many(db, list({cid for _, _, cid in rows}))
     concepts = {c.id: c for c in found}
     index: dict[WordKey, list[Concept]] = {}
     for language, normalized, concept_id in rows:

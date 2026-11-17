@@ -15,7 +15,7 @@ from tests.conftest import (
 )
 
 # Captured before conftest's autouse mock replaces the seam ([95]).
-_real_async_extract = concept_service.async_extract_concept_names
+_real_async_extract = concept_service.extract_concept_names
 
 
 def real_extract_concept_names(*args, **kwargs):

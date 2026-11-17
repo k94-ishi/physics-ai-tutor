@@ -819,7 +819,7 @@ async def test_fetch_question_includes_concepts(db, async_db):
 
 @pytest.mark.anyio
 async def test_save_ai_question_success(db, async_db):
-    saved = await question_write_service.async_save_ai_question(
+    saved = await question_write_service.save_ai_question(
         async_db, "AIへの質問", "AIの回答"
     )
 
@@ -835,7 +835,7 @@ async def test_save_ai_question_does_not_extract_concepts(db, async_db, monkeypa
     calls = []
     _spy_extract_concept_names(monkeypatch, calls)
 
-    saved = await question_write_service.async_save_ai_question(
+    saved = await question_write_service.save_ai_question(
         async_db, "AIへの質問2", "AIの回答2"
     )
 
@@ -848,7 +848,7 @@ async def test_save_ai_question_duplicate_returns_none(db, async_db):
     await _acreate(db, "既にある質問", "既にある回答")
     db.commit()
 
-    saved = await question_write_service.async_save_ai_question(
+    saved = await question_write_service.save_ai_question(
         async_db, "既にある質問", "別の回答"
     )
 
@@ -864,7 +864,7 @@ async def test_save_ai_question_embedding_failure_returns_none(
 
     patch_create_embeddings(monkeypatch, _raise)
 
-    saved = await question_write_service.async_save_ai_question(
+    saved = await question_write_service.save_ai_question(
         async_db, "失敗する質問", "失敗する回答"
     )
 
@@ -1014,7 +1014,7 @@ async def test_attach_retrieved_questions_resolves_ids_to_summaries(db, async_db
 
     db.commit()
 
-    await question_presentation_service.async_attach_retrieved_questions(
+    await question_presentation_service.attach_retrieved_questions(
         async_db, [rag_question]
     )
 
@@ -1032,7 +1032,7 @@ async def test_attach_retrieved_questions_skips_missing_ids(db, async_db):
 
     db.commit()
 
-    await question_presentation_service.async_attach_retrieved_questions(
+    await question_presentation_service.attach_retrieved_questions(
         async_db, [rag_question]
     )
 
@@ -1045,8 +1045,6 @@ async def test_attach_retrieved_questions_empty_for_normal_questions(db, async_d
 
     db.commit()
 
-    await question_presentation_service.async_attach_retrieved_questions(
-        async_db, [question]
-    )
+    await question_presentation_service.attach_retrieved_questions(async_db, [question])
 
     assert question.retrieved_questions == []

@@ -26,7 +26,7 @@ One small slice of [73]: closing the migration. No behaviour change.
 
 ## Dependencies
 
-- Blocked by: [98]
+- Blocked by: [98] (done 2026-11-17)
 - Blocks: closes [73]
 
 ## Rules (all [73] slices)

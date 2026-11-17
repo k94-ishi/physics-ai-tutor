@@ -22,14 +22,14 @@ import logging
 
 from physics_ai_tutor.core import timing
 from physics_ai_tutor.core.config import settings
-from physics_ai_tutor.database.session import async_background_session
-from physics_ai_tutor.database.transaction import async_transaction
+from physics_ai_tutor.database.session import background_session
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.repositories import background_claim_repository
 from physics_ai_tutor.schemas.question import QuestionStatus
 from physics_ai_tutor.services import concept_service
 from physics_ai_tutor.services.question_translation_service import (
-    async_translate_missing_languages as translate_languages,
+    translate_missing_languages as translate_languages,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ def _limiter() -> asyncio.Semaphore:
 
 async def _take(db, kind: str, key: int) -> bool:
     """Claim the work, committed so other workers can see it."""
-    async with async_transaction(db, "claim_background_work"):
+    async with transaction(db, "claim_background_work"):
         return await background_claim_repository.claim(
             db, kind, key, settings.background_claim_timeout_minutes
         )
@@ -50,7 +50,7 @@ async def _take(db, kind: str, key: int) -> bool:
 async def _give_back(db, kind: str, key: int) -> None:
     """Release the claim; a failure here only delays the next attempt."""
     try:
-        async with async_transaction(db, "release_background_work"):
+        async with transaction(db, "release_background_work"):
             await background_claim_repository.release(db, kind, key)
     except Exception:
         # The claim expires on its own, so this must never mask the work's
@@ -70,7 +70,7 @@ async def translate_missing(question_ids: list[int]) -> None:
 
     async def one(question_id: int) -> None:
         async with limiter:
-            async with async_background_session() as db:
+            async with background_session() as db:
                 if not await _take(db, kind, question_id):
                     logger.info(
                         "Background translation skipped: question_id=%d reason=claimed",
@@ -79,7 +79,7 @@ async def translate_missing(question_ids: list[int]) -> None:
                     return
 
                 try:
-                    async with async_transaction(db, "background_translate_check"):
+                    async with transaction(db, "background_translate_check"):
                         question = await db.get(Question, question_id)
                         # The row may have been unapproved since the request.
                         approved = (
@@ -109,7 +109,7 @@ async def translate_concept_names(concept_ids: list[int]) -> None:
 
     async def one(concept_id: int) -> None:
         async with limiter:
-            async with async_background_session() as db:
+            async with background_session() as db:
                 if not await _take(db, kind, concept_id):
                     logger.info(
                         "Concept name translation skipped: concept_id=%d "
@@ -119,7 +119,7 @@ async def translate_concept_names(concept_ids: list[int]) -> None:
                     return
 
                 try:
-                    await concept_service.async_translate_missing_name(db, concept_id)
+                    await concept_service.translate_missing_name(db, concept_id)
                 except Exception:
                     logger.warning(
                         "Concept name translation failed: concept_id=%d",

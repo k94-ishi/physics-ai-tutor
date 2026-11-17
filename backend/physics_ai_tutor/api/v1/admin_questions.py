@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from physics_ai_tutor.api.dependencies import (
     require_admin,
 )
-from physics_ai_tutor.database.dependency import get_async_db
+from physics_ai_tutor.database.dependency import get_db
 from physics_ai_tutor.schemas.bulk import (
     BulkDeleteRequest,
     BulkDeleteResponse,
@@ -65,7 +65,7 @@ router = APIRouter(prefix="/questions", tags=["questions"])
 )
 async def get_question_reviews(
     question_id: int,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     _: JWTPayload = Depends(require_admin),
 ):
     return await question_review_service.fetch_question_reviews(db, question_id)
@@ -79,7 +79,7 @@ async def get_question_reviews(
 async def create_question(
     question: QuestionCreate,
     lang: Language = Query(default=Language.JA),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
     result = await question_write_service.create_question(
@@ -103,7 +103,7 @@ async def create_question(
 )
 async def bulk_delete_questions(
     data: BulkDeleteRequest,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
     deleted_count, not_found_ids = await question_write_service.bulk_delete_questions(
@@ -128,7 +128,7 @@ async def bulk_delete_questions(
 async def bulk_review_questions(
     data: BulkReviewRequest,
     lang: Language = Query(default=Language.JA),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
     (
@@ -162,7 +162,7 @@ async def bulk_review_questions(
 )
 async def extract_concepts(
     data: ConceptExtractionRequest,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
     results = await question_write_service.reextract_concepts_for_questions(
@@ -186,17 +186,15 @@ async def extract_concepts(
 )
 async def translate_questions(
     data: BulkDeleteRequest,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
     """Fill missing languages of the given questions by machine translation."""
     results = []
     for question_id in data.question_ids:
         try:
-            filled = (
-                await question_translation_service.async_translate_missing_languages(
-                    db, question_id
-                )
+            filled = await question_translation_service.translate_missing_languages(
+                db, question_id
             )
         except Exception:
             logger.warning(
@@ -233,7 +231,7 @@ async def import_questions(
     source: QuestionSource = Form(default=QuestionSource.AI_GENERATED),
     status: QuestionStatus = Form(default=QuestionStatus.UNREVIEWED),
     language: Language = Form(default=Language.JA),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
     raw_lines = file.file.read().decode("utf-8").splitlines()
@@ -291,7 +289,7 @@ async def review_question(
     question_id: int,
     data: QuestionReviewCreate,
     lang: Language = Query(default=Language.JA),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
     result = await question_review_service.review_question(
@@ -327,7 +325,7 @@ async def review_question(
 @router.delete("/{question_id}", status_code=204)
 async def delete_question(
     question_id: int,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
     deleted = await question_write_service.delete_question(db, question_id)
@@ -355,7 +353,7 @@ async def update_question(
     question_id: int,
     question: QuestionUpdate,
     lang: Language = Query(default=Language.JA),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_db),
     current_user: JWTPayload = Depends(require_admin),
 ):
     question = await question_write_service.update_question(

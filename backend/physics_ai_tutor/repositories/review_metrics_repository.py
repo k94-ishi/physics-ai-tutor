@@ -24,13 +24,10 @@ class ReviewPair:
     reviewed_at: datetime
 
 
-async def async_ai_reviews_by_question(
+async def ai_reviews_by_question(
     db: AsyncSession, question_ids: set[int]
 ) -> dict[int, list[AiReview]]:
-    """All AI reviews for the given questions, oldest first per question.
-
-    The sync twin went with its last caller ([96]); [98] drops the prefix.
-    """
+    """All AI reviews for the given questions, oldest first per question."""
     if not question_ids:
         return {}
 
@@ -77,7 +74,7 @@ async def list_pairs(db: AsyncSession, since: datetime | None) -> list[ReviewPai
     if not reviews:
         return []
 
-    ai_by_question = await async_ai_reviews_by_question(
+    ai_by_question = await ai_reviews_by_question(
         db, {review.question_id for review, _ in reviews}
     )
 

@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.core.exceptions import ConceptExtractionError
-from physics_ai_tutor.database.transaction import async_transaction
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models.question import Question
 from physics_ai_tutor.repositories import (
     question_repository,
@@ -23,17 +23,17 @@ from physics_ai_tutor.schemas.question import (
 from physics_ai_tutor.schemas.question_review import QuestionReviewAction
 from physics_ai_tutor.services import concept_service, embedding_service
 from physics_ai_tutor.services.question_presentation_service import (
-    async_attach_ai_reviews,
-    async_prepare_for_response,
+    attach_ai_reviews,
     attach_generation_meta,
+    prepare_for_response,
 )
 from physics_ai_tutor.services.question_translation_service import (
     PreparedTranslation,
-    async_apply_translation,
-    async_prepare_refresh,
-    async_prepare_translation,
-    async_write_embeddings,
+    apply_translation,
     draft_of,
+    prepare_refresh,
+    prepare_translation,
+    write_embeddings,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,11 +63,11 @@ async def _prepare_edit(
     """EDIT_APPROVE: embed the teacher's text, refresh machine counterparts."""
     draft.set_text(lang, question, answer, _provenance_for(draft, lang))
     # An embedding failure aborts the review, as it did before [85].
-    question_vec, answer_vec = await embedding_service.async_create_embeddings(
+    question_vec, answer_vec = await embedding_service.create_embeddings(
         [question, answer]
     )
     prepared.edit_vectors = (question_vec, answer_vec)
-    prepared.translations.update(await async_prepare_refresh(draft, lang))
+    prepared.translations.update(await prepare_refresh(draft, lang))
 
 
 async def _prepare_translation(
@@ -76,7 +76,7 @@ async def _prepare_translation(
     prepared: _Prepared,
     source: Language | None = None,
 ) -> None:
-    translation = await async_prepare_translation(draft, target, source)
+    translation = await prepare_translation(draft, target, source)
     if translation is None:
         return
     prepared.translations[target] = translation
@@ -92,7 +92,7 @@ async def _prepare_approval(
     """Concepts from the final text, then any language still missing."""
     language = draft.original_language
     try:
-        names = await concept_service.async_extract_concept_names(
+        names = await concept_service.extract_concept_names(
             *draft.original_text(), language=language
         )
     except ConceptExtractionError:
@@ -103,7 +103,7 @@ async def _prepare_approval(
         )
     else:
         prepared.concept_names = names
-        prepared.concept_plans = await concept_service.async_prepare_concepts(
+        prepared.concept_plans = await concept_service.prepare_concepts(
             db, names, language
         )
     for lang in Language:
@@ -123,26 +123,24 @@ async def _apply(
     if edit is not None and prepared.edit_vectors is not None:
         current.set_text(lang, *edit, _provenance_for(current, lang))
         await db.flush()
-        await async_write_embeddings(db, current.id, lang, *prepared.edit_vectors)
+        await write_embeddings(db, current.id, lang, *prepared.edit_vectors)
     for target, translation in prepared.translations.items():
-        await async_apply_translation(db, current, target, translation)
-    await question_repository.async_update_status(db, current.id, status)
+        await apply_translation(db, current, target, translation)
+    await question_repository.update_status(db, current.id, status)
     if prepared.concept_names is not None:
-        await concept_service.async_apply_concepts(
-            db, current.id, prepared.concept_plans
-        )
+        await concept_service.apply_concepts(db, current.id, prepared.concept_plans)
         concept_service.apply_levels_to_question(current, prepared.concept_names)
 
 
 async def _present_for_admin(
     db: AsyncSession, current: Question, response_language: Language | str
 ) -> None:
-    await async_prepare_for_response(db, [current], response_language)
+    await prepare_for_response(db, [current], response_language)
     # Reviewing is admin-only, and the queue replaces its row with this
     # response, so it must carry the same admin fields as the list and
     # detail endpoints or the AI badge vanishes from the card.
     attach_generation_meta([current])
-    await async_attach_ai_reviews(db, [current])
+    await attach_ai_reviews(db, [current])
 
 
 async def review_question(
@@ -158,8 +156,8 @@ async def review_question(
     response_language: Language | str = Language.JA,
 ) -> Question | None:
     """Approve, edit-approve or reject; the review row keeps before/after."""
-    async with async_transaction(db, "review_read"):
-        current = await question_repository.async_get_question(db, question_id)
+    async with transaction(db, "review_read"):
+        current = await question_repository.get_question(db, question_id)
     if current is None:
         return None
 
@@ -182,7 +180,7 @@ async def review_question(
     if status == QuestionStatus.APPROVED:
         await _prepare_approval(db, draft, prepared)
 
-    async with async_transaction(db, "review_question"):
+    async with transaction(db, "review_question"):
         await _apply(db, current, lang, edit, status, prepared)
         after = current.text(lang) or current.original_text()
         await question_review_repository.create(

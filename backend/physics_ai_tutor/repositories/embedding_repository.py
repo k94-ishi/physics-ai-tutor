@@ -23,7 +23,7 @@ def _new_embedding(
     )
 
 
-async def async_create_embedding(
+async def create_embedding(
     db: AsyncSession,
     question_id: int,
     embedding: list[float],
@@ -82,7 +82,7 @@ def _similar_embeddings_select(
     return query.order_by(distance).limit(limit)
 
 
-async def async_search_similar_embeddings(
+async def search_similar_embeddings(
     db: AsyncSession,
     embedding: list[float],
     embedding_type: str = "question",
@@ -129,7 +129,7 @@ def _delete_by_question_id_statement(question_id: int, language: str | None):
     return statement
 
 
-async def async_delete_by_question_id(
+async def delete_by_question_id(
     db: AsyncSession,
     question_id: int,
     language: str | None = None,

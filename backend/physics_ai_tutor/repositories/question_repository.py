@@ -199,7 +199,7 @@ def _question_select(question_id: int, exclude_statuses: list[str] | None):
     return _filter_by_status(query, None, exclude_statuses)
 
 
-async def async_get_question(
+async def get_question(
     db: AsyncSession,
     question_id: int,
     exclude_statuses: list[str] | None = None,
@@ -208,9 +208,7 @@ async def async_get_question(
     return (await db.scalars(_question_select(question_id, exclude_statuses))).first()
 
 
-async def async_get_questions_by_ids(
-    db: AsyncSession, ids: list[int]
-) -> list[Question]:
+async def get_questions_by_ids(db: AsyncSession, ids: list[int]) -> list[Question]:
     if not ids:
         return []
 
@@ -229,7 +227,7 @@ def _exact_text_select(
     )
 
 
-async def async_get_by_exact_text(
+async def get_by_exact_text(
     db: AsyncSession,
     question_text: str,
     language: Language | str = Language.JA,
@@ -291,7 +289,7 @@ def _new_question(
     return question
 
 
-async def async_create_question(
+async def create_question(
     db: AsyncSession,
     texts: dict[Language, tuple[str, str]],
     original_language: Language | str = Language.JA,
@@ -322,7 +320,7 @@ async def delete(db: AsyncSession, question_id: int) -> bool:
     return True
 
 
-async def async_update_status(
+async def update_status(
     db: AsyncSession, question_id: int, status: str
 ) -> Question | None:
     """Set one question's status."""

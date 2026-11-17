@@ -94,14 +94,14 @@ async def grade_cases(
     for index, case in enumerate(cases):
         answer = case.answer
         if regenerate:
-            generated = await deepseek_service.async_generate_answer(
+            generated = await deepseek_service.generate_answer(
                 prompts.SYSTEM_PROMPTS[case.language],
                 case.question,
                 temperature=EVAL_TEMPERATURE,
             )
             answer = generated.content
 
-        graded = await ai_review_service.async_grade_answer(
+        graded = await ai_review_service.grade_answer(
             case.question, answer, case.language, temperature=EVAL_TEMPERATURE
         )
         verdict = graded.verdict.value if graded.verdict else None

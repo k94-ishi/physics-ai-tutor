@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from physics_ai_tutor.core.text import normalize_key
-from physics_ai_tutor.database.transaction import async_transaction
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models import Concept, ConceptTerm, Question
 from physics_ai_tutor.repositories import concept_repository, concept_term_repository
 from physics_ai_tutor.schemas.concept import (
@@ -97,7 +97,7 @@ def add_unsaved_term(concept: Concept, language: str, term: str, source: str) ->
         sync_mirror(concept)
 
 
-async def async_add_term(
+async def add_term(
     db: AsyncSession,
     concept: Concept,
     language: str,
@@ -158,7 +158,7 @@ async def merge(db: AsyncSession, source: Concept, target: Concept) -> None:
             link.concept_id = target.id
     await db.flush()
     for term in list(source.terms):
-        await async_add_term(
+        await add_term(
             db, target, term.language, term.term, term.source, preferred=False
         )
     for language in LANGUAGES:
@@ -202,7 +202,7 @@ async def split(
     db.add(new)
     await db.flush()
     for item in terms:
-        await async_add_term(db, new, item.language, item.term, source)
+        await add_term(db, new, item.language, item.term, source)
     await concept_term_repository.move_links(db, concept.id, new.id, question_ids)
     await db.flush()
     logger.info(
@@ -259,7 +259,7 @@ async def search(
 
     counts = await concept_term_repository.question_counts(db, concept_ids, statuses)
     items = []
-    for concept in await concept_term_repository.async_get_many(db, concept_ids):
+    for concept in await concept_term_repository.get_many(db, concept_ids):
         count = counts.get(concept.id, 0)
         text, fallback = label(concept, language)
         if public and (count == 0 or fallback):
@@ -313,9 +313,7 @@ async def list_for_admin(
     page_ids = ids[(page - 1) * size : page * size]
     counts = await concept_term_repository.question_counts(db, page_ids, None)
     shares = await concept_term_repository.shared_word_partners(db, page_ids)
-    concepts = {
-        c.id: c for c in await concept_term_repository.async_get_many(db, page_ids)
-    }
+    concepts = {c.id: c for c in await concept_term_repository.get_many(db, page_ids)}
     items = [
         _admin_item(concepts[cid], counts.get(cid, 0), shares.get(cid, []))
         for cid in page_ids
@@ -398,7 +396,7 @@ async def update_gloss(
     db: AsyncSession, concept_id: int, changes: dict[str, str | None]
 ) -> None:
     """Set the given gloss fields; an empty string clears one."""
-    async with async_transaction(db, "update_concept_gloss"):
+    async with transaction(db, "update_concept_gloss"):
         concept = await _concept(db, concept_id)
         for field, value in changes.items():
             setattr(concept, field, value or None)
@@ -408,9 +406,9 @@ async def add_teacher_term(
     db: AsyncSession, concept_id: int, language: str, term: str, is_preferred: bool
 ) -> None:
     """A word typed by a teacher; DuplicateTermError if the sense has it."""
-    async with async_transaction(db, "add_concept_term"):
+    async with transaction(db, "add_concept_term"):
         concept = await _concept(db, concept_id)
-        added = await async_add_term(
+        added = await add_term(
             db,
             concept,
             language,
@@ -426,7 +424,7 @@ async def edit_term_by_id(
     db: AsyncSession, term_id: int, new_text: str | None, preferred: bool | None
 ) -> int:
     """Edit a word or make it the label; returns its concept id."""
-    async with async_transaction(db, "edit_concept_term"):
+    async with transaction(db, "edit_concept_term"):
         term = await _term(db, term_id)
         concept_id = term.concept_id
         await edit_term(db, term, new_text, preferred)
@@ -434,12 +432,12 @@ async def edit_term_by_id(
 
 
 async def delete_term_by_id(db: AsyncSession, term_id: int) -> None:
-    async with async_transaction(db, "delete_concept_term"):
+    async with transaction(db, "delete_concept_term"):
         await delete_term(db, await _term(db, term_id))
 
 
 async def merge_by_id(db: AsyncSession, source_id: int, into_id: int) -> None:
-    async with async_transaction(db, "merge_concepts"):
+    async with transaction(db, "merge_concepts"):
         source = await _concept(db, source_id)
         await merge(db, source, await _concept(db, into_id))
 
@@ -453,7 +451,7 @@ async def split_by_id(
     gloss_en: str | None = None,
 ) -> int:
     """Move questions to a new sense; returns the new concept id."""
-    async with async_transaction(db, "split_concept"):
+    async with transaction(db, "split_concept"):
         new = await split(
             db,
             await _concept(db, concept_id),

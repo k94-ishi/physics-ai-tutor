@@ -15,7 +15,7 @@ from physics_ai_tutor.core.exceptions import (
     GoogleAccountConflictError,
     GoogleAuthError,
 )
-from physics_ai_tutor.database.transaction import async_transaction
+from physics_ai_tutor.database.transaction import transaction
 from physics_ai_tutor.models.user import User
 from physics_ai_tutor.repositories import user_repository
 
@@ -152,7 +152,7 @@ async def login_or_register(db: AsyncSession, identity: GoogleIdentity) -> User:
         role="user",
     )
 
-    async with async_transaction(db, "google_register"):
+    async with transaction(db, "google_register"):
         await user_repository.create_user(db, user)
 
     await db.refresh(user)
